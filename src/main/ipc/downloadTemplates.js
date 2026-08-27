@@ -8,6 +8,8 @@
  */
 
 const { ipcMain } = require('electron');
+const path = require('path');
+const fs = require('fs');
 const prefs = require('../../utils/prefs');
 
 const TEMPLATE_KEY = 'downloadTemplates';
@@ -24,6 +26,12 @@ function register() {
     if (!template || !template.name || !template.path) {
       return { success: false, error: '名称和路径不能为空' };
     }
+    // M10: 校验路径在安全目录内
+    const safePath = sanitizeDownloadPath(template.path.trim());
+    if (!safePath) {
+      return { success: false, error: '路径不在允许的下载目录内' };
+    }
+    template = { ...template, path: safePath };
     const templates = prefs.get(TEMPLATE_KEY) || [];
     const now = Date.now();
 
@@ -39,7 +47,7 @@ function register() {
     const newTpl = {
       id: 'tpl_' + now + '_' + Math.random().toString(36).slice(2, 6),
       name: template.name.trim(),
-      path: template.path.trim(),
+      path: safePath,
       createdAt: now,
       updatedAt: now,
     };
@@ -87,6 +95,30 @@ function register() {
 
 function sanitizeFileName(name) {
   return String(name).replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80);
+}
+
+/**
+ * M10: 校验路径在用户配置的下载目录内，防止路径穿越
+ * 返回安全解析后的绝对路径；不在允许范围内则返回 null（拒绝）。
+ */
+function sanitizeDownloadPath(templatePath) {
+  if (!templatePath || typeof templatePath !== 'string') return null;
+  const raw = templatePath.trim();
+  // 拒绝含协议处理器 / 明显 traversal 的输入（兜底，path.resolve 后还会再校验）
+  if (/^(file|https?|data|javascript|ftp|smb|ms-|mailto):/i.test(raw)) return null;
+  try {
+    const saveDir = prefs.get('saveDir') || path.join(require('electron').app.getPath('home'), 'Music');
+    const resolved = path.resolve(raw);
+    const base = path.resolve(saveDir);
+    // 允许 saveDir 本身或其子目录
+    if (resolved === base || resolved.startsWith(base + path.sep)) {
+      return resolved;
+    }
+  } catch (_) {
+    // 路径校验失败，拒绝
+  }
+  // 不在允许的下载目录内 → 拒绝（不再回退放行原始输入）
+  return null;
 }
 
 module.exports = { register };

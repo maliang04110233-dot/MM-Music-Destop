@@ -75,7 +75,7 @@ async function neteaseGetUrl(id, quality, cookie = '') {
         return AppError.copyright('网易云');
       }
     } catch (e) {
-      console.error(`网易云获取URL失败 (id=${id}, br=${br}):`, e.message);
+      logger.warn(`[netease] getPlayUrl 失败 (id=${id}, br=${br}):`, e.message);
     }
   }
   // 所有品质都失败 — 标记 fatal
@@ -92,7 +92,7 @@ async function neteaseGetLyrics(id) {
     const res = await ncm.lyric({ id: parseInt(id) });
     if (res?.body?.lrc?.lyric) return res.body.lrc.lyric;
   } catch (e) {
-    console.error('网易云获取歌词失败:', e.message);
+    logger.warn('[netease] getLyrics 失败:', e.message);
   }
   return '';
 }
@@ -164,7 +164,7 @@ async function neteaseGetRecommendPlaylists(limit = 6) {
       source: 'netease',
     }));
   } catch (e) {
-    console.error('网易云推荐歌单获取失败:', e.message);
+    logger.warn('[netease] playlist 失败:', e.message);
     return [];
   }
 }

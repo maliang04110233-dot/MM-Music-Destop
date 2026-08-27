@@ -3,7 +3,9 @@
 * 圆形封面盘 + 环形进度条
 * 
 * ES Module — export 供其他模块 import，同时保留 window 全局供 HTML onclick
-*/
+ */
+
+const logger = require('../../utils/logger');
 
 const audio = document.getElementById('audioPlayer');
 const RING_CIRCUMFERENCE = 552.9; // 2 * PI * 88
@@ -660,7 +662,7 @@ async function playSongByIdx(idx, song) {
     setState('currentPlaying', song);
     await loadAndPlay(song, proxied.fileUrl, true);
   } catch (e) {
-    console.error('切歌失败:', e);
+    logger.error('切歌失败:', e);
   }
 }
 
@@ -870,7 +872,7 @@ export function onAudioEnded() {
   const loopMode = getState('loopMode');
   // 播放结束时清除进度记忆（已播完不需要恢复）
   const curSong = getState('currentPlaying');
-  if (curSong) { try { savePlayProgress(curSong, 0); } catch (_e) {} }
+  if (curSong) { try { savePlayProgress(curSong, 0); } catch (_e) { /* ignore */ } }
   if (loopMode === 2) {
     // 修复：单曲循环时也要记录播放时长，避免统计丢失
     updatePlayStatsOnStop();

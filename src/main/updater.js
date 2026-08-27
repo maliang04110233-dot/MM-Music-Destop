@@ -26,12 +26,12 @@ autoUpdater.autoDownload = false; // 用户确认后下载
 autoUpdater.autoInstallOnAppQuit = false; // 用户确认后安装
 
 autoUpdater.on('checking-for-update', () => {
-  console.log('[Updater] Checking for updates...');
+  logger.log('[Updater] Checking for updates...');
 });
 
 autoUpdater.on('update-available', (info) => {
   _updateAvailable = true;
-  console.log('[Updater] Update available:', info.version);
+  logger.log('[Updater] Update available:', info.version);
   // 通知所有窗口
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
@@ -40,7 +40,7 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[Updater] No updates available');
+  logger.log('[Updater] No updates available');
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('update-not-available');
@@ -58,7 +58,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('[Updater] Downloaded:', info.version);
+  logger.log('[Updater] Downloaded:', info.version);
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('update-downloaded', { version: info.version });
@@ -66,7 +66,7 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 autoUpdater.on('error', (err) => {
-  console.error('[Updater] Error:', err.message);
+  logger.warn('[Updater] Error:', err.message);
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('update-error', { message: err.message });

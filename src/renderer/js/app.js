@@ -8,6 +8,7 @@
 // ══════════════════════════════════════════════════════════
 // ES Module 导入 — 确保所有模块被 Vite 包含
 // ══════════════════════════════════════════════════════════
+const logger = require('../../utils/logger');
 // 基础工具模块
 import './state.js';
 import './toast.js';
@@ -115,9 +116,9 @@ function buildApi() {
   const real = (typeof window.musicAPI !== 'undefined' && window.musicAPI) ? window.musicAPI : null;
   const merged = Object.assign({}, mockApi, real || {});
   if (real) {
-    console.log('[app.js] buildApi: 使用 REAL musicAPI, 方法数 =', Object.keys(merged).length);
+    logger.warn('[app.js] buildApi: 使用 REAL musicAPI, 方法数 =', Object.keys(merged).length);
   } else {
-    console.log('[app.js] buildApi: musicAPI undefined, 使用 mockApi');
+    logger.warn('[app.js] buildApi: musicAPI undefined, 使用 mockApi');
   }
   return merged;
 }
@@ -232,12 +233,20 @@ async function init() {
         if (icon) icon.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
         document.getElementById('playerCard')?.classList.remove('playing');
         if (typeof stopSpectrum === 'function') stopSpectrum();
+        syncToMiniPlayer();
+        syncToTray();
       });
       _audio.addEventListener('play', () => {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
         document.getElementById('playerCard')?.classList.add('playing');
         if (typeof startSpectrum === 'function') startSpectrum();
+        syncToMiniPlayer();
+        syncToTray();
+      });
+      _audio.addEventListener('timeupdate', () => {
+        updateProgress();
+        syncToMiniPlayer();
       });
       _audio.addEventListener('loadedmetadata', () => {
         document.getElementById('timeTotal').textContent = fmtTime(_audio.duration);
@@ -246,7 +255,7 @@ async function init() {
       // audio 元素不存在，跳过
     }
   } catch (e) {
-    console.warn('[init] 音频事件绑定失败:', e.message);
+    logger.warn('[init] 音频事件绑定失败:', e.message);
   }
 
   // ── 迷你播放器 IPC 监听 ──────────────────────────────
@@ -309,12 +318,7 @@ async function init() {
     });
   }
 
-  // 在 play/pause/timeupdate 时同步
-  if (_audio) {
-    _audio.addEventListener('play', () => { syncToMiniPlayer(); syncToTray(); });
-    _audio.addEventListener('pause', () => { syncToMiniPlayer(); syncToTray(); });
-    _audio.addEventListener('timeupdate', syncToMiniPlayer);
-  }
+  // 在 play/pause/timeupdate 时同步（已在上面合并）
 
   // ── 播放队列持久化 ─────────────────────────────────
   let _queueRestored = false; // 防双重恢复
@@ -358,7 +362,7 @@ async function init() {
       const playIdx = getState('playIdx');
       const loopMode = getState('loopMode');
       const isShuffled = getState('isShuffled');
-      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => console.warn('[playQueue] 保存失败:', e));
+      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => logger.warn('[playQueue] 保存失败:', e));
     }
   });
 
@@ -368,7 +372,7 @@ async function init() {
     const loopMode = getState('loopMode');
     const isShuffled = getState('isShuffled');
     if (Array.isArray(queue) && queue.length) {
-      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => console.warn('[playIdx] 保存失败:', e));
+      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => logger.warn('[playIdx] 保存失败:', e));
     }
   });
 
@@ -378,7 +382,7 @@ async function init() {
     const playIdx = getState('playIdx');
     const isShuffled = getState('isShuffled');
     if (Array.isArray(queue) && queue.length) {
-      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => console.warn('[loopMode] 保存失败:', e));
+      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => logger.warn('[loopMode] 保存失败:', e));
     }
   });
 
@@ -388,7 +392,7 @@ async function init() {
     const playIdx = getState('playIdx');
     const loopMode = getState('loopMode');
     if (Array.isArray(queue) && queue.length) {
-      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => console.warn('[isShuffled] 保存失败:', e));
+      api.savePlayQueue({ queue, playIdx, loopMode, isShuffled }).catch(e => logger.warn('[isShuffled] 保存失败:', e));
     }
   });
 
@@ -397,11 +401,11 @@ async function init() {
     const saved = await api.loadPlayQueue();
     restorePlayQueueFromSaved(saved);
   } catch (e) {
-    console.warn('[init] 加载播放队列失败:', e.message);
+    logger.warn('[init] 加载播放队列失败:', e.message);
   }
 
   // 加载首页推荐（失败不阻断主流程）
-  loadHomeRecommendations().catch(e => console.warn('首页推荐加载失败:', e.message));
+  loadHomeRecommendations().catch(e => logger.warn('首页推荐加载失败:', e.message));
 
   // 焦点到搜索框
   const searchInput = document.getElementById('searchInput');
@@ -409,7 +413,7 @@ async function init() {
 
   showToast('✅ 初始化完成', 'success', 1500);
   } catch (e) {
-    console.error('[init] FATAL:', e);
+    logger.error('[init] FATAL:', e);
     if (typeof showToast === 'function') {
       showToast('❌ init 失败 step: ' + (e.message || e), 'error', 8000);
     }
@@ -526,7 +530,7 @@ async function openPlaylistModal(platform, id, name) {
         }
         const info = document.getElementById('plToolbarInfo');
         if (info) updatePlToolbarInfo();
-      }).catch(e => console.warn('检测本地已下载失败:', e.message));
+      }).catch(e => logger.warn('检测本地已下载失败:', e.message));
     }
   } catch (e) {
     body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(e.message) + '</div>';
@@ -676,7 +680,7 @@ async function addPlaylistToQueueClick(skipExisting) {
     checkedSet.clear();
     renderPlaylistModal(state.getPlaylistSongs());
   } catch (e) {
-    console.error('[addPlaylistToQueue] 失败:', e);
+    logger.error('[addPlaylistToQueue] 失败:', e);
     showToast('批量加入失败: ' + (e.message || e), 'error');
   }
 }
@@ -694,7 +698,7 @@ async function downloadSongFromList(s) {
       showToast('⚠️ 暂无法获取下载链接', 'warn', 3000);
     }
   } catch (e) {
-    console.error('获取下载链接失败:', e);
+    logger.warn('获取下载链接失败:', e);
     showToast('⚠️ 获取下载链接失败', 'warn', 3000);
   }
 }
@@ -753,7 +757,7 @@ async function openAlbumView(albumMid, source, albumName) {
         }
         const info = document.getElementById('plToolbarInfo');
         if (info) updatePlToolbarInfo();
-      }).catch(e => console.warn('检测本地已下载失败:', e.message));
+      }).catch(e => logger.warn('检测本地已下载失败:', e.message));
     }
   } catch (e) {
     body.innerHTML = `<div style="color:var(--accent);font-size:12px;padding:16px;text-align:center;">⚠️ 加载失败: ${esc(e.message)}</div>`;
@@ -845,7 +849,7 @@ window._playQueueIdx = (idx) => {
   const audio = document.getElementById('audioPlayer');
   if (audio && queue[idx].url) {
     audio.src = queue[idx].url;
-    audio.play().catch(e => console.warn('[pq] play failed:', e));
+    audio.play().catch(e => logger.warn('[pq] play failed:', e));
     setState('currentPlaying', queue[idx]);
   }
 };
@@ -869,7 +873,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   setTimeout(() => {
     if (typeof init === 'function' && !window._initCalled) {
       window._initCalled = true;
-      init().catch(e => console.error('[init] 异常:', e));
+      init().catch(e => logger.error('[init] 异常:', e));
     }
   }, 0);
 }
@@ -877,6 +881,6 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 document.addEventListener('DOMContentLoaded', () => {
   if (!window._initCalled) {
     window._initCalled = true;
-    init().catch(e => console.error('[init] 异常:', e));
+    init().catch(e => logger.error('[init] 异常:', e));
   }
 });

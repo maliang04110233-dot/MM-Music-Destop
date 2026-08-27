@@ -94,7 +94,7 @@ async function _run({ filePath, deps }) {
         const lrcPath = parsed.ext ? filePath.replace(/\.[^.]+$/, '.lrc') : filePath + '.lrc';
         const bom = Buffer.from([0xEF, 0xBB, 0xBF]);
         const body = Buffer.from(lrc, 'utf8');
-        await require('fs').promises.writeFile(lrcPath, Buffer.concat([bom, body]));
+        await fs.promises.writeFile(lrcPath, Buffer.concat([bom, body]));
       } catch (_e) {
         // 写文件失败不致命，UI 至少能立即用
       }

@@ -8,23 +8,45 @@
 const { ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { app } = require('electron');
 const {
   scanDirectory,
   readAudioMetadata,
   writeAudioMetadata,
   writeAudioCover,
   readEmbeddedLyrics,
+  clearMetaCache,
 } = require('../../utils/localLibrary');
 const { incrementalScan, loadIndex } = require('../../utils/libraryIndex');
 const { fetchOnlineCover } = require('../../utils/onlineCover');
 const logger = require('../../utils/logger');
 const { scheduleOnlineLrcFetch } = require('../../utils/onlineLrc');
 const { safeSend } = require('../context');
+const prefs = require('../../utils/prefs');
+
+// ── C9: 路径沙箱 ───────────────────────────────────────────
+function isValidPath(p) {
+  if (!p || typeof p !== 'string') return false;
+  if (/^(file|https?|data|javascript|ftp|smb|ms-|mailto):/i.test(p)) return false;
+  return true;
+}
+
+function isInAllowedDir(filePath) {
+  try {
+    const resolved = path.resolve(filePath);
+    const localDir = prefs.get('localDirPath') || '';
+    if (localDir && resolved.startsWith(localDir)) return true;
+    const saveDir = prefs.get('saveDir') || '';
+    if (saveDir && resolved.startsWith(saveDir)) return true;
+    return resolved.startsWith(app.getPath('music'));
+  } catch { return false; }
+}
 
 function register() {
   // 扫描本地目录（增量扫描：缓存索引 + 只处理变更文件）
   ipcMain.handle('scan-local-library', async (_, dirPath) => {
     try {
+      if (!isValidPath(dirPath)) return { error: '非法路径', songs: [] };
       if (!fs.existsSync(dirPath)) return { error: '目录不存在', songs: [] };
 
       // 尝试增量扫描
@@ -75,6 +97,7 @@ function register() {
   // 读取单首歌曲元数据
   ipcMain.handle('read-local-metadata', async (_, filePath) => {
     try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { error: '路径不可访问' };
       return await readAudioMetadata(filePath);
     } catch (e) {
       return { error: e.message };
@@ -86,6 +109,7 @@ function register() {
     try {
       if (!filePath || typeof filePath !== 'string') return { lrc: '', source: '' };
       if (!/\.(mp3|flac|m4a|aac|ogg|wav)$/i.test(filePath)) return { lrc: '', source: '' };
+      if (!isInAllowedDir(filePath)) return { lrc: '', error: '路径不可访问' };
 
       // 1) 同目录 .lrc 优先
       const lrcPath = path.parse(filePath).ext
@@ -119,6 +143,7 @@ function register() {
   // 更新 ID3 标签
   ipcMain.handle('update-id3-tags', async (_, { filePath, tags }) => {
     try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       return await writeAudioMetadata(filePath, tags);
     } catch (e) {
       return { success: false, error: e.message };
@@ -128,6 +153,7 @@ function register() {
   // 更新封面
   ipcMain.handle('update-id3-cover', async (_, { filePath, imageBase64 }) => {
     try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       return await writeAudioCover(filePath, buffer);
     } catch (e) {
@@ -149,6 +175,7 @@ function register() {
   // 写入 LRC 歌词到同目录 sidecar 文件
   ipcMain.handle('write-local-lrc', async (_, { filePath, lrc }) => {
     try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       const lrcPath = path.parse(filePath).ext
         ? filePath.replace(/\.[^.]+$/, '.lrc')
         : filePath + '.lrc';
@@ -178,6 +205,7 @@ function register() {
   // 删除文件（回收站或永久删除）
   ipcMain.handle('delete-file', async (_, filePath) => {
     try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       if (!fs.existsSync(filePath)) {
         return { success: false, error: '文件不存在' };
       }
@@ -185,7 +213,7 @@ function register() {
       await shell.trashItem(filePath);
       return { success: true };
     } catch (e) {
-      console.error('[delete-file] 删除失败:', e.message);
+      logger.warn('[delete-file] 删除失败:', e.message);
       return { success: false, error: e.message };
     }
   });
@@ -193,6 +221,8 @@ function register() {
   // 重命名文件
   ipcMain.handle('rename-file', async (_, oldPath, newPath) => {
     try {
+      if (!isValidPath(oldPath) || !isValidPath(newPath)) return { success: false, error: '非法路径' };
+      if (!isInAllowedDir(oldPath) || !isInAllowedDir(newPath)) return { success: false, error: '路径不可访问' };
       if (!fs.existsSync(oldPath)) {
         return { success: false, error: '源文件不存在' };
       }
@@ -202,7 +232,7 @@ function register() {
       fs.renameSync(oldPath, newPath);
       return { success: true };
     } catch (e) {
-      console.error('[rename-file] 重命名失败:', e.message);
+      logger.warn('[rename-file] 重命名失败:', e.message);
       return { success: false, error: e.message };
     }
   });
@@ -214,6 +244,9 @@ function register() {
     try {
       const { inputPath, outputFormat = 'mp3', bitrate = '192k', outputDir = null } = params;
 
+      if (!isValidPath(inputPath) || !isInAllowedDir(inputPath)) {
+        return { error: '路径不可访问' };
+      }
       if (!fs.existsSync(inputPath)) {
         return { error: '源文件不存在' };
       }
@@ -224,6 +257,9 @@ function register() {
       }
 
       // 输出路径
+      if (outputDir && !isInAllowedDir(outputDir)) {
+        return { error: '输出目录不可访问' };
+      }
       const ext = outputFormat.toLowerCase();
       let outputPath;
 

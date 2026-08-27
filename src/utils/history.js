@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 const MAX_ENTRIES = 5000;
 const WRITE_DEBOUNCE_MS = 2000;
@@ -20,12 +21,10 @@ const WRITE_DEBOUNCE_MS = 2000;
 let _userDataPath = null;
 let _cache = null;          // 内存里的历史数组
 let _writeTimer = null;
-let _flushed = false;
 
 function init(userDataPath) {
   _userDataPath = userDataPath;
   _cache = _load();
-  _flushed = false;
 }
 
 function _getFilePath() {
@@ -43,7 +42,7 @@ function _load() {
     if (!Array.isArray(arr)) return [];
     return arr;
   } catch (e) {
-    console.warn('[history] 加载失败:', e.message);
+    logger.warn('[history] 加载失败:', e.message);
     return [];
   }
 }
@@ -59,9 +58,8 @@ function _flushNow() {
     const fp = _getFilePath();
     if (!fp) return;
     fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
-    _flushed = true;
   } catch (e) {
-    console.warn('[history] 写入失败:', e.message);
+    logger.warn('[history] 写入失败:', e.message);
   }
 }
 

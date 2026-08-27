@@ -2,6 +2,8 @@
  * MusicDL 首页推荐视图
  */
 
+const logger = require('../../utils/logger');
+
 let homeRecommendations = {
   netease: { tops: [], hot: [], newSongs: [], original: [], playlists: [] },
   qq: { recommend: [], official: [], classic: [], love: [], ktv: [], topList: [], newSongs: [], radios: [], hotSingers: [] },
@@ -9,7 +11,7 @@ let homeRecommendations = {
   _loaded: false,
   _loading: false,
 };
-try { setState('homeRecommendations', homeRecommendations); } catch(_e){}
+try { setState('homeRecommendations', homeRecommendations); } catch(_e) { /* ignore */ }
 
 // home.js 不直接 import api，通过 window.api 访问（由 app.js 在 init 前赋值）
 function _getApi() { return window.api || (typeof api !== 'undefined' ? api : null); }
@@ -30,11 +32,9 @@ function _cacheHomeDom() {
 }
 
 async function loadHomeRecommendations() {
-  console.log('[Home] loadHomeRecommendations called, window.musicAPI=', typeof window.musicAPI, 'window.api=', typeof window.api);
   const _api = _getApi();
-  console.log('[Home] _getApi() result:', _api && typeof _api.getHomeSection, 'has getHomeSection:', typeof _api?.getHomeSection);
   if (!_api || typeof _api.getHomeSection !== 'function') {
-    console.warn('[Home] API not ready, fallback to legacy');
+    logger.warn('[Home] API not ready, fallback to legacy');
     return loadHomeRecommendationsLegacy();
   }
 
@@ -89,23 +89,24 @@ async function ensureQQLoaded() {  try {
     await Promise.allSettled(_qqSections.map(([section, render]) => loadHomeSection(section, render)));
     
   } catch (e) {
-    console.error(`[ensureQQLoaded] error:`, e);
+    logger.warn(`[ensureQQLoaded] error:`, e);
   }
+}
 
-async function ensureBiliLoaded() {  try {
-    
+async function ensureBiliLoaded() {
+  try {
     if (_biliLoaded) return;
     _biliLoaded = true;
     await Promise.allSettled(_biliSections.map(([section, render]) => loadHomeSection(section, render)));
-    
   } catch (e) {
-    console.error(`[ensureBiliLoaded] error:`, e);
+    logger.warn(`[ensureBiliLoaded] error:`, e);
   }
+}
 
 async function loadHomeSection(section, render) {
   const _api = _getApi();
   if (!_api) {
-    console.error('[Home] loadHomeSection failed: api is null for', section);
+    logger.error('[Home] loadHomeSection failed: api is null for', section);
     markHomeSectionError(section, 'API 未就绪');
     return;
   }
@@ -115,14 +116,14 @@ async function loadHomeSection(section, render) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('请求超时(10s)')), 10000)),
     ]);
     if (result?.ok) {
-      console.log(`[Home] ✓ ${section} -> ${(result.data || []).length} items`);
+      logger.log(`[Home] ✓ ${section} -> ${(result.data || []).length} items`);
       render(result.data || []);
     } else {
-      console.warn(`[Home] ✗ ${section}:`, result?.error || '加载失败');
+      logger.warn(`[Home] ✗ ${section}:`, result?.error || '加载失败');
       markHomeSectionError(section, result?.error || '加载失败');
     }
   } catch (e) {
-    console.error(`[Home] ✗ ${section} exception:`, e.message);
+    logger.warn(`[Home] ✗ ${section} exception:`, e.message);
     markHomeSectionError(section, e.message || String(e));
   }
 }
@@ -150,7 +151,7 @@ async function loadHomeRecommendationsLegacy() {
     setState('homeRecommendations', homeRecommendations);
     renderAllPlatforms();
   } catch (e) {
-    console.error('[Home] 加载推荐内容失败:', e);
+    logger.error('[Home] 加载推荐内容失败:', e);
     showToast('推荐加载失败: ' + e.message + ' (开发者工具 → Console)', 'error');
     clearLoadingPlaceholders();
   }
@@ -270,14 +271,14 @@ function clearLoadingPlaceholders() {
 }
 
 // ── 推荐歌曲交互 ──────────────────────────────────────
-async function playRecommendById(elId, idx) {  try {
-    
+async function playRecommendById(elId, idx) {
+  try {
     const song = state.getRecommend(elId, idx);
     if (song) await playRecommendSong(song);
-    
   } catch (e) {
-    console.error(`[playRecommendById] error:`, e);
+    logger.warn(`[playRecommendById] error:`, e);
   }
+}
 
 async function playRecommendSong(song) {
   if (!song) return;
@@ -310,7 +311,7 @@ async function playRecommendSong(song) {
     // loadAndPlay 内部已调用 audio.play()，无需重复调用
     showToast('▶ 正在播放：' + song.title, 'success', 2500);
   } catch (e) {
-    console.error('播放推荐歌曲失败:', e);
+    logger.warn('播放推荐歌曲失败:', e);
     showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
   }
 }
@@ -333,22 +334,21 @@ async function addRecommendDownload(elId, idx) {
   }
 }
 
-async function quickAddRecommendToPlaylist(elId, idx) {  try {
-    
+async function quickAddRecommendToPlaylist(elId, idx) {
+  try {
     const song = state.getRecommend(elId, idx);
     if (!song) return;
-    // 确保歌单已加载
     const playlists = getState('userPlaylists') || [];
     if (playlists.length === 0) {
-    await loadUserPlaylists();
+      await loadUserPlaylists();
     }
     if (typeof quickAddToPlaylist === 'function') {
-    quickAddToPlaylist(song);
+      quickAddToPlaylist(song);
     }
-    
   } catch (e) {
-    console.error(`[quickAddRecommendToPlaylist] error:`, e);
+    logger.warn(`[quickAddRecommendToPlaylist] error:`, e);
   }
+}
 
 // ── 首页 UI ───────────────────────────────────────────
 function switchPlatTab(tab, btn) {
@@ -426,16 +426,16 @@ function renderRecentlyPlayed() {
 
 // fmtHistoryTime 已由 utils.js 全局导出
 
-async function playRecentSong(idx) {  try {
-    
+async function playRecentSong(idx) {
+  try {
     const recent = typeof getRecentlyPlayed === 'function' ? getRecentlyPlayed() : [];
     const song = recent[idx];
     if (!song) return;
     await loadAndPlay(song);
-    
   } catch (e) {
-    console.error(`[playRecentSong] error:`, e);
+    logger.warn(`[playRecentSong] error:`, e);
   }
+}
 
 // ── ES Module 导出 ──────────────────────────────────────
 export {

@@ -13,7 +13,7 @@ const prefs = require('../../utils/prefs');
 const ALLOWED_PREF_KEYS = new Set([
   'saveDir', 'localDirPath', 'theme', 'language',
   'downloadQuality', 'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
-  'concurrency',
+  'concurrency', 'downloadTemplates', 'searchHistory',
 ]);
 
 function register() {

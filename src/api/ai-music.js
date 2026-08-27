@@ -10,11 +10,13 @@
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const { readFile, writeFile } = require('fs/promises');
 const path = require('path');
+const logger = require('../utils/logger');
 
 // MiniMax API 配置
 const MINIMAX_API_BASE = 'https://api.minimaxi.com';
-const MINIMAX_GROUP_ID = process.env.MINIMAX_GROUP_ID || '';
+
 
 // 生成历史存储路径
 let _historyPath = null;
@@ -40,28 +42,51 @@ function request(url, options = {}) {
         'Content-Type': 'application/json',
         ...options.headers,
       },
-      timeout: options.timeout || 300000, // 默认 5 分钟
+      timeout: options.timeout || 300000,
     };
 
-    const req = lib.request(reqOptions, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, data: JSON.parse(data) });
-        } catch (e) {
-          resolve({ status: res.statusCode, data });
+    // H3: 自动重试（最多 3 次，仅对超时/网络错误）
+    const maxRetries = options.retries ?? 3;
+    const baseDelay = options.retryDelay ?? 1000;
+
+    function doRequest(retryCount = 0) {
+      const req = lib.request(reqOptions, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            resolve({ status: res.statusCode, data: JSON.parse(data) });
+          } catch (e) {
+            resolve({ status: res.statusCode, data });
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        if (retryCount < maxRetries) {
+          const delay = baseDelay * Math.pow(2, retryCount);
+          setTimeout(() => doRequest(retryCount + 1), delay);
+        } else {
+          reject(e);
         }
       });
-    });
+      req.on('timeout', () => {
+        req.destroy();
+        if (retryCount < maxRetries) {
+          const delay = baseDelay * Math.pow(2, retryCount);
+          setTimeout(() => doRequest(retryCount + 1), delay);
+        } else {
+          reject(new Error('请求超时'));
+        }
+      });
 
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-
-    if (options.body) {
-      req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      if (options.body) {
+        req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      }
+      req.end();
     }
-    req.end();
+
+    doRequest(0);
   });
 }
 
@@ -89,25 +114,9 @@ async function generateLyrics(params) {
 
   if (!apiKey) throw new Error('请先配置 MiniMax API Key');
 
-  // 只保留风格映射（用于 prompt 中的风格描述）
-  const styleMap = {
-    pop: '流行（Pop）',
-    rock: '摇滚（Rock）',
-    ballad: '民谣/抒情（Ballad）',
-    electronic: '电子（Electronic）',
-    'r&b': 'R&B',
-    'hip-hop': '嘻哈/说唱（Hip-Hop）',
-    classical: '古典（Classical）',
-    jazz: '爵士（Jazz）',
-    country: '乡村（Country）',
-    metal: '重金属（Metal）',
-    reggae: '雷鬼（Reggae）',
-    'lo-fi': 'Lo-Fi',
-    folk: '民谣（Folk）',
-    indie: '独立音乐（Indie）',
-    rnb: 'R&B',
-  };
-  const styleLabel = styleMap[style] || style;
+  // L6: 清理 prompt 注入风险 — 移除用户输入中的控制序列和特殊字符
+  const cleanTopic = String(topic || '').replace(/[`$\\{}]/g, '').slice(0, 200);
+  const cleanStyle = String(style || 'pop').slice(0, 50);
 
   // ── 根据 mode 选择提示词 ──
   let prompt;
@@ -118,7 +127,7 @@ async function generateLyrics(params) {
     systemMsg = `你是一位专业的音乐推荐师，擅长根据用户描述推荐合适的歌曲。请输出推荐的歌曲列表，每行一首。`;
     prompt = `请根据以下用户描述，推荐歌曲：
 
-用户需求：${topic || '生成一些好听的歌曲'}
+用户需求：${cleanTopic || '生成一些好听的歌曲'}
 
 要求：
 1. 每行一首歌曲，格式：序号. 歌曲名 - 歌手
@@ -145,8 +154,8 @@ async function generateLyrics(params) {
 用户只提供了一个主题关键词和音乐风格。请基于以下信息，**同时创作出 2 个不同版本**的歌词：
 
 ## 用户输入
-- 主题/关键词：${topic || '自由创作'}
-- 音乐风格：${styleLabel}
+- 主题/关键词：${cleanTopic || '自由创作'}
+- 音乐风格：${cleanStyle}
 
 ## 你的任务
 
@@ -268,7 +277,7 @@ async function generateLyrics(params) {
       const afterMpVersion = rawContent.indexOf('\n===', musicDescIdx);
       let blockEnd = rawContent.length;
       const candidates = [afterMpTitle, afterMpBracket, afterMpVersion].filter(i => i !== -1);
-      if (candidates.length > 0) blockEnd = Math.min(...candidates);
+      if (candidates.length > 0) blockEnd = Math.min.apply(null, candidates);
 
       // 提取音乐描述（仅第一行，作为 MiniMax Music API 的 prompt）
       const firstLineMatch = rawContent.slice(musicDescIdx, blockEnd)
@@ -297,7 +306,7 @@ async function generateLyrics(params) {
     }
 
     // ★ 解析 2 个版本
-    let versions = [];
+    const versions = [];
     const versionSplit = parsedLyrics.split(/===+\s*版本[ABab]\s*===+/);
     if (versionSplit.length >= 3) {
       // 格式: 标题 + 版本A片段 + 版本B片段
@@ -326,7 +335,7 @@ async function generateLyrics(params) {
 
     return { versions, musicPrompt, title };
   } catch (e) {
-    console.error('[AI Music] 歌词生成失败:', e.message);
+    logger.warn('[AI Music] 歌词生成失败:', e.message);
     throw e;
   }
 }
@@ -381,7 +390,7 @@ function normalizeLyrics(lyrics) {
  * @returns {Promise<{audioHex: string, status: number}>}
  */
 async function generateMusic(params) {
-  const { lyrics, title, style, musicPrompt, apiKey, timbre, onProgress } = params;
+  const { lyrics, style, musicPrompt, apiKey, timbre, onProgress } = params;
 
   if (!apiKey) throw new Error('请先配置 MiniMax API Key');
   if (!lyrics) throw new Error('歌词不能为空');
@@ -438,7 +447,7 @@ async function generateMusic(params) {
       duration: result.data?.extra_info?.music_duration || 0,
     };
   } catch (e) {
-    console.error('[AI Music] 音乐生成失败:', e.message);
+    logger.warn('[AI Music] 音乐生成失败:', e.message);
     throw e;
   }
 }
@@ -458,7 +467,7 @@ function saveAudioFromHex(audioHex, savePath) {
         return reject(new Error('音频数据过大'));
       }
       const buffer = Buffer.from(audioHex, 'hex');
-      require('fs').writeFile(savePath, buffer, (err) => {
+      fs.writeFile(savePath, buffer, (err) => {
         if (err) reject(err);
         else resolve(savePath);
       });
@@ -470,28 +479,28 @@ function saveAudioFromHex(audioHex, savePath) {
 
 // ── 生成历史 ──────────────────────────────────────────
 
-function loadHistory() {
+async function loadHistory() {
   if (!_historyPath) return [];
   try {
     if (!fs.existsSync(_historyPath)) return [];
-    const data = JSON.parse(fs.readFileSync(_historyPath, 'utf-8'));
+    const data = JSON.parse(await readFile(_historyPath, 'utf-8'));
     return Array.isArray(data) ? data : [];
   } catch (e) {
     return [];
   }
 }
 
-function saveHistory(history) {
+async function saveHistory(history) {
   if (!_historyPath) return;
   try {
-    fs.writeFileSync(_historyPath, JSON.stringify(history, null, 2), 'utf-8');
+    await writeFile(_historyPath, JSON.stringify(history, null, 2), 'utf-8');
   } catch (e) {
-    console.error('[AI Music] 保存历史失败:', e.message);
+    logger.warn('[AI Music] 保存历史失败:', e.message);
   }
 }
 
-function addToHistory(item) {
-  const history = loadHistory();
+async function addToHistory(item) {
+  const history = await loadHistory();
   history.unshift({
     id: Date.now().toString(36),
     title: item.title || 'AI创作',
@@ -500,14 +509,13 @@ function addToHistory(item) {
     audioPath: item.audioPath || '',
     createdAt: new Date().toISOString(),
   });
-  // 保留最近 50 条
   if (history.length > 50) history.length = 50;
-  saveHistory(history);
+  await saveHistory(history);
   return history;
 }
 
-function clearHistory() {
-  saveHistory([]);
+async function clearHistory() {
+  await saveHistory([]);
 }
 
 /**
@@ -521,7 +529,7 @@ function clearHistory() {
  * @returns {Promise<{translated: string}>}
  */
 async function translateLyrics(params) {
-  const { lyrics, sourceLang = 'auto', targetLang = 'zh', apiKey } = params;
+  const { lyrics, targetLang = 'zh', apiKey } = params;
 
   if (!apiKey) throw new Error('请先配置 MiniMax API Key');
   if (!lyrics) throw new Error('歌词不能为空');
@@ -559,7 +567,7 @@ ${lyrics}
 
     return { translated: result.data.choices[0]?.message?.content || '' };
   } catch (e) {
-    console.error('[AI Music] 歌词翻译失败:', e.message);
+    logger.warn('[AI Music] 歌词翻译失败:', e.message);
     throw e;
   }
 }

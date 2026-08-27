@@ -389,7 +389,7 @@ function renderHistoryTab(el) {
     `;
   }).catch(e => {
     el.innerHTML = '<div class="ai-empty"><div class="ai-empty-icon">⚠️</div><div class="ai-empty-title">加载失败</div></div>';
-    console.warn('[aiHistory] 加载失败:', e.message);
+    logger.warn('[aiHistory] 加载失败:', e.message);
   });
 }
 

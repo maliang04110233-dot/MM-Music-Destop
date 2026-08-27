@@ -4,6 +4,8 @@
  * v2: 集成虚拟滚动 + 响应式状态
  */
 
+const logger = require('../../utils/logger');
+
 import { VirtualScroller } from '../virtualList.js';
 
 // ── 状态 ─────────────────────────────────────────────
@@ -261,24 +263,20 @@ function renderLocalSongs() {
 }
 
 // ── 播放 ──────────────────────────────────────────────
-async function playLocalSong(idx) {  try {
-    
+async function playLocalSong(idx) {
+  try {
     const localFiltered = getState('localFiltered');
     const s = localFiltered[idx];
     if (!s) return;
-    
     setState('playQueue', localFiltered.slice());
     setState('playIdx', idx);
     setState('_currentLocalFilePath', s.filePath);
-    
     await loadAndPlay(s, 'file://' + s.filePath);
-    
-    // 高亮当前行
     renderLocalSongs();
-    
   } catch (e) {
-    console.error(`[playLocalSong] error:`, e);
+    logger.error(`[playLocalSong] error:`, e);
   }
+}
 
 // ── 单曲编辑 ─────────────────────────────────────────
 // ── 编辑弹窗 document 级 click 监听管理 ──────────────
@@ -517,7 +515,7 @@ setupDragCover();
       const filePath = decodeURIComponent(atob(encoded));
       api.openFolder(filePath);
     } catch (err) {
-      console.warn('[openFolder] 解码路径失败:', err.message);
+      logger.warn('[openFolder] 解码路径失败:', err.message);
     }
   });
 })();
@@ -919,10 +917,8 @@ function detectDuplicateSongs() {
 
 function renderDuplicateModal() {
   const { groups, selected } = _dupState;
-  let totalDuplicates = 0;
 
   const groupsHtml = groups.map((group, i) => {
-    totalDuplicates += group.length - 1;
     const songsHtml = group.map((s, j) => {
       const isSelected = selected.has(s.filePath);
       const isBest = j === 0;
@@ -1038,11 +1034,11 @@ async function deleteSelectedDups() {
         deleted++;
       } else {
         failed++;
-        console.warn('删除失败:', filePath, result?.error);
+        logger.warn('删除失败:', filePath, result?.error);
       }
     } catch (e) {
       failed++;
-      console.warn('删除异常:', filePath, e.message);
+      logger.warn('删除异常:', filePath, e.message);
     }
   }
 
@@ -1201,11 +1197,11 @@ async function executeBatchRename() {
         ok++;
       } else {
         fail++;
-        console.warn('重命名失败:', fp, result?.error);
+        logger.warn('重命名失败:', fp, result?.error);
       }
     } catch (e) {
       fail++;
-      console.warn('重命名异常:', fp, e.message);
+      logger.warn('重命名异常:', fp, e.message);
     }
 
     progressBar.style.width = Math.round(idx / count * 100) + '%';
@@ -1350,8 +1346,9 @@ async function convertSelectedAudio() {  try {
     document.body.appendChild(overlay);
     
   } catch (e) {
-    console.error(`[convertSelectedAudio] error:`, e);
+    logger.error(`[convertSelectedAudio] error:`, e);
   }
+}
 
 async function executeConvert() {
   const format = document.getElementById('convertFormat')?.value || 'mp3';

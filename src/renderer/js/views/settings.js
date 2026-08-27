@@ -2,6 +2,8 @@
  * MusicDL 设置 / Cookie 管理视图
  */
 
+/* @module */
+const logger = require('../../utils/logger');
 // ── 平台配置 ──────────────────────────────────────────
 const PLATFORMS = [
   { id: 'netease', name: '网易云音乐', shortName: '网易云', loginUrl: 'https://music.163.com' },
@@ -91,7 +93,7 @@ async function loadAccountCardStatus(platform) {
     const all = await api.getCookies();
     cookie = all[platform] || '';
   } catch (e) {
-    console.warn('[loadAccountCardStatus] 读 cookies 失败:', e.message);
+    logger.warn('[loadAccountCardStatus] 读 cookies 失败:', e.message);
   }
   if (dom.textarea) dom.textarea.value = cookie || '';
 
@@ -127,7 +129,7 @@ async function loadCookieStatus() {
     });
     updateSidebarPlatformStatus(cookies);
   } catch (e) {
-    console.error('加载 Cookie 状态失败:', e);
+    logger.error('加载 Cookie 状态失败:', e);
   }
 }
 
@@ -329,25 +331,24 @@ const GENERAL_PREFS = {
   lyricOffset:   { key: 'lyricOffset',   default: 0,             el: 'settingLyricOffset' },
 };
 
-async function loadGeneralSettings() {  try {
-    
+async function loadGeneralSettings() {
+  try {
     const prefs = Object.values(GENERAL_PREFS);
-    // 并行加载所有设置
     const values = await Promise.all(prefs.map(cfg => api.getPref(cfg.key)));
     prefs.forEach((cfg, i) => {
-    const el = document.getElementById(cfg.el);
-    if (!el) return;
-    const v = values[i] !== undefined && values[i] !== null ? values[i] : cfg.default;
-    if (el.type === 'checkbox') {
-    el.checked = !!v;
-    } else {
-    el.value = String(v);
-    }
+      const el = document.getElementById(cfg.el);
+      if (!el) return;
+      const v = values[i] !== undefined && values[i] !== null ? values[i] : cfg.default;
+      if (el.type === 'checkbox') {
+        el.checked = !!v;
+      } else {
+        el.value = String(v);
+      }
     });
-    
   } catch (e) {
-    console.error(`[loadGeneralSettings] error:`, e);
+    logger.error(`[loadGeneralSettings] error:`, e);
   }
+}
 
 // ── 主题切换 ──────────────────────────────────────────
 let _themeMediaQuery = null;
@@ -436,7 +437,7 @@ async function loadDownloadTemplates() {
     _dlActiveTemplate = result.active || null;
     renderDownloadTemplates();
   } catch (e) {
-    console.error('加载下载模板失败:', e);
+    logger.error('加载下载模板失败:', e);
   }
 }
 
@@ -468,17 +469,17 @@ function renderDownloadTemplates() {
   }).join('');
 }
 
-async function setActiveTemplate(templateId) {  try {
-    
+async function setActiveTemplate(templateId) {
+  try {
     await api.setActiveDownloadTemplate(templateId);
     _dlActiveTemplate = templateId;
     renderDownloadTemplates();
     const tpl = _dlTemplates.find(t => t.id === templateId);
     showToast(`已切换到: ${tpl?.name || '默认路径'}`, 'info');
-    
   } catch (e) {
-    console.error(`[setActiveTemplate] error:`, e);
+    logger.error(`[setActiveTemplate] error:`, e);
   }
+}
 
 function openDlTemplateEditor(templateId) {
   const modal = document.getElementById('dlTemplateEditorModal');

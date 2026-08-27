@@ -123,7 +123,7 @@ async function kugouGetUrl(id, quality = 'standard') {
 
     return { url: playUrl, ext };
   } catch (e) {
-    console.error('酷狗获取URL失败:', e.message);
+    logger.warn('[kugou] getPlayUrl 失败:', e.message);
     return { error: e.message || '请求失败' };
   }
 }

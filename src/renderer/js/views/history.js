@@ -3,6 +3,7 @@
  */
 
 const PAGE_SIZE = 50;
+const logger = require('../../utils/logger');
 let historyPage = 0;
 let historyFilter = '';
 
@@ -28,7 +29,7 @@ async function loadHistory() {
     ]);
     renderHistory(items, stats);
   } catch (e) {
-    console.error('加载历史失败:', e);
+    logger.warn('加载历史失败:', e);
     if (_historyDom.list) {
       _historyDom.list.innerHTML = '<div class="empty-state">加载失败: ' + esc(e.message) + '</div>';
     }
@@ -64,10 +65,10 @@ function renderHistory(items, stats) {
       <span class="history-time">${fmtDate(s.finishedAt)}</span>
       <div class="history-actions">
         ${s.status === 'done' && s.savePath
-          ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${esc(s.savePath.replace(/\\/g,'\\\\').replace(/'/g,"\\'"))}')">📂</button>`
+          ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escAttr(s.savePath)}')">📂</button>`
           : ''}
         ${s.status === 'error'
-          ? `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${esc(s.id)}', '${s.source}', '${esc(s.title)}', '${esc(s.artist)}', '${esc(s.album || '')}', '${s.quality || 'standard'}')">🔄</button>`
+          ? `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escAttr(s.id)}', '${escAttr(s.source)}', '${escAttr(s.title)}', '${escAttr(s.artist)}', '${escAttr(s.album || '')}', '${escAttr(s.quality || 'standard')}')">🔄</button>`
           : ''}
       </div>
     </div>

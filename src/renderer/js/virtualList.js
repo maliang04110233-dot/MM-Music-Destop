@@ -131,7 +131,6 @@ export class VirtualScroller {
   }
 
   _render(force = false) {
-    const totalHeight = this._data.length * this.itemHeight;
     const viewHeight = this._scrollContainer.clientHeight;
     const scrollTop = this._scrollTop;
 

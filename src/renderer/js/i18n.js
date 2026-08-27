@@ -18,10 +18,11 @@ export function getLang() {
 
 export function t(key, params = {}) {
   const msg = LANGUAGES[_lang]?.[key] || key;
+  let result = msg;
   for (const [k, v] of Object.entries(params)) {
-    msg = msg.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+    result = result.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
   }
-  return msg;
+  return result;
 }
 
 export async function applyTranslations() {

@@ -9,6 +9,8 @@
  * 5. 向后兼容：保留 getState/setState API
  */
 
+const logger = require('../../utils/logger');
+
 // ── 全局状态 ────────────────────────────────────────────
 const __state = {
   currentSource: 'all',
@@ -105,14 +107,14 @@ function _flushNotifications() {
   // 通配符监听器
   if (keys.length > 0) {
     for (const fn of _wildcardListeners) {
-      try { fn(__state, keys); } catch (e) { console.error('[state] wildcard listener error:', e); }
+      try { fn(__state, keys); } catch (e) { logger.error('[state] wildcard listener error:', e); }
     }
   }
 }
 
 function _notifyKey(key, val) {
   for (const fn of (_listeners[key] || [])) {
-    try { fn(val, key); } catch (e) { console.error(`[state] listener error for "${key}":`, e); }
+    try { fn(val, key); } catch (e) { logger.error(`[state] listener error for "${key}":`, e); }
   }
 }
 
@@ -169,7 +171,7 @@ const store = {
       _notifyKey(key, val);
       // 通配符
       for (const fn of _wildcardListeners) {
-        try { fn(__state, [key]); } catch (e) { console.error('[state] wildcard listener error:', e); }
+        try { fn(__state, [key]); } catch (e) { logger.error('[state] wildcard listener error:', e); }
       }
     }
     return val;

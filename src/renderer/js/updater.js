@@ -2,8 +2,8 @@
  * 自动更新 UI 模块
  * 监听主进程更新事件，显示更新提示弹窗
  */
-let _updateUI = null;
-let _updateState = { checking: false, available: false, downloading: false, percent: 0 };
+const _updateUI = null;
+const _updateState = { checking: false, available: false, downloading: false, percent: 0 };
 
 function showToast(message, type = 'info') {
   // 使用已有的通知系统

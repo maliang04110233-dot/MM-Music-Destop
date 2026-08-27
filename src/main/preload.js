@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const logger = require('../utils/logger');
 
 // ── 白名单 ──────────────────────────────────────────
 const SAFE_CHANNELS_SEND = new Set([
@@ -166,7 +167,7 @@ const _musicApiBase = {
     if (SAFE_CHANNELS_INVOKE.has(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }
-    console.warn('[preload] 未授权的 IPC 通道:', channel);
+    logger.warn('[preload] 未授权的 IPC 通道:', channel);
   },
   get version() { return ipcRenderer.invoke('get-version'); },
   // on 事件注册
@@ -203,7 +204,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     if (SAFE_CHANNELS_INVOKE.has(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }
-    console.warn('[preload] 未授权的 IPC 通道:', channel);
+    logger.warn('[preload] 未授权的 IPC 通道:', channel);
   },
   send(channel) {
     ipcRenderer.send(channel);

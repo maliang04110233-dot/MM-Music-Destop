@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 let _userDataPath = null;
 let _cache = null;        // 内存缓存，避免每次都读盘
@@ -38,7 +39,7 @@ function _load() {
     const parsed = JSON.parse(raw);
     _cache = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
   } catch (e) {
-    console.warn('prefs: 加载失败，使用空对象:', e.message);
+    logger.warn('prefs: 加载失败，使用空对象:', e.message);
     _cache = {};
   }
   return _cache;
@@ -64,7 +65,7 @@ function set(key, value) {
     if (!fp) return;
     const data = JSON.stringify(_cache, null, 2);
     fs.promises.writeFile(fp, data, 'utf8').catch(e => {
-      console.warn('prefs: 写入失败:', e.message);
+      logger.warn('prefs: 写入失败:', e.message);
     });
   }, 300);
 }
@@ -80,7 +81,7 @@ function flush() {
     if (!fp) return;
     fs.writeFileSync(fp, JSON.stringify(_cache || {}, null, 2), 'utf8');
   } catch (e) {
-    console.warn('prefs: flush 失败:', e.message);
+    logger.warn('prefs: flush 失败:', e.message);
   }
 }
 
@@ -97,4 +98,4 @@ function destroy() {
   _userDataPath = null;
 }
 
-module.exports = { init, get, set, flush, destroy };
+module.exports = { init, get, set, getAll: _load, flush, destroy };

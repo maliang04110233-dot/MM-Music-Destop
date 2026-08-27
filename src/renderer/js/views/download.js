@@ -1,6 +1,8 @@
 /**
- * MusicDL 下载队列视图 + 筛选 + 批量操作
+ * MusicDL 下载管理视图
  */
+
+const logger = require('../../utils/logger');
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -93,7 +95,7 @@ async function batchRetryDl() {
         if (r && r.ok) ok++;
       }
     } catch (e) {
-      console.warn('[batchRetry] 重试失败:', taskId, e.message);
+      logger.warn('[batchRetry] 重试失败:', taskId, e.message);
     }
   }
   showToast(`重试完成：${ok} 项已重新加入队列`, ok > 0 ? 'success' : 'warn', 3000);
@@ -108,7 +110,7 @@ async function batchRemoveDl() {
       const r = await api.removeQueueItem(taskId);
       if (r && (r.removed !== undefined || r.ok !== undefined)) removed++;
     } catch (e) {
-      console.warn('[batchRemove] 删除失败:', taskId, e.message);
+      logger.warn('[batchRemove] 删除失败:', taskId, e.message);
     }
   }
   showToast(`已删除 ${removed} 项`, 'success', 2500);
@@ -208,19 +210,19 @@ function errorTag(errorCode) {
 }
 
 // ── 单项操作 ─────────────────────────────────────────
-async function toggleQueueDetail(taskId) {  try {
-    
+async function toggleQueueDetail(taskId) {
+  try {
     if (_expandedDlDetails.has(taskId)) {
-    _expandedDlDetails.delete(taskId);
+      _expandedDlDetails.delete(taskId);
     } else {
-    _expandedDlDetails.add(taskId);
+      _expandedDlDetails.add(taskId);
     }
     const queue = getState('queueSnapshot') || [];
     renderQueue(queue);
-    
   } catch (e) {
-    console.error(`[toggleQueueDetail] error:`, e);
+    logger.warn(`[toggleQueueDetail] error:`, e);
   }
+}
 
 // ── 辅助格式化 ─────────────────────────────────────────
 function formatFileSize(bytes) {

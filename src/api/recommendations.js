@@ -63,11 +63,7 @@ async function getHomeRecommendations() {
     safeCall('QQ热门电台',       () => qq.qqGetRadioStations(30)),
     safeCall('QQ热门歌手',       () => qq.qqGetHotSingers(30)),
     safeCall('B站排行',          () => bilibili.bilibiliGetRanking(100, biliCookie)),
-  ]).then((arr) => arr.map((r) => {
-    if (r.status !== 'fulfilled') return [];
-    // 修复 B30：safeCall 失败时返回 {__error}，上层用 [] 兜底但保留 error 信息
-    return Array.isArray(r.value) ? r.value : [];
-  }));
+  ]).then((arr) => arr.map((r) => r.status === 'fulfilled' ? (Array.isArray(r.value) ? r.value : []) : []));
 
   return {
     netease: {
@@ -115,7 +111,7 @@ async function getPlaylistSongs(platform, id, limit = 200) {
     try {
       return await netease.neteaseGetPlaylistDetail(id, limit);
     } catch (e) {
-      console.error('网易云歌单获取失败:', e.message);
+      logger.warn('网易云歌单获取失败:', e.message);
     }
   }
   return [];
@@ -181,9 +177,15 @@ async function getAlbumSongs(platform, albumMid, limit = 999) {
 }
 
 async function searchSinger(keyword, source = 'qq', page = 1) {
-  if (source === 'qq') return qq.qqSearchSinger(keyword, page);
-  if (source === 'netease') return netease.neteaseSearchSinger(keyword, page);
-  if (source === 'kugou') return kugou.kugouSearchSinger(keyword, page);
+  if (!keyword || typeof keyword !== 'string') return { singers: [], total: 0, page };
+  try {
+    if (source === 'qq') return await qq.qqSearchSinger(keyword, page);
+    if (source === 'netease') return await netease.neteaseSearchSinger(keyword, page);
+    if (source === 'kugou') return await kugou.kugouSearchSinger(keyword, page);
+  } catch (e) {
+    logger.warn(`[searchSinger] ${source} failed:`, e.message);
+    return { singers: [], total: 0, page };
+  }
   if (source === 'all') {
     const [qqRes, neteaseRes, kugouRes] = await Promise.allSettled([
       qq.qqSearchSinger(keyword, page),

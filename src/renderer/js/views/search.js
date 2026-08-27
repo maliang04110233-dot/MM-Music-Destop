@@ -2,6 +2,8 @@
  * MusicDL 搜索视图 - 单曲/专辑/歌手搜索 + 批量操作
  */
 
+const logger = require('../../utils/logger');
+
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
   searchInput: null,
@@ -22,7 +24,7 @@ function _cacheDom() {
 // 检查 API 是否可用
 function checkAPI() {
   if (!window.musicAPI || typeof window.musicAPI.searchMusic !== 'function') {
-    console.warn('[checkAPI] API不可用:', typeof window.musicAPI);
+    logger.warn('[checkAPI] API不可用:', typeof window.musicAPI);
     return false;
   }
   return true;
@@ -128,7 +130,7 @@ function showSearchSuggestions() {
     }
 
     container.innerHTML = suggestions.map(s => `
-      <div class="suggestion-item" onmousedown="selectSuggestion('${esc(s.title.replace(/'/g, "\\'"))}')">
+      <div class="suggestion-item" onmousedown="selectSuggestion('${escAttr(s.title)}')">
         <span class="suggestion-icon">${s.icon}</span>
         <span class="suggestion-title">${esc(s.title)}</span>
         ${s.artist ? `<span class="suggestion-artist">${esc(s.artist)}</span>` : ''}
@@ -267,7 +269,7 @@ function showSearchHistory() {
       </div>
     `).join('')}`;
     el.style.display = 'block';
-  }).catch(e => console.warn('[showSearchHistory] 加载搜索历史失败:', e.message));
+  }).catch(e => logger.warn('[showSearchHistory] 加载搜索历史失败:', e.message));
 }
 
 function hideSearchHistory() {
@@ -547,17 +549,17 @@ async function openSingerDetail(singerMid, singerName, source) {
   }
 }
 
-async function switchSingerTab(tab, btn) {  try {
-    
+async function switchSingerTab(tab, btn) {
+  try {
     _singerDetailTab = tab;
     document.querySelectorAll('.singer-detail-tabs .tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     const singer = state.get('currentSinger');
     if (singer) await loadSingerDetail(singer.mid, tab);
-    
   } catch (e) {
-    console.error(`[switchSingerTab] error:`, e);
+    logger.error(`[switchSingerTab] error:`, e);
   }
+}
 
 async function loadSingerDetail(singerMid, tab) {
   const el = document.getElementById('singerDetailContent');
@@ -715,7 +717,7 @@ async function batchDownload() {
       try {
         await api.addToQueue({ ...s, saveDir, quality });
         queued++;
-      } catch (e) { console.warn('加入队列失败:', s.title, e.message); }
+      } catch (e) { logger.warn('加入队列失败:', s.title, e.message); }
     }
     // 更新进度
     const pct = Math.round(((i + 1) / total) * 100);
@@ -750,22 +752,22 @@ function batchPlay() {
 }
 
 // ── 单曲下载 ─────────────────────────────────────────
-async function addDownload(idx) {  try {
-    
+async function addDownload(idx) {
+  try {
     const songs = getState('songs');
     const s = songs[idx];
     if (!s) return;
     const existing = (state.get('queueSnapshot') || []).find(q =>
-    q.id === s.id && q.source === s.source && q.status !== 'done');
+      q.id === s.id && q.source === s.source && q.status !== 'done');
     if (existing) { showToast(`「${s.title}」已在队列中`, 'warn', 2500); return; }
     const quality = document.getElementById('qualitySelect').value;
     const saveDir = getState('saveDir');
     await api.addToQueue({ ...s, saveDir, quality });
     showToast(`「${s.title}」已加入下载队列`, 'success');
-    
   } catch (e) {
-    console.error(`[addDownload] error:`, e);
+    logger.warn(`[addDownload] error:`, e);
   }
+}
 
 // ── 播放 ─────────────────────────────────────────────
 async function playSong(idx) {
@@ -799,7 +801,7 @@ async function playSong(idx) {
     await loadAndPlay(s, proxied.fileUrl, true);
     showToast('▶ 正在播放：' + s.title, 'success', 2500);
   } catch (e) {
-    console.error('播放失败:', e);
+    logger.warn('播放失败:', e);
     showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
   }
 }

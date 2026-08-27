@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { setCookieStore } = require('../api');
 const logger = require('../utils/logger');
-const { downloadFile, embedId3Tags } = require('../utils/downloader');
+const { downloadFileWithRetry, embedId3Tags } = require('../utils/downloader');
 const cookieStore = require('../utils/cookieStore');
 const { setOnlineLrcNotifier } = require('../utils/onlineLrc');
 const { getDownloadUrl, getLyrics } = require('../api');
@@ -170,12 +170,12 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html')).then(() => {
     logger.log('[main] loadFile done');
   }).catch(err => {
-    console.error('[main] loadFile failed:', err);
+    logger.warn('[main] loadFile failed:', err);
     // 开发模式下可能 dist/renderer 还没构建好
     const devUrl = process.env.VITE_DEV_SERVER_URL;
     if (devUrl) {
       logger.log('[main] trying dev server URL:', devUrl);
-      mainWindow.loadURL(devUrl).catch(e => console.error('[main] loadURL also failed:', e));
+      mainWindow.loadURL(devUrl).catch(e => logger.warn('[main] loadURL also failed:', e));
     }
   });
 
@@ -403,7 +403,11 @@ app.whenReady().then(async () => {
   });
 
   // 启动时恢复队列
-  loadPersistedQueue();
+  try {
+    await loadPersistedQueue();
+  } catch (e) {
+    logger.warn('[index] 恢复队列失败:', e.message);
+  }
 
   // 启动时恢复播放队列
   try {
@@ -423,7 +427,7 @@ app.whenReady().then(async () => {
     const { initUpdater } = require('./updater');
     initUpdater();
   } catch (_e) {
-    console.warn('[Updater] init failed:', _e.message);
+    logger.warn('[Updater] init failed:', _e.message);
   }
 
   // 定期 GC play_cache（10 分钟一次，.unref() 不阻塞进程退出）
@@ -610,10 +614,10 @@ async function processOneSong(song) {
       // 读取限速设置（KB/s → bytes/s）
       const speedLimitKB = prefs.get('speedLimit') || 0;
       const speedLimit = speedLimitKB > 0 ? speedLimitKB * 1024 : 0;
-      await downloadFile(urlInfo.url, savePath, (progress) => {
+      await downloadFileWithRetry(urlInfo.url, savePath, (progress) => {
         song.progress = progress;
         safeSend('download-progress', { id: song.taskId, progress });
-      }, extraHeaders, 0, { speedLimit });
+      }, extraHeaders, { speedLimit });
 
       // 歌词
       let lrc = '';
@@ -689,7 +693,7 @@ async function processOneSong(song) {
       lastError = e;
       const msg = e.message || String(e);
       const isRetriable = /HTTP\s*(403|404|410)/i.test(msg);
-      console.error(`下载失败 (尝试 ${attempt}/${MAX_RETRY}):`, msg);
+      logger.warn(`下载失败 (尝试 ${attempt}/${MAX_RETRY}):`, msg);
 
       // 只对 403/404/410 重试（CDN URL 签名过期，重拿 URL 再下），其他错误直接放弃
       if (attempt < MAX_RETRY && isRetriable) {

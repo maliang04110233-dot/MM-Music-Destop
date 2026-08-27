@@ -7,6 +7,7 @@
 
 const https = require('https');
 const http = require('http');
+const logger = require('./logger');
 
 /**
  * 下载图片到 Buffer（支持重定向）
@@ -66,7 +67,7 @@ async function fetchCoverFromQQ(title, artist = '') {
   try {
     songs = await qq.qqSearch(keyword, 1);
   } catch (e) {
-    console.warn('[onlineCover] QQ 搜索失败:', e.message);
+    logger.warn('[onlineCover] QQ 搜索失败:', e.message);
     return null;
   }
   if (!songs.length) return null;
@@ -94,7 +95,7 @@ async function fetchCoverFromQQ(title, artist = '') {
       source: 'qq-online',
     };
   } catch (e) {
-    console.warn('[onlineCover] QQ 封面下载失败:', e.message);
+    logger.warn('[onlineCover] QQ 封面下载失败:', e.message);
     return null;
   }
 }
@@ -116,7 +117,7 @@ async function fetchCoverFromKugou(title, artist = '') {
   try {
     songs = await kugou.kugouSearch(keyword, 1);
   } catch (e) {
-    console.warn('[onlineCover] 酷狗搜索失败:', e.message);
+    logger.warn('[onlineCover] 酷狗搜索失败:', e.message);
     return null;
   }
   if (!songs || !songs.length) return null;
@@ -144,7 +145,7 @@ async function fetchCoverFromKugou(title, artist = '') {
       source: 'kugou-online',
     };
   } catch (e) {
-    console.warn('[onlineCover] 酷狗封面下载失败:', e.message);
+    logger.warn('[onlineCover] 酷狗封面下载失败:', e.message);
     return null;
   }
 }
@@ -155,23 +156,40 @@ async function fetchCoverFromKugou(title, artist = '') {
  *   - QQ:    2026 年起需 _t 时间戳参数（已修复），无 cookie 也能返回结果
  *   - Kugou: 部分封面可能返回占位图，作为备用
  */
-async function fetchOnlineCover(title, artist = '') {  try {
-    
-    if (!title) return null;
-    
+const _coverCache = new Map();
+const COVER_CACHE_MAX = 1000;
+
+function _coverCacheKey(title, artist) {
+  return `${String(title || '').toLowerCase()} ${String(artist || '').toLowerCase()}`;
+}
+
+async function fetchOnlineCover(title, artist = '') {
+  if (!title) return null;
+  const cacheKey = _coverCacheKey(title, artist);
+  if (_coverCache.has(cacheKey)) return _coverCache.get(cacheKey);
+
+  let result = null;
+  try {
     // 1) QQ 音乐（优先，封面字段 albummid 拿到的图更准确）
     const qqResult = await fetchCoverFromQQ(title, artist);
-    if (qqResult) return qqResult;
-    
-    // 2) 酷狗（备用）
-    const kugouResult = await fetchCoverFromKugou(title, artist);
-    if (kugouResult) return kugouResult;
-    
-    return null;
-    
+    if (qqResult) result = qqResult;
   } catch (e) {
-    console.error(`[fetchOnlineCover] error:`, e);
+    logger.warn(`[fetchOnlineCover] QQ error:`, e.message);
   }
+  if (!result) {
+    try {
+      // 2) 酷狗（备用）
+      const kugouResult = await fetchCoverFromKugou(title, artist);
+      if (kugouResult) result = kugouResult;
+    } catch (e) {
+      logger.warn(`[fetchOnlineCover] Kugou error:`, e.message);
+    }
+  }
+
+  if (_coverCache.size >= COVER_CACHE_MAX) _coverCache.clear();
+  _coverCache.set(cacheKey, result);
+  return result;
+}
 
 module.exports = {
   fetchOnlineCover,

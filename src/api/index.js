@@ -103,6 +103,9 @@ function updateCookie(platform, cookie) {
 
 // ─── 搜索聚合（插件架构版）─────────────────────────────────
 async function searchMusic(keyword, source, page = 1) {
+  if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
+    return { songs: [], source: source || 'all', error: '搜索关键词不能为空' };
+  }
   const errors = [];
   const safeRun = async (label, fn) => {
     try { return await fn(); }
@@ -132,6 +135,9 @@ async function searchMusic(keyword, source, page = 1) {
 
 // ─── 专辑搜索（插件架构版）─────────────────────────────────
 async function searchAlbum(keyword, source = 'qq', page = 1) {
+  if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
+    return { albums: [], total: 0 };
+  }
   const safeRun = async (label, fn) => {
     try { return await fn(); }
     catch (e) { logger.warn(`[${label}] 专辑搜索失败:`, e.message || e); return { albums: [], total: 0 }; }

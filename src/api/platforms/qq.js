@@ -59,7 +59,7 @@ async function qqGetSingerSongs(singerMid, limit = 20) {
       source: 'qq',
     }));
   } catch (e) {
-    console.error('QQ音乐获取歌手歌曲失败:', e.message);
+    logger.warn('[qq] getSingerSongs 失败:', e.message);
     return [];
   }
 }
@@ -88,7 +88,7 @@ async function qqGetSingerAlbums(singerMid, pageNo = 1, pageSize = 20) {
       singerName: result?.data?.name || '',
     };
   } catch (e) {
-    console.error('QQ音乐获取歌手专辑失败:', e.message);
+    logger.warn('[qq] getSingerAlbums 失败:', e.message);
     return { albums: [], total: 0, singerName: '' };
   }
 }
@@ -152,7 +152,7 @@ async function qqSearch(keyword, page = 1) {
       pay: s.pay,
     }));
   } catch (e) {
-    console.error('QQ音乐搜索失败:', e.message);
+    logger.warn('[qqSearch] 失败:', e.message);
     return [];
   }
 }
@@ -284,9 +284,10 @@ async function qqSearchAlbum(keyword, page = 1) {
 const QUALITY_MAP = {
   lossless: { s: 'F000', e: '.flac', ext: 'flac' },
   hq:       { s: 'M800', e: '.mp3',  ext: 'mp3' },
-  sd:       { s: 'M500', e: '.mp3',  ext: 'mp3' },
   standard: { s: 'M500', e: '.mp3',  ext: 'mp3' },
 };
+// sd 是 standard 的别名（兼容旧代码传入 'sd'）
+QUALITY_MAP.sd = QUALITY_MAP.standard;
 
 /**
  * 获取下载 URL
@@ -357,7 +358,7 @@ async function qqGetUrl(id, quality, cookie = '') {
     }
     return AppError.vipRequired('QQ音乐');
   } catch (e) {
-    console.error('QQ音乐获取URL失败:', e.message || e);
+    logger.warn('[qqGetUrl] 失败:', e.message);
     return AppError.internal('QQ音乐', { error: 'QQ音乐获取URL异常: ' + (e.message || e) });
   }
 }
@@ -544,7 +545,7 @@ async function qqGetRecommendPlaylists(limit = 6) {
       };
     });
   } catch (e) {
-    console.error('QQ推荐歌单获取失败:', e.message);
+    logger.warn('[qq] getPlaylist 失败:', e.message);
     return [];
   }
 }
@@ -604,7 +605,7 @@ async function qqGetTopList(topId = 4, limit = 50) {
       };
     });
   } catch (e) {
-    console.error('QQ排行榜获取失败:', e.message || e);
+    logger.warn('[qq] getTopList 失败:', e.message);
     return [];
   }
 }
@@ -637,7 +638,7 @@ async function qqGetNewSongs(type = 1, limit = 30) {
       };
     });
   } catch (e) {
-    console.error('QQ新歌获取失败:', e.message || e);
+    logger.warn('[qq] getNewSongs 失败:', e.message);
     return [];
   }
 }
@@ -665,7 +666,7 @@ async function qqGetRadioStations(limit = 20) {
       };
     });
   } catch (e) {
-    console.error('QQ电台获取失败:', e.message || e);
+    logger.warn('[qq] getRadioStations 失败:', e.message);
     return [];
   }
 }
@@ -692,7 +693,7 @@ async function qqGetHotSingers(limit = 20) {
       };
     });
   } catch (e) {
-    console.error('QQ歌手获取失败:', e.message || e);
+    logger.warn('[qq] getHotSingers 失败:', e.message);
     return [];
   }
 }

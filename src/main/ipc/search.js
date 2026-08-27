@@ -30,7 +30,7 @@ function register() {
     try {
       return await api.getHomeRecommendations();
     } catch (e) {
-      console.error('获取推荐内容失败:', e.message);
+      logger.warn('获取推荐内容失败:', e.message);
       return { netease: { tops: [], playlists: [] }, qq: { playlists: [] }, error: e.message };
     }
   });
@@ -47,7 +47,7 @@ function register() {
     try {
       return await api.getPlaylistSongs(platform, id, limit);
     } catch (e) {
-      console.error('获取歌单歌曲失败:', e.message);
+      logger.warn('获取歌单歌曲失败:', e.message);
       return [];
     }
   });
@@ -56,7 +56,7 @@ function register() {
     try {
       return await api.searchSinger(keyword, source, page || 1);
     } catch (e) {
-      console.error('搜索歌手失败:', e.message);
+      logger.warn('搜索歌手失败:', e.message);
       return { singers: [], total: 0 };
     }
   });
@@ -65,7 +65,7 @@ function register() {
     try {
       return await api.getSingerSongs(singerMid, limit || 30);
     } catch (e) {
-      console.error('获取歌手歌曲失败:', e.message);
+      logger.warn('获取歌手歌曲失败:', e.message);
       return [];
     }
   });
@@ -74,7 +74,7 @@ function register() {
     try {
       return await api.getSingerAlbums(singerMid, source || 'qq', pageNo || 1, pageSize || 20);
     } catch (e) {
-      console.error('获取歌手专辑失败:', e.message);
+      logger.warn('获取歌手专辑失败:', e.message);
       return { albums: [], total: 0 };
     }
   });
@@ -83,7 +83,7 @@ function register() {
     try {
       return await api.getAlbumSongs(platform, albumMid, limit || 999);
     } catch (e) {
-      console.error('获取专辑歌曲失败:', e.message);
+      logger.warn('获取专辑歌曲失败:', e.message);
       return [];
     }
   });

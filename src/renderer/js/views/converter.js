@@ -2,6 +2,8 @@
  * MusicDL 音频格式转换页面 - 搜索本地歌曲 + 一键转换
  */
 
+const logger = require('../../utils/logger');
+
 // 转换队列
 let _convQueue = [];
 let _convInit = false;
@@ -146,8 +148,9 @@ function initConverter() {
 
   // 搜索输入事件
   const searchInput = document.getElementById('converterSearch');
+  const _debouncedFilter = debounce(filterConverterSongs, 300);
   if (searchInput) {
-    searchInput.addEventListener('input', debounce(filterConverterSongs, 300));
+    searchInput.addEventListener('input', _debouncedFilter);
   }
 
   // 全选事件
@@ -234,7 +237,7 @@ async function loadLocalSongsForConvert() {
   // 扫描目录（即使没有 localDirPath，mock 也会返回数据）
   const result = await api.scanLocalLibrary(localDirPath || null);
   if (result.error) {
-    console.error('[converter] 扫描失败:', result.error);
+    logger.warn('[converter] 扫描失败:', result.error);
     showConverterEmpty('扫描失败: ' + result.error);
     return;
   }

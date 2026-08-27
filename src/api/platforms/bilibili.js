@@ -86,7 +86,7 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
     }
     return AppError.loginRequired('B站');
   } catch (e) {
-    console.error('B站获取URL失败:', e.message);
+    logger.warn('[bilibili] getPlayUrl 失败:', e.message);
     return { error: 'B站获取URL异常: ' + (e.message || e), code: 'BILI_URL_ERROR', fatal: true };
   }
 }
@@ -133,7 +133,7 @@ async function bilibiliGetRanking(limit = 10, cookie = '') {
       source: 'bilibili',
     }));
   } catch (e) {
-    console.error('B站排行获取失败:', e.message);
+    logger.warn('[bilibili] getTopList 失败:', e.message);
     return [];
   }
 }

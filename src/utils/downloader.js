@@ -4,6 +4,7 @@ const http = require('http');
 const path = require('path');
 const { Transform } = require('stream');
 const childProcess = require('child_process');
+const logger = require('./logger');
 
 /**
  * 限速 Transform 流
@@ -66,7 +67,7 @@ function findPythonWithMutagen() {
       if (r.status === 0 && r.stdout.toString().trim() === '1') {
         _cachedPythonCmd = cmd;
         _pythonDetected = true;
-        console.log('[Python] 检测到 mutagen:', cmd);
+        logger.log('[Python] 检测到 mutagen:', cmd);
         return cmd;
       }
     } catch (e) {
@@ -88,7 +89,7 @@ let _scriptPathDetected = false;
 async function embedTagsWithPython(filePath, meta) {
   const pythonCmd = findPythonWithMutagen();
   if (!pythonCmd) {
-    console.warn('[embedTags] 找不到带 mutagen 的 Python，跳过标签写入:', filePath);
+    logger.warn('[embedTags] 找不到带 mutagen 的 Python，跳过标签写入:', filePath);
     return false;
   }
 
@@ -104,7 +105,7 @@ async function embedTagsWithPython(filePath, meta) {
 
   const scriptPath = _cachedScriptPath;
   if (!scriptPath) {
-    console.warn('[embedTags] write_tags.py 不存在');
+    logger.warn('[embedTags] write_tags.py 不存在');
     return false;
   }
 
@@ -126,20 +127,20 @@ async function embedTagsWithPython(filePath, meta) {
           if (result.success) {
             resolve(true);
           } else {
-            console.warn('[embedTags] Python 返回错误:', result.error);
+            logger.warn('[embedTags] Python 返回错误:', result.error);
             resolve(false);
           }
         } catch (e) {
-          console.warn('[embedTags] 解析 Python 输出失败:', e.message, stdout.slice(0, 200));
+          logger.warn('[embedTags] 解析 Python 输出失败:', e.message, stdout.slice(0, 200));
           resolve(false);
         }
       } else {
-        console.warn('[embedTags] Python 退出 code=', code, stderr.slice(0, 200));
+        logger.warn('[embedTags] Python 退出 code=', code, stderr.slice(0, 200));
         resolve(false);
       }
     });
     py.on('error', (e) => {
-      console.warn('[embedTags] Python 启动失败:', e.message);
+      logger.warn('[embedTags] Python 启动失败:', e.message);
       resolve(false);
     });
   });
@@ -190,7 +191,7 @@ function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCoun
     // 统一的 .tmp 清理函数（任何一个失败路径都调用）
     const cleanupTmp = () => {
       try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); }
-      catch (e) { console.warn('清理 .tmp 失败:', tmpPath, e.message); }
+      catch (e) { logger.warn('清理 .tmp 失败:', tmpPath, e.message); }
     };
 
     const req = lib.request(reqOptions, (res) => {
@@ -295,11 +296,11 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0) {
           }
           chunks.push(c);
         });
-        res.on('error', (e) => { console.warn('[downloadBuffer] res error:', e.message); resolve(null); });
+        res.on('error', (e) => { logger.warn('[downloadBuffer] res error:', e.message); resolve(null); });
         res.on('end', () => resolve(Buffer.concat(chunks)));
       });
-      req.on('error', (e) => { console.warn('[downloadBuffer] error:', e.message); resolve(null); });
-      req.on('timeout', () => { req.destroy(); console.warn('[downloadBuffer] timeout:', url); resolve(null); });
+      req.on('error', (e) => { logger.warn('[downloadBuffer] error:', e.message); resolve(null); });
+      req.on('timeout', () => { req.destroy(); logger.warn('[downloadBuffer] timeout:', url); resolve(null); });
       req.end();
     } catch (e) {
       resolve(null);
@@ -345,14 +346,14 @@ async function embedId3Tags(filePath, { title, artist, album, coverUrl, lrc } = 
       }
       const result = NodeID3.update(tags, filePath);
       if (result !== true) {
-        console.warn('ID3 写入失败（文件可能不是有效 MP3）:', filePath);
+        logger.warn('ID3 写入失败（文件可能不是有效 MP3）:', filePath);
       }
       return;
     }
 
     // M4A/FLAC/OGG: 用 Python mutagen 写入
     // 修复 B5：先下载封面到 .tmp 文件，传 cover_path 给 Python
-    console.log('[embedTags] 使用 Python mutagen 写入标签:', ext, filePath);
+    logger.log('[embedTags] 使用 Python mutagen 写入标签:', ext, filePath);
     const meta = { title, artist, album, lrc };
     if (coverUrl) {
       try {
@@ -369,13 +370,13 @@ async function embedId3Tags(filePath, { title, artist, album, coverUrl, lrc } = 
           return;
         }
       } catch (e) {
-        console.warn('[embedTags] 封面下载失败，跳过封面写入:', e.message);
+        logger.warn('[embedTags] 封面下载失败，跳过封面写入:', e.message);
       }
     }
     // 没有封面或封面下载失败：只写基础元数据
     await embedTagsWithPython(filePath, meta);
   } catch (e) {
-    console.warn('标签写入失败:', e.message);
+    logger.warn('标签写入失败:', e.message);
   }
 }
 
@@ -405,4 +406,41 @@ function formatDuration(ms) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-module.exports = { downloadFile, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };
+/**
+ * 带重试的文件下载（传输层容错）
+ *
+ * 背景：downloadFile 在 req error / 超时时会直接 reject，而 processOneSong 的
+ * MAX_RETRY 只覆盖「URL 解析」阶段，传输中途的网络抖动（ECONNRESET / ETIMEDOUT /
+ * 下载超时）不会被重试，导致本可成功的下载直接判失败。
+ *
+ * 这里对传输失败做指数退避重试（默认 2 次），仅在「瞬时网络错误」时重试，
+ * HTTP 业务错误（由上层 processOneSong 处理）不在此重试。
+ *
+ * @param {string} url
+ * @param {string} savePath
+ * @param {function} onProgress
+ * @param {object} extraHeaders
+ * @param {object} options  { maxRetry=2, timeout? }
+ */
+function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, options = {}) {
+  const maxRetry = (typeof options.maxRetry === 'number' && options.maxRetry >= 0) ? options.maxRetry : 2;
+  let attempt = 0;
+  const tryOnce = async () => {
+    try {
+      return await downloadFile(url, savePath, onProgress, extraHeaders, 0, options);
+    } catch (e) {
+      attempt++;
+      const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(e.message || '');
+      if (attempt <= maxRetry && isTransient) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        logger.warn(`[downloadFileWithRetry] 第 ${attempt} 次传输失败（瞬时错误），${delay}ms 后重试:`, e.message);
+        await new Promise(r => setTimeout(r, delay));
+        return tryOnce();
+      }
+      throw e;
+    }
+  };
+  return tryOnce();
+}
+
+module.exports = { downloadFile, downloadFileWithRetry, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };

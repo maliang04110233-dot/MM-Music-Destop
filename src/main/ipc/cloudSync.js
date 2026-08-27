@@ -8,6 +8,7 @@ const { ipcMain, dialog } = require('electron');
 const prefs = require('../../utils/prefs');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../../utils/logger');
 
 function register() {
   // 导出所有数据
@@ -45,7 +46,7 @@ function register() {
       fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8');
       return { success: true, path: result.filePath };
     } catch (e) {
-      console.error('导出失败:', e);
+      logger.warn('导出失败:', e);
       return { success: false, error: e.message };
     }
   });
@@ -125,7 +126,7 @@ function register() {
         message: `导入成功:\n${results.join('\n')}`,
       };
     } catch (e) {
-      console.error('导入失败:', e);
+      logger.warn('导入失败:', e);
       return { success: false, error: e.message };
     }
   });
@@ -138,7 +139,9 @@ function getAllPrefs() {
     if (fs.existsSync(prefsPath)) {
       return JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
     }
-  } catch (_) {}
+  } catch (_) {
+    // 忽略非 JSON 格式或文件缺失
+  }
   return {};
 }
 

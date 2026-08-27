@@ -84,6 +84,7 @@ async function openLoginWindow(platform, parentWindow) {
   return new Promise((resolve) => {
     let resolved = false;
     let checkCount = 0;
+    let timeoutId = null;
     const checkInterval = setInterval(async () => {
       if (loginWin.isDestroyed()) {
         clearInterval(checkInterval);
@@ -105,6 +106,7 @@ async function openLoginWindow(platform, parentWindow) {
         if (hasLoginField && !resolved) {
           resolved = true;
           clearInterval(checkInterval);
+          if (timeoutId) clearTimeout(timeoutId);
 
           // QQ 音乐：登录后额外等一会儿，让 musickey 有时间刷新
           if (platform === 'qq' && config.musickeyDelay) {
@@ -147,7 +149,7 @@ async function openLoginWindow(platform, parentWindow) {
     });
 
     // 超时 5 分钟
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (!resolved && !loginWin.isDestroyed()) {
         resolved = true;
         clearInterval(checkInterval);

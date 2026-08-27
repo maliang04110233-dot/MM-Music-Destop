@@ -2,6 +2,8 @@
  * MusicDL 用户歌单视图
  */
 
+const logger = require('../../utils/logger');
+
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
 
@@ -12,7 +14,7 @@ async function loadUserPlaylists() {
     setState('userPlaylists', playlists || []);
     renderPlaylistList(playlists || []);
   } catch (e) {
-    console.error('加载歌单失败:', e);
+    logger.error('加载歌单失败:', e);
     showToast('加载歌单失败: ' + e.message, 'error');
   }
 }
@@ -67,7 +69,7 @@ async function openPlaylistDetail(playlistId) {  try {
     document.getElementById('playlistDetailModal').classList.remove('hidden');
     
   } catch (e) {
-    console.error(`[openPlaylistDetail] error:`, e);
+    logger.error(`[openPlaylistDetail] error:`, e);
   }
 
 function closePlaylistDetail() {
@@ -171,7 +173,7 @@ async function openPlaylistEditor(playlistId) {  try {
     nameInput.focus();
     
   } catch (e) {
-    console.error(`[openPlaylistEditor] error:`, e);
+    logger.error(`[openPlaylistEditor] error:`, e);
   }
 
 function closePlaylistEditor() {
@@ -225,7 +227,7 @@ async function editPlaylist(playlistId) {  try {
     await openPlaylistEditor(playlistId);
     
   } catch (e) {
-    console.error(`[editPlaylist] error:`, e);
+    logger.error(`[editPlaylist] error:`, e);
   }
 
 // ── 删除歌单 ───────────────────────────────────────────
@@ -264,7 +266,7 @@ async function quickAddToPlaylist(song) {  try {
     showPlaylistSelectModal(song, playlists);
     
   } catch (e) {
-    console.error(`[quickAddToPlaylist] error:`, e);
+    logger.error(`[quickAddToPlaylist] error:`, e);
   }
 
 async function showPlaylistSelectModal(song, playlists) {  try {
@@ -285,7 +287,7 @@ async function showPlaylistSelectModal(song, playlists) {  try {
     modal.classList.remove('hidden');
     
   } catch (e) {
-    console.error(`[showPlaylistSelectModal] error:`, e);
+    logger.error(`[showPlaylistSelectModal] error:`, e);
   }
 
 function closePlaylistSelectModal() {
@@ -303,7 +305,7 @@ async function addToSelectedPlaylist(playlistId) {  try {
     closePlaylistSelectModal();
     
   } catch (e) {
-    console.error(`[addToSelectedPlaylist] error:`, e);
+    logger.error(`[addToSelectedPlaylist] error:`, e);
   }
 
 async function addToPlaylistAndNotify(playlistId, song) {
@@ -340,4 +342,10 @@ function formatDuration(ms) {
 // ── 初始化 ────────────────────────────────────────────
 function initPlaylistView() {
   loadUserPlaylists();
+}
+}
+}
+}
+}
+}
 }

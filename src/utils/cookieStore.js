@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 let _userDataPath = null;
 // 内存缓存：null = 未加载；Object = 已加载
@@ -47,7 +48,7 @@ function _ensureLoaded() {
     // 防御：必须是普通对象（攻击者/旧版本写入数组等异常结构）
     _cache = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
   } catch (e) {
-    console.warn('cookieStore: 加载失败，使用空对象:', e.message);
+    logger.warn('[cookieStore] 加载失败，使用空对象:', e.message);
     _cache = {};
   }
 }
@@ -73,7 +74,7 @@ function saveAll(data) {
     fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
     return true;
   } catch (e) {
-    console.warn('cookieStore: 写入失败:', e.message);
+    logger.warn('[cookieStore] 写入失败:', e.message);
     return false;
   }
 }
@@ -104,7 +105,7 @@ function set(platform, cookie) {
     fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
     return true;
   } catch (e) {
-    console.warn('cookieStore: 写入失败:', e.message);
+    logger.warn('[cookieStore] 写入失败:', e.message);
     return false;
   }
 }

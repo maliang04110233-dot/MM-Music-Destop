@@ -190,7 +190,7 @@ function register() {
       }
     return { queued, skipped: skippedDup };
     } catch (e) {
-      console.error('[add-playlist-to-queue] 失败:', e);
+      logger.warn('[add-playlist-to-queue] 失败:', e);
       return { queued: 0, skipped: 0, error: e.message || String(e) };
     }
   });

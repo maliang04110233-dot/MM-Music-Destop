@@ -257,7 +257,7 @@ input, textarea, select { font-family: inherit; }
 
 /* ── 弹层 ───────────────────────────────────────────── */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.playlist-modal { z-index: 1001; }
+.playlist-modal { position: fixed; z-index: 1001; }
 .overlay.hidden { display: none; }
 
 /* ── 按钮组件 ───────────────────────────────────────── */

@@ -1,8 +1,14 @@
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
+const logger = require('./logger');
 
 const AUDIO_EXTS = new Set(['.mp3', '.flac', '.m4a', '.ogg', '.wav', '.wma']);
+
+// 元数据缓存：按 (mtimeMs + size) 失效，避免同一文件在多次扫描（初始/去重/增量）中重复解码 ID3。
+// 上限 2000 条，超出清空重建，防止长时间运行内存膨胀。
+const _metaCache = new Map();
+const META_CACHE_MAX = 2000;
 
 /**
  * 递归扫描目录，返回所有音频文件路径（异步，不阻塞 UI）
@@ -62,7 +68,27 @@ async function scanDirectory(dirPath, onProgress) {
  *   5. 时长：music-metadata 真实解码时长，失败才走 estimateDuration
  */
 async function readAudioMetadata(filePath) {
-  const stat = fs.statSync(filePath);
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+  } catch (e) {
+    logger.warn('[readAudioMetadata] statSync failed:', e.message);
+    return { title: '', artist: '', album: '', year: '', genre: '', coverBase64: null, embeddedLyrics: '', realDurationMs: null, bitrate: 0, size: 0, source: '', error: e.message };
+  }
+  // 缓存命中且文件未变更：直接返回，避免重复解码
+  const key = `${filePath}::${stat.mtimeMs}::${stat.size}`;
+  const cached = _metaCache.get(filePath);
+  if (cached && cached._key === key) {
+    return cached.meta;
+  }
+
+  const meta = await _decodeAudioMetadata(filePath, stat);
+  if (_metaCache.size >= META_CACHE_MAX) _metaCache.clear();
+  _metaCache.set(filePath, { _key: key, meta });
+  return meta;
+}
+
+async function _decodeAudioMetadata(filePath, stat) {
   const ext = path.extname(filePath).toLowerCase();
   const fileName = path.basename(filePath, ext);
 
@@ -400,4 +426,10 @@ module.exports = {
   AUDIO_EXTS,
   _findFolderCover,    // 暴露给测试
   _guessMimeFromBuffer,
+  clearMetaCache,
 };
+
+// 清空元数据缓存（重新扫描/文件被外部修改后调用，确保不返回陈旧数据）
+function clearMetaCache() {
+  _metaCache.clear();
+}
