@@ -10,15 +10,12 @@
  */
 const { autoUpdater } = require('electron-updater');
 const { ipcMain } = require('electron');
-const path = require('path');
-const fs = require('fs');
 const logger = require('../utils/logger');
 
 let _updateAvailable = false;
 
 // ── 配置 ──────────────────────────────────────────────
-// 根据环境变量切换更新源（本地开发可指定本地路径测试）
-const UPDATE_URL = process.env.UPDATE_URL || 'https://github.com/maliang04110233-dot/MusicDL/releases';
+// 更新源固定为本仓库 GitHub Releases（electron-builder publish: always）
 autoUpdater.setFeedURL({ provider: 'github', repo: 'MusicDL', owner: 'maliang04110233-dot', releaseType: 'release' });
 
 // ── 事件绑定 ──────────────────────────────────────────
@@ -65,8 +62,13 @@ autoUpdater.on('update-downloaded', (info) => {
   }
 });
 
+// 用户主动触发标志：初始静默自检的失败只写日志，不打扰用户；
+// 仅用户手动"检查更新"失败时才弹窗提示
+let _userInitiated = false;
+
 autoUpdater.on('error', (err) => {
   logger.warn('[Updater] Error:', err.message);
+  if (!_userInitiated) return;
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('update-error', { message: err.message });
@@ -75,11 +77,14 @@ autoUpdater.on('error', (err) => {
 
 // ── IPC 端点 ──────────────────────────────────────────
 ipcMain.handle('check-for-update', async () => {
+  _userInitiated = true;
   try {
     await autoUpdater.checkForUpdates();
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
+  } finally {
+    _userInitiated = false;
   }
 });
 

@@ -25,3 +25,14 @@ release/
 *.blockmap
 *.yml
 build-log.txt
+build-log-full.txt
+
+# 二进制/播放器依赖走 GitHub Releases 分发，不进仓库
+*.zip
+*.exe
+*.7z
+*.tar.gz
+
+# 本机临时路径命名的历史误提交目录（防再犯）
+Users*AppData*
+C:*Users*

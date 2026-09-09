@@ -2,7 +2,7 @@
  * MusicDL 下载管理视图
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {

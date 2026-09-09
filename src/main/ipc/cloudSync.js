@@ -6,9 +6,25 @@
 
 const { ipcMain, dialog } = require('electron');
 const prefs = require('../../utils/prefs');
+const history = require('../../utils/history');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../../utils/logger');
+
+// 导入允许写入的 prefs 键（与 ipc/prefs.js 的 ALLOWED_PREF_KEYS 保持一致，
+// 另加仅主进程内部使用的键）。导入文件内容不可信，未列出的键一律丢弃。
+const IMPORTABLE_PREF_KEYS = new Set([
+  'saveDir', 'localDirPath', 'theme', 'language',
+  'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
+  'namingTemplate', 'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
+  'lyricFontSize', 'lyricOffset', 'playProgressMemory',
+  'recentlyPlayed', 'playStats', 'playProgressMap',
+  'eqPreset', 'eqGains', 'eqBypass',
+  'aiMusicApiKey', 'aiMusicSaveDir', 'convertOutputDir',
+  'downloadTemplates', 'searchHistory',
+  // 主进程内部维护的数据键（导出时单独收集，导入时回写）
+  'userPlaylists', 'activeDownloadTemplate',
+]);
 
 function register() {
   // 导出所有数据
@@ -24,9 +40,10 @@ function register() {
         return { success: false, canceled: true };
       }
 
-      // 收集所有数据
+      // 收集所有数据（键名与真实存储对齐：历史在 history.json，EQ 是 eqPreset/eqGains）
+      const historyStats = history.stats();
       const exportData = {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         app: 'music-downloader',
         data: {
@@ -34,12 +51,12 @@ function register() {
           userPlaylists: prefs.get('userPlaylists') || [],
           downloadTemplates: prefs.get('downloadTemplates') || [],
           activeTemplate: prefs.get('activeDownloadTemplate') || null,
-          // 下载历史
-          downloadHistory: prefs.get('downloadHistory') || [],
-          // 听歌历史
-          playHistory: prefs.get('playHistory') || [],
-          // EQ 设置
-          eqSettings: prefs.get('eqSettings') || null,
+          // 真实下载/播放历史（history.json，此前导出的是永无人读的 prefs 废键）
+          downloadHistory: history.query({ limit: history.MAX_ENTRIES }).items,
+          historyTotal: historyStats.total,
+          // EQ 设置（真实键名）
+          eqPreset: prefs.get('eqPreset') || null,
+          eqGains: prefs.get('eqGains') || null,
         },
       };
 
@@ -80,13 +97,13 @@ function register() {
       const { data } = importData;
       const results = [];
 
-      // 恢复各项数据
-      if (data.userPlaylists) {
+      // 恢复歌单 / 模板 / 活动模板（真实存储键）
+      if (Array.isArray(data.userPlaylists)) {
         prefs.set('userPlaylists', data.userPlaylists);
         results.push(`歌单: ${data.userPlaylists.length} 个`);
       }
 
-      if (data.downloadTemplates) {
+      if (Array.isArray(data.downloadTemplates)) {
         prefs.set('downloadTemplates', data.downloadTemplates);
         results.push(`下载模板: ${data.downloadTemplates.length} 个`);
       }
@@ -95,30 +112,34 @@ function register() {
         prefs.set('activeDownloadTemplate', data.activeTemplate);
       }
 
-      if (data.downloadHistory) {
-        prefs.set('downloadHistory', data.downloadHistory);
-        results.push(`下载历史: ${data.downloadHistory.length} 条`);
+      // 恢复下载历史（真实存储在 history.json；旧版备份里存在 prefs 里的
+      // downloadHistory 键是废数据，此处只接受数组）
+      if (Array.isArray(data.downloadHistory) && data.downloadHistory.length) {
+        const imported = history.importEntries(data.downloadHistory);
+        results.push(`下载历史: 导入 ${imported} 条`);
       }
 
-      if (data.playHistory) {
-        prefs.set('playHistory', data.playHistory);
-        results.push(`播放历史: ${data.playHistory.length} 条`);
-      }
-
-      if (data.eqSettings) {
-        prefs.set('eqSettings', data.eqSettings);
+      // 恢复 EQ 设置（真实键名 eqPreset/eqGains；兼容旧备份的 eqSettings 对象）
+      if (data.eqPreset !== undefined || data.eqGains !== undefined) {
+        if (data.eqPreset !== undefined) prefs.set('eqPreset', data.eqPreset);
+        if (data.eqGains !== undefined) prefs.set('eqGains', data.eqGains);
+        results.push('EQ 设置');
+      } else if (data.eqSettings && typeof data.eqSettings === 'object') {
+        prefs.set('eqPreset', data.eqSettings.preset);
+        prefs.set('eqGains', data.eqSettings.gains);
         results.push('EQ 设置');
       }
 
-      // 通用设置
-      if (data.prefs) {
+      // 通用设置：只接受白名单键（导入文件内容不可信，防止注入未知键）
+      if (data.prefs && typeof data.prefs === 'object') {
+        let applied = 0;
         for (const [key, value] of Object.entries(data.prefs)) {
-          // 跳过敏感的 cookie 等
-          if (!['cookies', 'session'].includes(key)) {
+          if (IMPORTABLE_PREF_KEYS.has(key)) {
             prefs.set(key, value);
+            applied++;
           }
         }
-        results.push('通用设置');
+        if (applied) results.push(`通用设置: ${applied} 项`);
       }
 
       return {

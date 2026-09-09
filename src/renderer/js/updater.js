@@ -2,15 +2,15 @@
  * 自动更新 UI 模块
  * 监听主进程更新事件，显示更新提示弹窗
  */
-const _updateUI = null;
 const _updateState = { checking: false, available: false, downloading: false, percent: 0 };
 
+// 保留转发：更新流程需要 toast 但本模块不直接依赖 toast.js
 function showToast(message, type = 'info') {
-  // 使用已有的通知系统
   if (window.showToast) {
     window.showToast(message, type);
   }
 }
+void showToast;
 
 function createUpdateToast() {
   const toast = document.createElement('div');
@@ -111,13 +111,21 @@ function handleDownloadProgress(percent) {
 
 function handleUpdateAvailable(version, releaseNotes) {
   _updateState.available = true;
+  // releaseNotes 来自 GitHub Release 描述（外部内容），必须先转义再插入
+  // innerHTML，否则可注入任意 HTML/JS（配合 CSP unsafe-inline 即 XSS）。
+  // 原 bug：replace(/\\n/g) 匹配的是字面反斜杠+n，真正的换行符从未被转换。
+  const escHtml = window.esc || (s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+  const safeNotes = (releaseNotes && typeof releaseNotes === 'string')
+    ? escHtml(releaseNotes).replace(/\r?\n/g, '<br>')
+    : '';
+  const versionText = escHtml(version);
   showUpdate(`
     <div style="padding:4px 0;">
       <div style="margin-bottom:8px;">
         <span style="font-size:18px;">🎉</span>
-        <span style="font-weight:bold; color:var(--neon-green);">发现新版本 v${version}</span>
+        <span style="font-weight:bold; color:var(--neon-green);">发现新版本 v${versionText}</span>
       </div>
-      ${releaseNotes ? `<div style="font-size:12px; color:var(--text-dim); margin-bottom:10px; max-height:80px; overflow-y:auto;">${releaseNotes.replace(/\\n/g, '<br>')}</div>` : ''}
+      ${safeNotes ? `<div style="font-size:12px; color:var(--text-dim); margin-bottom:10px; max-height:80px; overflow-y:auto;">${safeNotes}</div>` : ''}
       <div style="display:flex; gap:8px;">
         <button onclick="window.downloadUpdate()" style="flex:1;padding:8px;background:var(--neon-cyan);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">下载更新</button>
         <button onclick="window.closeUpdateToast()" style="padding:8px 12px;background:transparent;border:1px solid var(--border-color);color:var(--text-primary);border-radius:6px;cursor:pointer;">稍后</button>
@@ -162,20 +170,22 @@ window.restartAndInstall = () => {
 };
 
 // ── 监听主进程 IPC 事件 ────────────────────────────────
+// 注意：preload 兼容桥的 on(channel, cb) 展开为 cb(data)——只传 data 一个参数，
+// 不是原生 ipcRenderer.on 的 (event, data)。
 if (window.ipcRenderer) {
-  window.ipcRenderer.on('update-available', (_event, info) => {
+  window.ipcRenderer.on('update-available', (info) => {
     handleUpdateAvailable(info.version, info.releaseNotes);
   });
   window.ipcRenderer.on('update-not-available', () => {
     if (_updateState.checking) handleUpdateNotAvailable();
   });
-  window.ipcRenderer.on('update-download-progress', (_event, info) => {
+  window.ipcRenderer.on('update-download-progress', (info) => {
     handleDownloadProgress(info.percent);
   });
-  window.ipcRenderer.on('update-downloaded', (_event, info) => {
+  window.ipcRenderer.on('update-downloaded', (info) => {
     handleUpdateDownloaded(info.version);
   });
-  window.ipcRenderer.on('update-error', (_event, info) => {
+  window.ipcRenderer.on('update-error', (info) => {
     handleUpdateError(info.message);
   });
 }

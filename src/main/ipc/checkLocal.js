@@ -48,7 +48,10 @@ function matchSong(item, tag) {
  * 注册 IPC
  */
 function register() {
-  ipcMain.handle('check-local-exists', async (_, { saveDir, items }) => {
+  // 渲染层传对象：api.checkLocalExists({ saveDir, items })——单对象参数，
+  // 兼容位置传参形态以防万一
+  ipcMain.handle('check-local-exists', async (_, ...a) => {
+    const { saveDir, items } = (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) ? a[0] : (a[1] || {});
     try {
       if (!saveDir || !fs.existsSync(saveDir)) {
         return items.map(it => ({ ...it, exists: false }));

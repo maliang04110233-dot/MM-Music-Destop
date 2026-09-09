@@ -8,7 +8,19 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+
+// checkLocal.js 顶层 require('electron') 仅为注册 IPC（测试环境无 electron
+// 二进制会直接抛错）。用 Module._load 拦截注入 mock，生产代码不受影响。
+const Module = require('node:module');
+const originalLoad = Module._load;
+Module._load = function interceptedLoad(request, parent, isMain) {
+  if (request === 'electron') {
+    return { ipcMain: { handle() { /* no-op in tests */ } } };
+  }
+  return originalLoad(request, parent, isMain);
+};
 const { norm, matchSong } = require('../src/main/ipc/checkLocal');
+Module._load = originalLoad;
 
 test('norm: 去括号 + 去空格 + 小写', () => {
   assert.strictEqual(norm('陈奕迅 (Live)'), '陈奕迅');

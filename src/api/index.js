@@ -54,7 +54,7 @@ const _ADAPTERS = [
   },
   {
     id: 'kugou', name: '酷狗音乐', icon: '🎸',
-    search: (keyword, page, cookie) => kugou.kugouSearch(keyword, page),
+    search: (keyword, page, _cookie) => kugou.kugouSearch(keyword, page),
     getUrl: (id, quality) => kugou.kugouGetUrl(id, quality),
     getLyrics: (id) => kugou.kugouGetLyrics(id),
     searchAlbum: (keyword, page) => kugou.kugouSearchAlbum(keyword, page),
@@ -189,6 +189,92 @@ async function getDownloadUrl(id, source, quality) {
   return await safeRun(plugin.name, () => plugin.getUrl(id, quality, getCookie(source)));
 }
 
+// ── 智能取流（换源机制）───────────────────────────────────
+// 本源失败时，跨源找同曲候选逐个尝试（借鉴 lx-music-desktop 换源播放）。
+// 只对"换平台有救"的错误触发：VIP/需登录/版权/无音频流/CDN 失效；
+// 网络类错误（超时/断网）不触发——整体网络问题换源同样失败，只白费请求。
+
+const { ERROR_CODES } = require('../shared/errors');
+const { findMatchedCandidates } = require('../utils/matchMusic');
+
+// 触发换源的错误码（含 bilibili 自定义的 BILI_URL_ERROR 中登录类失败由 LOGIN_REQUIRED 表达）
+const FALLBACK_CODES = new Set([
+  ERROR_CODES.VIP_REQUIRED,
+  ERROR_CODES.LOGIN_REQUIRED,
+  ERROR_CODES.AUTH_EXPIRED,
+  ERROR_CODES.COOKIE_INVALID,
+  ERROR_CODES.COPYRIGHT_RESTRICTED,
+  ERROR_CODES.UNAVAILABLE,
+  ERROR_CODES.NO_AUDIO_STREAM,
+  ERROR_CODES.CDN_EMPTY,
+]);
+
+function shouldFallbackToOtherSource(result) {
+  if (!result || result.url) return false;
+  if (result.code && FALLBACK_CODES.has(result.code)) return true;
+  // 无 code 的失败（如 HTTP 403/404/410 CDN 签名过期）也换源重试
+  if (/HTTP\s*(403|404|410)/i.test(String(result.error || ''))) return true;
+  // 未知数据源（B 站 id 传错等）不换——歌本身可能不存在
+  return false;
+}
+
+/**
+ * 智能取流：本源 → 失败且可换源 → 跨源匹配候选逐个试
+ * @param {object} song 完整歌曲对象（非裸 id）：{ id, source, title, artist, duration, _altSource? }
+ * @param {string} quality
+ * @returns {Promise<{url,ext,...}|{error,...}>}
+ *   成功时若发生换源，附带 { source, matchedSong, matchedFrom }；
+ *   全部失败返回本源原始错误（UI 文案不变）。
+ */
+async function getDownloadUrlSmart(song, quality) {
+  if (!song || !song.id || !song.source) {
+    return { error: '参数无效：缺少歌曲 id/source', code: 'INVALID_ARGS' };
+  }
+
+  // 1. _altSource 记忆：上次换源成功的源先试（lx toggleMusicInfo 模式）
+  const alt = song._altSource;
+  if (alt && alt.source && alt.id && alt.source !== song.source) {
+    try {
+      const r = await getDownloadUrl(alt.id, alt.source, quality);
+      if (r && r.url) return { ...r, source: alt.source, matchedFrom: song.source, fromAltMemory: true };
+    } catch (_e) { /* 记忆失效则走正常流程 */ }
+  }
+
+  // 2. 本源
+  const result = await getDownloadUrl(song.id, song.source, quality);
+  if (result && result.url) return result;
+
+  // 3. 失败且可换源 → 跨源候选逐个尝试
+  if (!shouldFallbackToOtherSource(result)) return result;
+
+  const deps = {
+    searchFn: (platformId, keyword) => {
+      const plugin = _registry.get(platformId);
+      if (!plugin) return [];
+      return plugin.search(keyword, 1, getCookie(platformId));
+    },
+    hasCookie: (platformId) => !!getCookie(platformId),
+  };
+  let candidates = [];
+  try {
+    candidates = await findMatchedCandidates(deps, song);
+  } catch (e) {
+    logger.warn('[getDownloadUrlSmart] 跨源匹配失败:', e && e.message);
+  }
+
+  for (const cand of candidates) {
+    const r = await getDownloadUrl(cand.id, cand.source, quality);
+    if (r && r.url) {
+      logger.log(`[getDownloadUrlSmart] 换源成功: "${song.title}" ${song.source} → ${cand.source}`);
+      return { ...r, source: cand.source, matchedSong: cand, matchedFrom: song.source };
+    }
+  }
+
+  // 4. 全失败：返回本源原始错误
+  return result;
+}
+
+
 // ── 歌词聚合（插件架构版）─────────────────────────────────
 async function getLyrics(id, source, title, artist) {
   let lrc = '';
@@ -248,6 +334,7 @@ module.exports = {
   searchMusic,
   searchAlbum,
   getDownloadUrl,
+  getDownloadUrlSmart,
   getLyrics,
   verifyCookie,
   // Cookie

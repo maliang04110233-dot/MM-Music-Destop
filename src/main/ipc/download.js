@@ -17,8 +17,9 @@ function register() {
   // 关键：downloadQueue / app / persistQueue / processQueue 都通过 getter 拿，
   // 避免 register 时（createWindow 之前）解构到 undefined
 
-  // 获取下载 URL
-  ipcMain.handle('get-download-url', async (_, { id, source, quality }) => {
+  // 获取下载 URL（渲染层位置参数调用：api.getDownloadUrl(id, source, quality)）
+  ipcMain.handle('get-download-url', async (_, ...a) => {
+    const [id, source, quality] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       return await api.getDownloadUrl(id, source, quality);
     } catch (e) {
@@ -27,19 +28,30 @@ function register() {
     }
   });
 
+  // 智能取流（换源）：渲染层播放链路用——本源失败自动跨源找同曲
+  ipcMain.handle('get-download-url-smart', async (_, ...a) => {
+    const [song, quality] = (Array.isArray(a) && a.length) ? a : (a[0] || []);
+    try {
+      return await api.getDownloadUrlSmart(song, quality);
+    } catch (e) {
+      logger.warn('智能取流失败:', e.message || e);
+      return { error: e.message || e };
+    }
+  });
+
   // 在线播放：把跨域音频代理到本地临时文件
   const { app } = require('electron');
-  ipcMain.handle('proxy-play', async (_, { url, referer }) => {
-    // C10: SSRF protection — validate URL scheme and block private IPs
-    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
-      return { error: 'Invalid URL scheme' };
+  const { assertPublicHttpUrl } = require('../../utils/urlGuard');
+  ipcMain.handle('proxy-play', async (_, ...a) => {
+    const [url, referer] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+    // C10: SSRF protection — full guard via urlGuard:
+    //   scheme/userinfo 校验 + DNS 全记录解析 + 内网 IP 判定（含
+    //   2130706433 / 0x7f.0.0.1 / 0177.0.0.1 / [::ffff:127.0.0.1] 等编码绕过）
+    //   原正则黑名单已删除（可被 IP 编码与 DNS rebinding 绕过）
+    const check = await assertPublicHttpUrl(url);
+    if (!check.ok) {
+      return { error: `URL 校验失败: ${check.reason}` };
     }
-    try {
-      const u = new URL(url);
-      if (/^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|0\.|\[::1\])/.test(u.hostname)) {
-        return { error: 'Internal network URLs are not allowed' };
-      }
-    } catch (_) { return { error: 'Invalid URL' }; }
     try {
       return await proxyPlay(url, referer, app.getPath('userData'));
     } catch (e) {
@@ -199,7 +211,6 @@ function register() {
   ipcMain.handle('export-playlist', async (_, params) => {
     const { dialog } = require('electron');
     const fs = require('fs');
-    const path = require('path');
 
     try {
       const { songs, format = 'm3u', name = 'MusicDL' } = params;

@@ -88,16 +88,32 @@ function makeKey(url) {
 /**
  * HTTP GET → 写入文件（带 30s 超时和重定向）
  * 修复 B22：跨域重定向时，根据新 URL 的 host 是否仍属 referer 同站决定保留 referer
+ * SSRF 修复：每一跳（含重定向目标）都经 urlGuard 校验（协议/userinfo/DNS 全记录
+ * 内网 IP 判定），并用 pinned lookup 把连接固定到已校验的 IP（防 DNS rebinding：
+ * 校验时解析 A 记录、连接时再解析出内网地址的攻击面闭合）
  */
-function proxyDownloadOnce(targetUrl, referer, filePath, maxRedirects = 5) {
+async function proxyDownloadOnce(targetUrl, referer, filePath, maxRedirects = 5) {
+  // playCache 位于 src/main/，urlGuard 位于 src/utils/ —— 编译后同样保持
+  // dist/main -> dist/utils 的相对关系（'./urlGuard' 会 Module not found）
+  const { assertPublicHttpUrl, makePinnedLookup } = require('../utils/urlGuard');
+  const check = await assertPublicHttpUrl(targetUrl);
+  if (!check.ok) return { error: `URL 校验失败: ${check.reason}` };
+  const u = check.url;
+  const lib = u.protocol === 'https:' ? require('https') : require('http');
+
   return new Promise((resolve) => {
     if (maxRedirects <= 0) return resolve({ error: 'too many redirects' });
-    const lib = targetUrl.startsWith('https') ? require('https') : require('http');
-    const req = lib.get(targetUrl, {
+    const req = lib.get({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
       headers: {
+        'Host': u.host, // 连接走校验过的 IP，Host 头保持域名
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
         'Referer': referer || '',
       },
+      lookup: makePinnedLookup(check.ips), // 固定连接 IP，闭合 rebinding
+      servername: u.hostname,             // TLS SNI 用域名
     }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();

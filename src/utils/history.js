@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const { atomicWriteJson, safeReadJson } = require('./atomicFile');
 
 const MAX_ENTRIES = 5000;
 const WRITE_DEBOUNCE_MS = 2000;
@@ -36,9 +37,14 @@ function _load() {
   try {
     const fp = _getFilePath();
     if (!fp || !fs.existsSync(fp)) return [];
-    const raw = fs.readFileSync(fp, 'utf8');
-    if (!raw.trim()) return [];
-    const arr = JSON.parse(raw);
+    const res = safeReadJson(fp);
+    if (!res.ok) {
+      // 损坏文件已备份为 history.json.bak，等下次写入覆盖
+      logger.warn('[history] 文件损坏，已备份为 .bak，从空历史开始');
+      return [];
+    }
+    if (res.empty) return [];
+    const arr = res.data;
     if (!Array.isArray(arr)) return [];
     return arr;
   } catch (e) {
@@ -57,7 +63,7 @@ function _flushNow() {
   try {
     const fp = _getFilePath();
     if (!fp) return;
-    fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
+    atomicWriteJson(fp, _cache);
   } catch (e) {
     logger.warn('[history] 写入失败:', e.message);
   }
@@ -134,8 +140,29 @@ function stats() {
 }
 
 /**
- * 清理
+ * 导入历史（备份恢复用）：合并去重后落盘
+ * @param {Array} entries - 备份文件里的历史数组
+ * @returns {number} 实际导入条数
  */
+function importEntries(entries) {
+  if (!_cache) _cache = _load();
+  if (!Array.isArray(entries)) return 0;
+  const valid = entries.filter(e => e && typeof e === 'object' && (e.id || e.title));
+  let added = 0;
+  for (const e of valid) {
+    const idx = _cache.findIndex(c => c.id === e.id && c.source === e.source);
+    if (idx >= 0) {
+      _cache[idx] = { ..._cache[idx], ...e };
+    } else {
+      _cache.push(e);
+      added++;
+    }
+  }
+  if (_cache.length > MAX_ENTRIES) _cache.length = MAX_ENTRIES;
+  _scheduleWrite();
+  return added;
+}
+
 function clear() {
   _cache = [];
   _scheduleWrite();
@@ -151,6 +178,6 @@ function destroy() {
 }
 
 module.exports = {
-  init, add, query, stats, flush, clear, destroy,
+  init, add, query, stats, flush, clear, destroy, importEntries,
   MAX_ENTRIES,
 };

@@ -9,7 +9,7 @@
  * 5. 向后兼容：保留 getState/setState API
  */
 
-const logger = require('../../utils/logger');
+import { logger } from './logger.js';
 
 // ── 全局状态 ────────────────────────────────────────────
 const __state = {
@@ -162,7 +162,6 @@ const store = {
   },
 
   set(key, val) {
-    const old = __state[key];
     __state[key] = val;
 
     if (_batchDepth > 0) {

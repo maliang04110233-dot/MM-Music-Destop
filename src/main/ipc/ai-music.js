@@ -128,7 +128,12 @@ function register() {
       // 如果生成成功，保存为文件
       if (result.audioHex) {
         // H10: Validate saveDir — must be within allowed directories
+        // 用 path.relative 判定（startsWith 有前缀碰撞：C:\MusicX 会误判在 C:\Music 内）
         const fs = require('fs');
+        const isInside = (base, target) => {
+          const rel = path.relative(base, target);
+          return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+        };
         const allowedBaseDirs = [
           path.resolve(app.getPath('music'), 'MusicDownloader'),
           path.resolve(app.getPath('userData')),
@@ -136,7 +141,7 @@ function register() {
         let saveDir = params.saveDir
           ? path.resolve(params.saveDir)
           : path.join(app.getPath('music'), 'MusicDownloader', 'AI生成');
-        const isAllowed = allowedBaseDirs.some(base => saveDir.startsWith(base));
+        const isAllowed = allowedBaseDirs.some(base => isInside(base, saveDir));
         if (!isAllowed) {
           saveDir = path.join(app.getPath('music'), 'MusicDownloader', 'AI生成');
         }

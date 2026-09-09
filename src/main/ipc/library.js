@@ -15,7 +15,6 @@ const {
   writeAudioMetadata,
   writeAudioCover,
   readEmbeddedLyrics,
-  clearMetaCache,
 } = require('../../utils/localLibrary');
 const { incrementalScan, loadIndex } = require('../../utils/libraryIndex');
 const { fetchOnlineCover } = require('../../utils/onlineCover');
@@ -31,14 +30,27 @@ function isValidPath(p) {
   return true;
 }
 
+/**
+ * 路径是否在允许目录内。
+ * 用 path.relative 而非 startsWith 判定：startsWith 会把
+ * "C:\MusicX" 误判在 "C:\Music" 沙箱内（前缀碰撞），relative
+ * 返回以 .. 开头或为绝对路径则一定在沙箱外。
+ */
+function isInsideDir(base, target) {
+  try {
+    const rel = path.relative(path.resolve(base), path.resolve(target));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  } catch { return false; }
+}
+
 function isInAllowedDir(filePath) {
   try {
     const resolved = path.resolve(filePath);
     const localDir = prefs.get('localDirPath') || '';
-    if (localDir && resolved.startsWith(localDir)) return true;
+    if (localDir && isInsideDir(localDir, resolved)) return true;
     const saveDir = prefs.get('saveDir') || '';
-    if (saveDir && resolved.startsWith(saveDir)) return true;
-    return resolved.startsWith(app.getPath('music'));
+    if (saveDir && isInsideDir(saveDir, resolved)) return true;
+    return isInsideDir(app.getPath('music'), resolved);
   } catch { return false; }
 }
 
@@ -140,8 +152,9 @@ function register() {
     }
   });
 
-  // 更新 ID3 标签
-  ipcMain.handle('update-id3-tags', async (_, { filePath, tags }) => {
+  // 更新 ID3 标签（渲染层位置参数：api.updateId3Tags(filePath, tags)）
+  ipcMain.handle('update-id3-tags', async (_, ...a) => {
+    const [filePath, tags] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       return await writeAudioMetadata(filePath, tags);
@@ -150,19 +163,25 @@ function register() {
     }
   });
 
-  // 更新封面
-  ipcMain.handle('update-id3-cover', async (_, { filePath, imageBase64 }) => {
+  // 更新封面（渲染层位置参数：api.updateId3Cover(filePath, imageBase64)）
+  ipcMain.handle('update-id3-cover', async (_, ...a) => {
+    const [filePath, imageBase64] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
-      const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-      return await writeAudioCover(filePath, buffer);
+      if (typeof imageBase64 !== 'string' || !imageBase64.trim()) {
+        return { success: false, error: '无效的封面数据' };
+      }
+      // writeAudioCover 期望 data URL 字符串（内部 split(',') 取 base64 段）；
+      // 此前先解码成 Buffer 再传入，Buffer 没有 split，功能必然失败。
+      return await writeAudioCover(filePath, imageBase64);
     } catch (e) {
       return { success: false, error: e.message };
     }
   });
 
-  // 在线拉取封面（按 title/artist 去 QQ 音乐搜索）
-  ipcMain.handle('fetch-online-cover', async (_, { title, artist }) => {
+  // 在线拉取封面（渲染层位置参数：api.fetchOnlineCover(title, artist)）
+  ipcMain.handle('fetch-online-cover', async (_, ...a) => {
+    const [title, artist] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       const result = await fetchOnlineCover(title || '', artist || '');
       if (!result) return { success: false, error: '未找到匹配的封面' };
@@ -172,8 +191,9 @@ function register() {
     }
   });
 
-  // 写入 LRC 歌词到同目录 sidecar 文件
-  ipcMain.handle('write-local-lrc', async (_, { filePath, lrc }) => {
+  // 写入 LRC 歌词到同目录 sidecar 文件（渲染层位置参数：api.writeLocalLrc(filePath, lrc)）
+  ipcMain.handle('write-local-lrc', async (_, ...a) => {
+    const [filePath, lrc] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       const lrcPath = path.parse(filePath).ext

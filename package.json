@@ -10,7 +10,7 @@
     "package": "vite build && node scripts/postbuild.js && electron-builder --config build/config.cjs --win --x64",
     "publish": "vite build && node scripts/postbuild.js && electron-builder --config build/config.cjs --publish always",
     "postinstall": "electron-builder install-app-deps",
-    "test": "node --test test\\cookie.test.js test\\parseFilename.test.js test\\request.test.js test\\recommendations.test.js test\\prefs.test.js test\\checkLocal.test.js test\\history.test.js",
+    "test": "node --test \"test/*.test.js\"",
     "lint": "eslint src/ test/"
   },
   "keywords": [

@@ -118,3 +118,26 @@ test('history: 上限淘汰', () => {
   history.destroy();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('history: 损坏文件 → 备份 .bak + 空历史起步，新记录可写入', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'history-corrupt-'));
+  fs.writeFileSync(path.join(dir, 'history.json'), '[{"id":1,"title":"半写', 'utf8');
+
+  const h = require('../src/utils/history');
+  h.init(dir);
+  assert.strictEqual(h.query().total, 0, '损坏后不残留旧数据');
+  assert.ok(fs.existsSync(path.join(dir, 'history.json.bak')), '损坏文件应备份 .bak');
+
+  h.add({ id: 'n1', source: 'qq', title: '晴天', status: 'done' });
+  h.flush();
+  h.destroy();
+
+  // 重启读回
+  delete require.cache[require.resolve('../src/utils/history')];
+  const h2 = require('../src/utils/history');
+  h2.init(dir);
+  assert.strictEqual(h2.query().total, 1);
+  assert.strictEqual(h2.query().items[0].title, '晴天');
+  h2.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

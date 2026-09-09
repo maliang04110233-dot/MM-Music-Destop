@@ -2,7 +2,7 @@
  * MusicDL 首页推荐视图
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 let homeRecommendations = {
   netease: { tops: [], hot: [], newSongs: [], original: [], playlists: [] },
@@ -285,7 +285,7 @@ async function playRecommendSong(song) {
   const quality = document.getElementById('qualitySelect')?.value || 'standard';
   showToast(`正在准备音源：${song.title}`, 'info');
   try {
-    const result = await api.getDownloadUrl(song.id, song.source, quality);
+    const result = await api.getDownloadUrlSmart(song, quality);
     if (!result || !result.url) {
       if (result && result.code === 'VIP_REQUIRED') {
         showToast('⚠️ 该歌曲为 VIP 专享，请在「设置」中填入已登录的 Cookie 后重试', 'warn', 5000);
@@ -294,9 +294,14 @@ async function playRecommendSong(song) {
       }
       return;
     }
-    const referer = song.source === 'bilibili' ? 'https://www.bilibili.com/'
-                  : song.source === 'qq' ? 'https://y.qq.com/'
-                  : song.source === 'netease' ? 'https://music.163.com/' : '';
+    if (result.matchedSong) {
+      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
+      song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
+    }
+    const playSource = result.matchedSong?.source || song.source;
+    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
+                  : playSource === 'qq' ? 'https://y.qq.com/'
+                  : playSource === 'netease' ? 'https://music.163.com/' : '';
     const proxied = await api.proxyPlay(result.url, referer);
     if (!proxied || !proxied.fileUrl) {
       showToast('⚠️ 音源下载失败：' + (proxied?.error || '未知错误'), 'error', 5000);
@@ -395,6 +400,13 @@ function quickSearch(keyword) {
   doSearch(1);
 }
 
+// 首页快捷搜索条：空关键词直接跳搜索页，不触发空检索
+function homeHeroSearch(keyword) {
+  const kw = String(keyword || '').trim();
+  if (!kw) { quickSearch(''); return; }
+  quickSearch(kw);
+}
+
 // ── 最近播放渲染 ──────────────────────────────────────
 function renderRecentlyPlayed() {
   const section = document.getElementById('recentlyPlayedSection');
@@ -431,6 +443,8 @@ async function playRecentSong(idx) {
     const recent = typeof getRecentlyPlayed === 'function' ? getRecentlyPlayed() : [];
     const song = recent[idx];
     if (!song) return;
+    // audio error / 25s 加载超时守卫依赖 currentPlaying 真值，缺失会静默卡死
+    setState('currentPlaying', song);
     await loadAndPlay(song);
   } catch (e) {
     logger.warn(`[playRecentSong] error:`, e);
@@ -450,6 +464,7 @@ export {
   switchPlatTab,
   switchNeteaseSub,
   quickSearch,
+  homeHeroSearch,
   markHomeSectionError,
   clearLoadingPlaceholders,
   updateAllPlaylistsGrid,
@@ -469,6 +484,7 @@ window.addRecommendDownload = addRecommendDownload;
 window.switchPlatTab = switchPlatTab;
 window.switchNeteaseSub = switchNeteaseSub;
 window.quickSearch = quickSearch;
+window.homeHeroSearch = homeHeroSearch;
 window.markHomeSectionError = markHomeSectionError;
 window.clearLoadingPlaceholders = clearLoadingPlaceholders;
 window.updateAllPlaylistsGrid = updateAllPlaylistsGrid;

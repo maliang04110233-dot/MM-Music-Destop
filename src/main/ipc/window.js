@@ -104,9 +104,9 @@ function register() {
     return path.join(app.getPath('music'), 'MusicDownloader');
   });
 
-  // 打开目录 / 外部链接
-  ipcMain.on('open-folder', (_, folder) => {
-    if (!folder || typeof folder !== 'string') return;
+  // 打开目录 / 外部链接（渲染层经 musicAPI invoke 调用，需 handle）
+  const openFolderImpl = (folder) => {
+    if (!folder || typeof folder !== 'string') return { ok: false };
     // H11: Validate path is a local filesystem path (no protocol handlers)
     if (/^[a-zA-Z]+:/.test(folder) || folder.startsWith('\\') || folder.startsWith('/')) {
       // Resolve to real path and ensure it exists
@@ -118,12 +118,16 @@ function register() {
         }
       } catch (_) { /* ignore invalid paths */ }
     }
-  });
-  ipcMain.on('open-external', (_, url) => {
+    return { ok: true };
+  };
+  const openExternalImpl = (url) => {
     if (typeof url === 'string' && /^https?:\/\//.test(url)) {
       shell.openExternal(url);
     }
-  });
+    return { ok: true };
+  };
+  ipcMain.handle('open-folder', (_, folder) => openFolderImpl(folder));
+  ipcMain.handle('open-external', (_, url) => openExternalImpl(url));
 
   // 缓存管理
   ipcMain.handle('get-cache-size', () => {

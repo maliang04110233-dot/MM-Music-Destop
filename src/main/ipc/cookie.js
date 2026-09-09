@@ -25,8 +25,9 @@ function register() {
     return masked;
   });
 
-  // 保存 Cookie
-  ipcMain.handle('save-cookie', async (_, { platform, cookie }) => {
+  // 保存 Cookie（渲染层位置参数：api.saveCookie(platform, cookie)）
+  ipcMain.handle('save-cookie', async (_, ...a) => {
+    const [platform, cookie] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     cookieStore.set(platform, cookie.trim());
     api.updateCookie(platform, cookie.trim());
     if (cookie.trim()) {
@@ -52,7 +53,8 @@ function register() {
   });
 
   // 验证 Cookie（不保存，仅测试）
-  ipcMain.handle('verify-cookie', async (_, { platform, cookie }) => {
+  ipcMain.handle('verify-cookie', async (_, ...a) => {
+    const [platform, cookie] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
     try {
       return await api.verifyCookie(platform, cookie);
     } catch (e) {

@@ -67,3 +67,27 @@ test('prefs: 没 init 时 get 不抛错（返回 undefined）', () => {
   // 不调 init，直接 get —— 应该静默返回 undefined
   assert.strictEqual(prefs.get('anything'), undefined);
 });
+
+test('prefs: 损坏文件 → 备份 .bak + 空对象起步，新写入可恢复', async () => {
+  const dir = makeTempDir();
+  // 模拟半写损坏
+  fs.writeFileSync(path.join(dir, 'prefs.json'), '{"saveDir": "/foo', 'utf8');
+
+  const p = require('../src/utils/prefs');
+  p.init(dir);
+  assert.strictEqual(p.get('saveDir'), undefined, '损坏后不残留旧值');
+  assert.ok(fs.existsSync(path.join(dir, 'prefs.json.bak')), '损坏文件应备份 .bak');
+
+  // 新写入覆盖损坏文件
+  p.set('saveDir', '/new/path');
+  p.flush();
+  p.destroy();
+
+  // 重启读回
+  delete require.cache[require.resolve('../src/utils/prefs')];
+  const p2 = require('../src/utils/prefs');
+  p2.init(dir);
+  assert.strictEqual(p2.get('saveDir'), '/new/path');
+  p2.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

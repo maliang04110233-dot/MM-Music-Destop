@@ -4,7 +4,7 @@
  * v2: 集成虚拟滚动 + 响应式状态
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 import { VirtualScroller } from '../virtualList.js';
 
@@ -271,6 +271,8 @@ async function playLocalSong(idx) {
     setState('playQueue', localFiltered.slice());
     setState('playIdx', idx);
     setState('_currentLocalFilePath', s.filePath);
+    // audio error / 25s 加载超时守卫依赖 currentPlaying 真值，缺失会静默卡死
+    setState('currentPlaying', s);
     await loadAndPlay(s, 'file://' + s.filePath);
     renderLocalSongs();
   } catch (e) {
@@ -313,7 +315,13 @@ function openEdit(idx) {
 
   const preview = document.getElementById('editCoverPreview');
   if (s.cover) {
-    preview.innerHTML = `<img src="${s.cover}" style="width:100%;height:100%;object-fit:cover">`;
+    // s.cover 应为 data:image/*;base64 形态（来自内嵌标签或在线封面）。
+    // 白名单校验后再插值：非 data:image 前缀的一律当无封面处理，
+    // 防止把外部输入直接塞进 innerHTML 的 src 属性。
+    const isDataImage = typeof s.cover === 'string' && /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/.test(s.cover);
+    preview.innerHTML = isDataImage
+      ? `<img src="${s.cover}" style="width:100%;height:100%;object-fit:cover">`
+      : '<span style="font-size:28px">🎵</span>';
   } else {
     preview.innerHTML = '<span style="font-size:28px">🎵</span>';
   }
@@ -919,7 +927,7 @@ function renderDuplicateModal() {
   const { groups, selected } = _dupState;
 
   const groupsHtml = groups.map((group, i) => {
-    const songsHtml = group.map((s, j) => {
+    const songsHtml = group.map((s) => {
       const isSelected = selected.has(s.filePath);
       const isBest = j === 0;
       return `

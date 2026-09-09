@@ -2,7 +2,7 @@
  * MusicDL 音频格式转换页面 - 搜索本地歌曲 + 一键转换
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 // 转换队列
 let _convQueue = [];

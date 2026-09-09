@@ -16,8 +16,6 @@
  * 默认模板："{artist} - {title}"
  */
 
-const path = require('path');
-
 const DEFAULT_TEMPLATE = '{artist} - {title}';
 
 /**

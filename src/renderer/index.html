@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; media-src 'self' data: blob: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'ws:'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: ws:; font-src 'self' data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; media-src 'self' data: blob: http: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: ws:; font-src 'self' data:;">
 <title>音乐下载器</title>
 <script>
   // 全局错误捕获：onclick 调用未定义函数时弹 toast 而不是静默
@@ -97,15 +97,6 @@
       <div class="save-dir-path" id="saveDirText">加载中...</div>
       <button class="btn-sm" onclick="changeSaveDir()" data-i18n="sidebar.changeDir">更改目录</button>
     </div>
-
-    <div class="save-dir" style="margin-top:8px;">
-      <label data-i18n="sidebar.namingTemplate">命名模板</label>
-      <div style="display:flex;gap:4px;align-items:center;">
-        <input type="text" id="namingTemplateInput" class="save-dir-path" style="flex:1;font-size:11px;padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text);" placeholder="{artist} - {title}" onchange="saveNamingTemplate(this.value)">
-        <button class="btn-sm" onclick="resetNamingTemplate()" title="恢复默认">↺</button>
-      </div>
-      <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">变量: {title} {artist} {album} {source} {id}</div>
-    </div>
   </div>
 
   <!-- 内容区 -->
@@ -114,23 +105,16 @@
     <div class="content-main">
 
     <!-- 首页 -->
-    <div id="homePage" style="display:flex;flex-direction:column;gap:16px;height:100%;overflow-y:auto;padding-right:4px;">
-      <!-- 欢迎横幅 -->
-      <div class="welcome-banner" style="margin-top:8px;">
-        <div class="welcome-title" data-i18n="home.welcome.title">🎵 发现好音乐，随时随地下载</div>
-        <div class="welcome-subtitle" data-i18n="home.welcome.subtitle">支持网易云音乐、QQ音乐、哔哩哔哩三大平台，一键搜索下载，支持无损品质。</div>
-        <div class="welcome-platforms">
-          <div class="platform-chip"><span class="dot dot-netease"></span>网易云音乐</div>
-          <div class="platform-chip"><span class="dot dot-qq"></span>QQ 音乐</div>
-          <div class="platform-chip"><span class="dot dot-kg"></span>酷狗</div>
-          <div class="platform-chip"><span class="dot dot-bili"></span>哔哩哔哩</div>
+    <div id="homePage" style="display:flex;flex-direction:column;gap:14px;height:100%;overflow-y:auto;padding-right:4px;">
+      <!-- 顶部快捷搜索条 -->
+      <div class="home-hero">
+        <div class="home-search-row">
+          <input class="home-search-input" id="homeSearchInput"
+            placeholder="搜索歌曲、歌手、专辑…"
+            onkeydown="if(event.key==='Enter')homeHeroSearch(this.value)">
+          <button class="home-search-btn" onclick="homeHeroSearch(document.getElementById('homeSearchInput').value)">🔍 搜索</button>
         </div>
-      </div>
-
-      <!-- 热门搜索 -->
-      <div class="hot-section">
-        <div class="hot-section-title" data-i18n="home.hotSearch">🔥 热门搜索</div>
-        <div class="hot-tags">
+        <div class="home-hero-tags">
           <span class="hot-tag trending" onclick="quickSearch('周杰伦')">周杰伦</span>
           <span class="hot-tag trending" onclick="quickSearch('林俊杰')">林俊杰</span>
           <span class="hot-tag trending" onclick="quickSearch('五月天')">五月天</span>

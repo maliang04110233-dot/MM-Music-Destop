@@ -6,12 +6,13 @@ const logger = require('../utils/logger');
 const { downloadFileWithRetry, embedId3Tags } = require('../utils/downloader');
 const cookieStore = require('../utils/cookieStore');
 const { setOnlineLrcNotifier } = require('../utils/onlineLrc');
-const { getDownloadUrl, getLyrics } = require('../api');
+const { getDownloadUrlSmart, getLyrics } = require('../api');
 const { renderFileName } = require('../utils/naming');
 const { init: initContext, safeSend: ctxSafeSend } = require('./context');
 const playCache = require('./playCache');
 const history = require('../utils/history');
 const prefs = require('../utils/prefs');
+const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
 const ipcWindow  = require('./ipc/window');
 const ipcSearch  = require('./ipc/search');
 const ipcDownload= require('./ipc/download');
@@ -35,12 +36,7 @@ const downloadQueue = [];
 // 修复 P1-8：用 activeDownloads 计数替代旧的 isDownloading 标志
 // 旧实现是 1 首歌下完才下 1 首；现在最多并发 3 首，5MB 歌曲不用等 50MB 视频
 let activeDownloads = 0;
-let MAX_CONCURRENT_DOWNLOADS = 3;
-// 从 prefs 读取已保存的并发数
-try {
-  const saved = prefs.get('concurrency');
-  if (saved && saved >= 1 && saved <= 10) MAX_CONCURRENT_DOWNLOADS = saved;
-} catch (_e) { /* prefs 读取失败使用默认值 */ }
+// 并发数不再用模块级常量缓存：processQueue 每轮动态读 prefs.get('concurrency')
 let processTimer = null;
 let _processQueueRunning = false; // 防止 processQueue 重入
 let queuePersistTimer = null;
@@ -48,27 +44,30 @@ let playQueuePersistTimer = null;
 const QUEUE_FILE = () => path.join(app.getPath('userData'), 'queue.json');
 const PLAY_QUEUE_FILE = () => path.join(app.getPath('userData'), 'play-queue.json');
 
-// 持久化队列（防抖：500ms 内多次变更合并写入）
+// 持久化队列（防抖：500ms 内多次变更合并写入；原子写防半写损坏）
 function persistQueue() {
   if (queuePersistTimer) return;
   queuePersistTimer = setTimeout(() => {
     queuePersistTimer = null;
-    const data = JSON.stringify(downloadQueue, null, 2);
-    fs.promises.writeFile(QUEUE_FILE(), data, 'utf8').catch(e => {
+    try {
+      atomicWriteJson(QUEUE_FILE(), downloadQueue);
+    } catch (e) {
       logger.warn('队列持久化失败:', e.message);
-    });
+    }
   }, 500);
 }
 
-// 启动时加载队列（异常关闭后恢复）
+// 启动时加载队列（异常关闭后恢复；损坏文件备份 .bak 后放弃）
 async function loadPersistedQueue() {
   try {
     const fp = QUEUE_FILE();
-    const stat = await fs.promises.stat(fp).catch(() => null);
-    if (!stat) return;
-    const raw = await fs.promises.readFile(fp, 'utf8');
-    if (!raw.trim()) return;
-    const list = JSON.parse(raw);
+    const res = safeReadJson(fp);
+    if (!res.ok) {
+      logger.warn('队列文件损坏，已备份为 queue.json.bak，从空队列恢复');
+      return;
+    }
+    if (res.empty) return;
+    const list = res.data;
     if (!Array.isArray(list)) return;
     // 重启时：downloading 视为异常关闭 -> error
     //           pending 超过 1 天没动 -> error（避免阻塞"加入新歌单"）
@@ -123,9 +122,7 @@ function persistPlayQueue(data) {
         isShuffled: !!latest?.isShuffled,
         updatedAt: Date.now(),
       };
-      fs.promises.writeFile(PLAY_QUEUE_FILE(), JSON.stringify(payload, null, 2), 'utf8').catch(e => {
-        logger.warn('播放队列持久化失败:', e.message);
-      });
+      atomicWriteJson(PLAY_QUEUE_FILE(), payload);
     } catch (e) {
       logger.warn('播放队列持久化失败:', e.message);
     }
@@ -135,11 +132,13 @@ function persistPlayQueue(data) {
 async function loadPersistedPlayQueue() {
   try {
     const fp = PLAY_QUEUE_FILE();
-    const stat = await fs.promises.stat(fp).catch(() => null);
-    if (!stat) return null;
-    const raw = await fs.promises.readFile(fp, 'utf8');
-    if (!raw.trim()) return null;
-    const obj = JSON.parse(raw);
+    const res = safeReadJson(fp);
+    if (!res.ok) {
+      logger.warn('播放队列文件损坏，已备份为 play-queue.json.bak，忽略恢复');
+      return null;
+    }
+    if (res.empty) return null;
+    const obj = res.data;
     if (!obj || !Array.isArray(obj.queue)) return null;
     logger.log(`[PlayQueue] 从磁盘恢复 ${obj.queue.length} 首歌曲`);
     return { queue: obj.queue, playIdx: obj.playIdx, loopMode: obj.loopMode, isShuffled: obj.isShuffled, updatedAt: obj.updatedAt };
@@ -180,6 +179,25 @@ function createWindow() {
   });
 
   // 关闭开发者工具自动开启（按需通过菜单 → 视图 → 开发者工具 手动打开）
+
+  // 导航防护：主窗口只加载本地内容，任何远程/file 导航一律拒绝
+  // （渲染层一旦有脚本注入，window.open / location 跳转可把窗口导向
+  // 钓鱼页或本地文件协议，此处统一拦截）
+  const denyNav = (url) => {
+    logger.warn('[main] 拒绝主窗口导航:', url);
+  };
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const u = (() => { try { return new URL(url); } catch (_) { return null; } })();
+    const isLocal = u && (u.protocol === 'file:');
+    if (!isLocal) {
+      denyNav(url);
+      event.preventDefault();
+    }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    denyNav(url);
+    return { action: 'deny' };
+  });
 
   // 拦截 F12 / Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+U 防止误开
   const blockList = new Set(['F12']);
@@ -583,7 +601,7 @@ async function processOneSong(song) {
   for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
     try {
       logger.log(`[processOneSong] ▶ ${song.source} "${song.title}" - "${song.artist}" id=${song.id} quality=${song.quality || 'standard'}`);
-      const urlInfo = await getDownloadUrl(song.id, song.source, song.quality || 'standard');
+      const urlInfo = await getDownloadUrlSmart(song, song.quality || 'standard');
       logger.log(`[processOneSong]   urlInfo keys =`, urlInfo ? Object.keys(urlInfo).join(',') : 'null', 'hasUrl =', !!(urlInfo && urlInfo.url));
       if (!urlInfo || !urlInfo.url) {
         // 修复 B7：fatal 错误（VIP/Auth/Audio 流缺失）直接退出，不进重试循环
@@ -596,15 +614,25 @@ async function processOneSong(song) {
         }
         throw new Error(urlInfo?.error || '无法获取下载链接');
       }
+      // 换源成功：记回歌曲供下次直试 + 队列可见（文件名仍用原歌信息，歌没变只是取流渠道变了）
+      if (urlInfo.matchedSong) {
+        song._altSource = { source: urlInfo.matchedSong.source, id: String(urlInfo.matchedSong.id) };
+        logger.log(`[processOneSong] ↻ 已换源: ${urlInfo.matchedFrom} → ${urlInfo.matchedSong.source}`);
+        safeSend('queue-updated', downloadQueue);
+      }
 
       const ext = (urlInfo.ext || 'mp3').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'mp3';
       // 命名模板：从 preferences 读取，支持 {title} {artist} {album} {source} {id}
       const { get: getPref } = require('../utils/prefs');
       const namingTemplate = getPref('namingTemplate') || '{artist} - {title}';
-      const savePath = path.join(song.saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
+      // saveDir 兜底：用户从未选过下载目录时渲染层传 null，path.join(null) 直接
+      // 崩溃（必现 "The path argument must be of type string. Received null"）。
+      // 回退顺序与启动时 defaultDir 逻辑一致：song → prefs → 系统默认目录
+      const saveDir = song.saveDir || prefs.get('saveDir') || path.join(app.getPath('music'), 'MusicDownloader');
+      const savePath = path.join(saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
 
-      await fs.promises.mkdir(song.saveDir, { recursive: true }).catch(e => {
-        logger.warn('[processOneSong] 创建下载目录失败:', song.saveDir, e.message);
+      await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
+        logger.warn('[processOneSong] 创建下载目录失败:', saveDir, e.message);
       });
 
       // 修复 B8：携带 extraHeaders（Referer 等），downloadFile 内部重定向会递归传递
@@ -619,10 +647,12 @@ async function processOneSong(song) {
         safeSend('download-progress', { id: song.taskId, progress });
       }, extraHeaders, { speedLimit });
 
-      // 歌词
+      // 歌词（换源成功时优先用匹配源的 id 同源拿，更准）
       let lrc = '';
       try {
-        const lyricsResult = await getLyrics(song.id, song.source, song.title, song.artist);
+        const lyricId = urlInfo.matchedSong ? urlInfo.matchedSong.id : song.id;
+        const lyricSource = urlInfo.matchedSong ? urlInfo.matchedSong.source : song.source;
+        const lyricsResult = await getLyrics(lyricId, lyricSource, song.title, song.artist);
         lrc = lyricsResult.lrc || '';
       } catch (_e) { /* 歌词获取失败不影响下载 */ }
 
@@ -668,12 +698,13 @@ async function processOneSong(song) {
         }
       }
 
-      // 写入下载历史
+      // 写入下载历史（换源成功时记实际取流源，便于排查与统计）
       try {
         const stat = fs.existsSync(savePath) ? fs.statSync(savePath) : null;
         history.add({
           id: String(song.id),
-          source: song.source,
+          source: urlInfo.matchedSong ? urlInfo.matchedSong.source : song.source,
+          matchedFrom: urlInfo.matchedSong ? song.source : undefined,
           title: song.title,
           artist: song.artist || '',
           album: song.album || '',

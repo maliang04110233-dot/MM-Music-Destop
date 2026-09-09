@@ -43,6 +43,7 @@ function saveIndex(index) {
   try {
     // 不保存 fileMap（它是运行时重建的）
     const { fileMap, ...rest } = index;
+    void fileMap;
     fs.writeFileSync(INDEX_FILE(), JSON.stringify(rest, null, 2), 'utf-8');
   } catch (e) {
     logger.warn('[LibraryIndex] 保存索引失败:', e.message);
@@ -138,7 +139,7 @@ async function incrementalScan(dirPath, scanDirectory, readAudioMetadata, onProg
 
   // 移除已删除的文件
   const removedCount = removedFiles.length;
-  const finalSongs = existingTracks.filter((s, i) => {
+  const finalSongs = existingTracks.filter((s) => {
     if (!s || !s.filePath) return false;
     return currentFileSet.has(s.filePath);
   });

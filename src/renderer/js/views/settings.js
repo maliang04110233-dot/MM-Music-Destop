@@ -3,7 +3,7 @@
  */
 
 /* @module */
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 // ── 平台配置 ──────────────────────────────────────────
 const PLATFORMS = [
   { id: 'netease', name: '网易云音乐', shortName: '网易云', loginUrl: 'https://music.163.com' },
@@ -321,7 +321,7 @@ const GENERAL_PREFS = {
   quality:       { key: 'quality',       default: 'standard',   el: 'settingQuality' },
   concurrency:   { key: 'concurrency',   default: 3,             el: 'settingConcurrency' },
   speedLimit:    { key: 'speedLimit',    default: 0,             el: 'settingSpeedLimit' },
-  filenameTmpl:  { key: 'filenameTmpl',  default: '{artist} - {title}', el: 'settingFilenameTmpl' },
+  filenameTmpl:  { key: 'namingTemplate',  default: '{artist} - {title}', el: 'settingFilenameTmpl' },
   autoLyric:     { key: 'autoLyric',     default: true,          el: 'settingAutoLyric' },
   autoCover:     { key: 'autoCover',     default: true,          el: 'settingAutoCover' },
   notifications: { key: 'notifications',  default: true,          el: 'settingNotifications' },
@@ -594,7 +594,7 @@ async function resetAllSettings() {
   const defaults = {
     quality: 'standard',
     concurrency: 3,
-    filenameTmpl: '{artist} - {title}',
+    namingTemplate: '{artist} - {title}',
     autoLyric: true,
     autoCover: true,
     theme: 'default',

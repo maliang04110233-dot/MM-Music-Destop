@@ -7,39 +7,99 @@ const childProcess = require('child_process');
 const logger = require('./logger');
 
 /**
- * 限速 Transform 流
- * 按字节/秒限速，超过时暂停读取
+ * 限速 Transform 流（令牌桶 + 正确背压）
+ *
+ * 原实现的三个问题：
+ *   1. push() 返回值被忽略 → 下游写不动时数据在内存里无限堆积（背压失效）
+ *   2. 每个超限 chunk 一个独立 setTimeout，多 chunk 并发重置令牌桶 → 速率计算失真
+ *   3. 流被提前销毁时，滞留在 setTimeout 里的 rest 数据可能永久丢失
+ *
+ * 新实现：
+ *   - 令牌桶：tokens 以 bytesPerSec 速率恢复（按真实流逝时间计算，非固定 1s 窗口）
+ *   - 背压：push() 返回 false 时不调 callback（上游暂停），等 'drain' 后继续；
+ *     chunk 超出当前令牌的部分缓存为 pending，由单一定时器按节奏冲刷
+ *   - 销毁安全：实现 _destroy，清掉定时器并放弃 pending（下游是文件流，
+ *     销毁即意味着下载被取消）
  */
 function createThrottleStream(bytesPerSec) {
   if (!bytesPerSec || bytesPerSec <= 0) return null;
-  let allowed = bytesPerSec;
-  let lastCheck = Date.now();
-  return new Transform({
-    transform(chunk, encoding, callback) {
-      const now = Date.now();
-      const elapsed = now - lastCheck;
-      if (elapsed > 100) {
-        allowed = bytesPerSec;
-        lastCheck = now;
-      }
-      if (chunk.length > allowed) {
-        // 超限：先发送允许的量，剩余延迟
-        const part = chunk.slice(0, allowed);
-        const rest = chunk.slice(allowed);
-        allowed = 0;
-        this.push(part);
-        setTimeout(() => {
-          allowed = bytesPerSec;
-          lastCheck = Date.now();
-          this.push(rest);
-          callback();
-        }, 1000);
-      } else {
-        allowed -= chunk.length;
-        callback();
+
+  // 桶容量 = 单个冲刷周期（100ms）的配额：避免初始满桶造成 1 秒配额的突发
+  const FLUSH_INTERVAL_MS = 100;
+  const MAX_TOKENS = Math.max(1, Math.floor(bytesPerSec * (FLUSH_INTERVAL_MS / 1000)));
+  let tokens = 0;
+  let lastRefill = Date.now();
+  let pending = null;   // { buffer } 超额部分
+  let flushTimer = null;
+  let draining = false; // 下游 drain 事件未到时不再 push
+
+  function refillTokens() {
+    const now = Date.now();
+    const elapsed = now - lastRefill;
+    if (elapsed > 0) {
+      tokens = Math.min(MAX_TOKENS, tokens + (elapsed / 1000) * bytesPerSec);
+      lastRefill = now;
+    }
+  }
+
+  // 尝试把 pending 冲刷出去；清空时调 done（transform 的 callback）
+  function tryFlush(stream, done) {
+    if (!pending) {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (done) done();
+      return true;
+    }
+    while (pending && !draining) {
+      refillTokens();
+      const take = Math.min(pending.buffer.length, Math.floor(tokens));
+      if (take <= 0) break; // 令牌耗尽，等下一轮
+      tokens -= take;
+      const piece = pending.buffer.slice(0, take);
+      pending.buffer = pending.buffer.slice(take);
+      if (pending.buffer.length === 0) pending = null;
+      if (!stream.push(piece)) {
+        draining = true;
+        break;
       }
     }
+    if (!pending) {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (done) done();
+      return true;
+    }
+    // 还有剩余：安排下一轮（unref：不阻塞进程退出）
+    if (!flushTimer) {
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        tryFlush(stream, done);
+      }, FLUSH_INTERVAL_MS);
+      if (flushTimer.unref) flushTimer.unref();
+    }
+    return false;
+  }
+
+  const stream = new Transform({
+    transform(chunk, encoding, callback) {
+      if (pending) {
+        pending.buffer = Buffer.concat([pending.buffer, chunk]);
+      } else {
+        pending = { buffer: chunk };
+      }
+      const flushed = tryFlush(this, callback);
+      if (!flushed && draining) {
+        this.once('drain', () => {
+          draining = false;
+          tryFlush(this, callback);
+        });
+      }
+    },
+    _destroy(err, cb) {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      pending = null;
+      cb(err);
+    },
   });
+  return stream;
 }
 
 /**
@@ -158,6 +218,22 @@ async function embedTagsWithPython(filePath, meta) {
  *    先 cleanupTmp 再递归；显式关闭当前 res 释放 socket
  */
 function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCount = 0, options = {}) {
+  // SSRF 防护（含重定向链每一跳）：URL 来自音乐平台 API 响应，虽非渲染层
+  // 直传，但被劫持的平台响应/恶意重定向可指向内网（云元数据等）。
+  // options.skipSsrfCheck 仅供已在上层校验过的调用方关闭（测试用）。
+  if (!options.skipSsrfCheck) {
+    const { assertPublicHttpUrl } = require('./urlGuard');
+    return assertPublicHttpUrl(url).then(check => {
+      if (!check.ok) {
+        return Promise.reject(new Error('下载地址被 SSRF 防护拒绝: ' + (check.reason || url)));
+      }
+      return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount, options);
+    });
+  }
+  return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount, options);
+}
+
+function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redirectCount = 0, options = {}) {
   const MAX_REDIRECTS = 5;
   const speedLimit = options.speedLimit || 0; // bytes/sec, 0 = unlimited
   const resumeOffset = options.resumeOffset || 0; // 断点续传偏移量
@@ -202,13 +278,22 @@ function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCoun
       ) {
         res.resume();   // 释放 socket，避免泄漏
         cleanupTmp();   // 重定向前清理 .tmp
-        return downloadFile(
-          res.headers.location,
-          savePath,
-          onProgress,
-          extraHeaders,
-          redirectCount + 1
-        ).then(resolve).catch(reject);
+        const nextUrl = new URL(res.headers.location, url).toString(); // 支持相对路径
+        const { assertPublicHttpUrl } = require('./urlGuard');
+        return assertPublicHttpUrl(nextUrl).then(check => {
+          if (!check.ok) {
+            reject(new Error('重定向目标被 SSRF 防护拒绝: ' + nextUrl));
+            return;
+          }
+          return downloadFile(
+            nextUrl,
+            savePath,
+            onProgress,
+            extraHeaders,
+            redirectCount + 1,
+            options
+          ).then(resolve).catch(reject);
+        }).catch(e => reject(e));
       }
 
       if (res.statusCode !== 200) {
@@ -260,8 +345,19 @@ function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCoun
  * 下载图片到 Buffer
  * 优化：覆盖 301/302/303/307/308 重定向，与 downloadFile 保持一致
  */
-function downloadBuffer(url, extraHeaders = {}, redirectCount = 0) {
+function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked = false) {
   const MAX_REDIRECTS = 5;
+  // 首跳 SSRF 校验（重定向跳已由内部递归前逐跳校验）
+  if (!_ssrfChecked && url) {
+    const { assertPublicHttpUrl } = require('./urlGuard');
+    return assertPublicHttpUrl(url).then(check => {
+      if (!check.ok) {
+        logger.warn('[downloadBuffer] 下载地址被 SSRF 防护拒绝:', url);
+        return null; // 与本函数容错语义一致：失败返回 null
+      }
+      return downloadBuffer(url, extraHeaders, redirectCount, true);
+    }).catch(() => null);
+  }
   return new Promise((resolve, reject) => {
     if (!url) return resolve(null);
     if (redirectCount > MAX_REDIRECTS) return resolve(null);
@@ -283,7 +379,16 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0) {
       const req = lib.request(options, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
-          return downloadBuffer(res.headers.location, extraHeaders, redirectCount + 1).then(resolve).catch(reject);
+          const nextUrl = new URL(res.headers.location, url).toString();
+          const { assertPublicHttpUrl } = require('./urlGuard');
+          // downloadBuffer 容错语义（失败 resolve(null)）：SSRF 拒绝也按失败处理
+          return assertPublicHttpUrl(nextUrl).then(check => {
+            if (!check.ok) {
+              logger.warn('[downloadBuffer] 重定向目标被 SSRF 防护拒绝:', nextUrl);
+              return resolve(null);
+            }
+            return downloadBuffer(nextUrl, extraHeaders, redirectCount + 1, true).then(resolve).catch(reject);
+          }).catch(() => resolve(null));
         }
         const chunks = [];
         let totalBytes = 0;
@@ -443,4 +548,4 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
   return tryOnce();
 }
 
-module.exports = { downloadFile, downloadFileWithRetry, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };
+module.exports = { createThrottleStream, downloadFile, downloadFileWithRetry, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };

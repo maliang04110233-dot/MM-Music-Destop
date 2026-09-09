@@ -738,7 +738,7 @@ function renderVersionTabs() {
   ).join('');
 }
 
-function selectAiVersion(idx, btn) {
+function selectAiVersion(idx, _btn) {
   aiState.activeVersion = idx;
   // 更新标签高亮
   document.querySelectorAll('#aiVersionTabs .ai-version-tab').forEach((t, i) => {
@@ -751,14 +751,18 @@ function selectAiVersion(idx, btn) {
   }
 }
 
-function selectAiVoice(v, btn) {
+function selectAiVoice(v, _btn) {
   aiState.voice = v;
   // 更新所有声线按钮的高亮
   document.querySelectorAll('[data-voice]').forEach(b => b.classList.toggle('active', b.dataset.voice === v));
 }
 
 function playAiSong(filePath) {
-  if (typeof loadAndPlay === 'function') loadAndPlay({ title: document.getElementById('aiTitle')?.value || 'AI生成', artist: 'AI创作', filePath });
+  if (typeof loadAndPlay !== 'function') return;
+  const song = { title: document.getElementById('aiTitle')?.value || 'AI生成', artist: 'AI创作', filePath };
+  // audio error / 25s 加载超时守卫依赖 currentPlaying 真值，缺失会静默卡死
+  if (typeof setState === 'function') setState('currentPlaying', song);
+  loadAndPlay(song);
 }
 
 function openAiFolder() { if (aiState.saveDir) api.openFolder(aiState.saveDir); }

@@ -13,6 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const { atomicWriteJson, safeReadJson } = require('./atomicFile');
 
 let _userDataPath = null;
 let _cache = null;        // 内存缓存，避免每次都读盘
@@ -34,9 +35,15 @@ function _load() {
   try {
     const fp = _getFilePath();
     if (!fp || !fs.existsSync(fp)) { _cache = {}; return _cache; }
-    const raw = fs.readFileSync(fp, 'utf8');
-    if (!raw.trim()) { _cache = {}; return _cache; }
-    const parsed = JSON.parse(raw);
+    const res = safeReadJson(fp);
+    if (!res.ok) {
+      // 损坏文件已备份为 prefs.json.bak，此处走空对象等下次写入覆盖
+      logger.warn('prefs: 文件损坏，已备份为 .bak，使用空对象');
+      _cache = {};
+      return _cache;
+    }
+    if (res.empty) { _cache = {}; return _cache; }
+    const parsed = res.data;
     _cache = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
   } catch (e) {
     logger.warn('prefs: 加载失败，使用空对象:', e.message);
@@ -61,12 +68,13 @@ function set(key, value) {
   if (_writeTimer) clearTimeout(_writeTimer);
   _writeTimer = setTimeout(() => {
     _writeTimer = null;
-    const fp = _getFilePath();
-    if (!fp) return;
-    const data = JSON.stringify(_cache, null, 2);
-    fs.promises.writeFile(fp, data, 'utf8').catch(e => {
+    try {
+      const fp = _getFilePath();
+      if (!fp) return;
+      atomicWriteJson(fp, _cache || {});
+    } catch (e) {
       logger.warn('prefs: 写入失败:', e.message);
-    });
+    }
   }, 300);
 }
 
@@ -79,7 +87,7 @@ function flush() {
   try {
     const fp = _getFilePath();
     if (!fp) return;
-    fs.writeFileSync(fp, JSON.stringify(_cache || {}, null, 2), 'utf8');
+    atomicWriteJson(fp, _cache || {});
   } catch (e) {
     logger.warn('prefs: flush 失败:', e.message);
   }

@@ -69,46 +69,44 @@
 .empty-text { font-size: 15px; color: var(--neon-dim); }
 .empty-hint { font-size: 12px; }
 
-/* 欢迎横幅 */
-.welcome-banner {
-  width: 100%; background: linear-gradient(135deg, rgba(108,99,255,.18) 0%, rgba(167,139,250,.08) 100%);
+/* 首页顶部快捷搜索条 */
+.home-hero {
+  width: 100%; margin-top: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(108,99,255,.16) 0%, rgba(167,139,250,.06) 100%);
   border: 1px solid rgba(108,99,255,.25); border-radius: 14px;
-  padding: 20px 24px; margin-bottom: 24px; position: relative; overflow: hidden;
+  padding: 14px 16px 12px; position: relative; overflow: hidden;
 }
-.welcome-banner::before {
-  content: ''; position: absolute; right: -20px; top: -20px;
-  width: 120px; height: 120px; border-radius: 50%;
-  background: rgba(108,99,255,.1);
+.home-hero::before {
+  content: ''; position: absolute; right: -24px; top: -24px;
+  width: 110px; height: 110px; border-radius: 50%;
+  background: rgba(108,99,255,.1); pointer-events: none;
 }
-.welcome-banner::after {
-  content: ''; position: absolute; right: 40px; bottom: -30px;
-  width: 80px; height: 80px; border-radius: 50%;
-  background: rgba(167,139,250,.08);
+.home-search-row { display: flex; gap: 8px; position: relative; z-index: 1; }
+.home-search-input {
+  flex: 1; height: 38px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--neon-blue-dim);
+  background: var(--bg-deep); color: var(--neon-text);
+  font-size: 13.5px; outline: none; transition: border-color .15s, box-shadow .15s;
 }
-.welcome-title {
-  font-size: 18px; font-weight: 700; color: var(--neon-text);
-  margin-bottom: 6px; letter-spacing: -.3px;
+.home-search-input::placeholder { color: var(--neon-dim); }
+.home-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(108,99,255,.15);
 }
-.welcome-subtitle {
-  font-size: 12.5px; color: var(--neon-dim); line-height: 1.6;
-  margin-bottom: 14px;
+.home-search-btn {
+  height: 38px; padding: 0 18px; border-radius: 10px;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: filter .15s; white-space: nowrap;
 }
-.welcome-platforms { display: flex; gap: 8px; flex-wrap: wrap; }
-.platform-chip {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 20px;
-  border: 1px solid var(--neon-blue-dim); background: var(--bg-deep);
-  font-size: 12px; color: var(--neon-dim); cursor: default;
+.home-search-btn:hover { filter: brightness(1.15); }
+.home-hero-tags {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  margin-top: 10px; position: relative; z-index: 1;
 }
-.platform-chip .dot {
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-}
-.dot-netease { background: #f87171; }
-.dot-qq { background: #fbbf24; }
-.dot-bili { background: #38bdf8; }
 
 /* 热门搜索区 */
-.hot-section { width: 100%; margin-bottom: 20px; }
+.hot-section { width: 100%; margin-bottom: 20px; flex-shrink: 0; }
 .hot-section-title {
   font-size: 11px; color: var(--neon-dim); text-transform: uppercase;
   letter-spacing: 1px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
@@ -142,7 +140,7 @@
 
 /* 平台推荐区域 */
 .recommend-section {
-  width: 100%; margin-top: 8px;
+  width: 100%; margin-top: 8px; flex-shrink: 0;
 }
 .recommend-tabs {
   display: flex; gap: 4px; margin-bottom: 12px;
@@ -676,18 +674,18 @@
 .section-clear-btn:hover { border-color: var(--red); color: var(--red); }
 
 .recent-list {
-  display: flex; flex-direction: column; gap: 4px;
-  max-height: 200px; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px;
 }
 .recent-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: 8px;
+  padding: 7px 10px; border-radius: 8px;
   cursor: pointer; transition: background .15s;
-  border: 1px solid transparent;
+  border: 1px solid var(--neon-blue-dim); background: var(--bg-card);
 }
 .recent-item:hover {
   background: var(--bg-hover);
-  border-color: rgba(56,189,248,.15);
+  border-color: rgba(56,189,248,.35);
 }
 .recent-item:hover .recent-title { color: var(--neon-cyan); }
 .recent-cover {

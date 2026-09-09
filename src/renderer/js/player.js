@@ -5,7 +5,7 @@
 * ES Module — export 供其他模块 import，同时保留 window 全局供 HTML onclick
  */
 
-const logger = require('../../utils/logger');
+import { logger } from './logger.js';
 
 const audio = document.getElementById('audioPlayer');
 const RING_CIRCUMFERENCE = 552.9; // 2 * PI * 88
@@ -642,19 +642,30 @@ export async function prevSong() {
 }
 
 // 通用播放函数：根据索引播放队列中的歌曲
+// 取流用智能接口（本源失败自动换源）；快速切歌用请求序号做竞态守卫，
+// 旧请求返回时歌已切走则丢弃（借鉴 lx-music-desktop gettingUrlId 模式）
+let _playRequestId = 0;
+
 async function playSongByIdx(idx, song) {
   if (!song) return;
   const quality = document.getElementById('qualitySelect')?.value || 'standard';
+  const reqId = ++_playRequestId;
   try {
-    const result = await api.getDownloadUrl(song.id, song.source, quality);
+    const result = await api.getDownloadUrlSmart(song, quality);
+    if (reqId !== _playRequestId) return; // 已切到别的歌，丢弃过期结果
     if (!result || !result.url) {
       showToast('⚠️ 暂无法获取音源', 'warn', 3000);
       return;
     }
-    const referer = song.source === 'bilibili' ? 'https://www.bilibili.com/'
-                  : song.source === 'qq' ? 'https://y.qq.com/'
-                  : song.source === 'netease' ? 'https://music.163.com/' : '';
+    if (result.matchedSong) {
+      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
+      song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
+    }
+    const referer = (result.matchedSong?.source || song.source) === 'bilibili' ? 'https://www.bilibili.com/'
+                  : (result.matchedSong?.source || song.source) === 'qq' ? 'https://y.qq.com/'
+                  : (result.matchedSong?.source || song.source) === 'netease' ? 'https://music.163.com/' : '';
     const proxied = await api.proxyPlay(result.url, referer);
+    if (reqId !== _playRequestId) return;
     if (!proxied || !proxied.fileUrl) {
       showToast('⚠️ 音源获取失败', 'error', 3000);
       return;
@@ -662,7 +673,7 @@ async function playSongByIdx(idx, song) {
     setState('currentPlaying', song);
     await loadAndPlay(song, proxied.fileUrl, true);
   } catch (e) {
-    logger.error('切歌失败:', e);
+    if (reqId === _playRequestId) logger.error('切歌失败:', e);
   }
 }
 

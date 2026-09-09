@@ -64,9 +64,23 @@ async function openLoginWindow(platform, parentWindow) {
     },
   });
 
-  // 拦截窗口弹出（OAuth跳转时可能被强制新窗口打开）
+  // 拦截窗口弹出（OAuth跳转时可能被强制新窗口打开）。
+  // 只允许 http(s) 协议且域名限于该平台配置的 cookie 域，防止被导向
+  // file://、内网地址或钓鱼页（登录窗口能读取这些域的 Cookie）。
   loginWin.webContents.setWindowOpenHandler(({ url }) => {
-    loginWin.webContents.loadURL(url);
+    try {
+      const u = new URL(url);
+      const host = u.hostname;
+      const allowed = config.cookieDomains.some(d =>
+        host === d.replace(/^\./, '') || host.endsWith(d));
+      if ((u.protocol === 'https:' || u.protocol === 'http:') && allowed) {
+        loginWin.webContents.loadURL(url);
+      } else {
+        logger.warn('[loginWindow] 拒绝弹出导航:', url);
+      }
+    } catch (_) {
+      logger.warn('[loginWindow] 无效的弹出 URL:', url);
+    }
     return { action: 'deny' };
   });
 

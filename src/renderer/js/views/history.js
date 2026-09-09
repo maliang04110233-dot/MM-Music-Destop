@@ -3,7 +3,7 @@
  */
 
 const PAGE_SIZE = 50;
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 let historyPage = 0;
 let historyFilter = '';
 

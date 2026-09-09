@@ -2,7 +2,7 @@
  * MusicDL 用户歌单视图
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;

@@ -9,7 +9,6 @@
 
 const { ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
 const prefs = require('../../utils/prefs');
 
 const TEMPLATE_KEY = 'downloadTemplates';

@@ -2,7 +2,7 @@
  * MusicDL 搜索视图 - 单曲/专辑/歌手搜索 + 批量操作
  */
 
-const logger = require('../../utils/logger');
+import { logger } from '../logger.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -770,14 +770,19 @@ async function addDownload(idx) {
 }
 
 // ── 播放 ─────────────────────────────────────────────
+// 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
+let _searchPlayRequestId = 0;
+
 async function playSong(idx) {
   const songs = getState('songs');
   const s = songs[idx];
   if (!s) { showToast('未找到歌曲', 'warn'); return; }
   const quality = document.getElementById('qualitySelect')?.value || 'standard';
   showToast(`正在准备音源：${s.title}`, 'info');
+  const reqId = ++_searchPlayRequestId;
   try {
-    const result = await api.getDownloadUrl(s.id, s.source, quality);
+    const result = await api.getDownloadUrlSmart(s, quality);
+    if (reqId !== _searchPlayRequestId) return; // 已点别的歌，丢弃过期结果
     if (!result || !result.url) {
       if (result && result.code === 'VIP_REQUIRED') {
         showToast('⚠️ 该歌曲为 VIP 专享，请登录后重试', 'warn', 5000);
@@ -786,31 +791,44 @@ async function playSong(idx) {
       }
       return;
     }
-    const referer = s.source === 'bilibili' ? 'https://www.bilibili.com/'
-                  : s.source === 'qq' ? 'https://y.qq.com/'
-                  : s.source === 'netease' ? 'https://music.163.com/' : '';
+    if (result.matchedSong) {
+      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
+      s._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
+    }
+    const playSource = result.matchedSong?.source || s.source;
+    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
+                  : playSource === 'qq' ? 'https://y.qq.com/'
+                  : playSource === 'netease' ? 'https://music.163.com/' : '';
     const proxied = await api.proxyPlay(result.url, referer);
+    if (reqId !== _searchPlayRequestId) return;
     if (!proxied || !proxied.fileUrl) {
       showToast('⚠️ 音源获取失败', 'error', 5000);
       return;
     }
-    // 设置整个搜索结果为播放队列
+    // 设置整个搜索结果为播放队列（不回写 songs：取流期间用户可能已切源重搜，
+    // 回写会把过期列表污染新结果）
     setState('playQueue', songs);
     setState('playIdx', idx);
-    setState('songs', songs);
+    // 与 player.js playSongByIdx 一致：currentPlaying 驱动托盘/迷你播放器/播放器卡片，
+    // 也是 audio error 守卫与 25s 加载超时守卫的前置条件，缺失会导致取流失败后静默卡死
+    setState('currentPlaying', s);
     await loadAndPlay(s, proxied.fileUrl, true);
     showToast('▶ 正在播放：' + s.title, 'success', 2500);
   } catch (e) {
-    logger.warn('播放失败:', e);
-    showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+    if (reqId === _searchPlayRequestId) {
+      logger.warn('播放失败:', e);
+      showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+    }
   }
 }
 
 // ── 来源切换 ─────────────────────────────────────────
 function switchSource(src, btn) {
   setState('currentSource', src);
+  // btn 缺省时按 data-source 找对应 tab，保证程序化调用（无事件对象）也能切换高亮
+  const tab = btn || document.querySelector(`.search-source-tabs .tab[data-src="${src}"]`);
   document.querySelectorAll('.search-source-tabs .tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
+  if (tab) tab.classList.add('active');
   if (getState('currentKeyword')) doSearch(1);
 }
 

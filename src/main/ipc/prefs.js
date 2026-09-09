@@ -8,18 +8,38 @@
 
 const { ipcMain } = require('electron');
 const prefs = require('../../utils/prefs');
+const logger = require('../../utils/logger');
 
 // H9: Whitelist of allowed preference keys to prevent arbitrary key injection
+// 键全集 = 主进程 prefs.get() 读取的键 ∪ 渲染层 getPref/setPref 使用的键（见 src/renderer/js/）
 const ALLOWED_PREF_KEYS = new Set([
+  // 目录 / 通用
   'saveDir', 'localDirPath', 'theme', 'language',
-  'downloadQuality', 'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
-  'concurrency', 'downloadTemplates', 'searchHistory',
+  'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
+  // 命名模板（统一键名：下载页与设置页共用 namingTemplate）
+  'namingTemplate',
+  // 播放行为
+  'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
+  'lyricFontSize', 'lyricOffset', 'playProgressMemory',
+  // 播放状态持久化
+  'recentlyPlayed', 'playStats', 'playProgressMap',
+  // EQ
+  'eqPreset', 'eqGains', 'eqBypass',
+  // AI 音乐
+  'aiMusicApiKey', 'aiMusicSaveDir',
+  // 转码输出目录
+  'convertOutputDir',
+  // 队列模板 / 搜索历史（主进程内部写入，但导入流程会经 set）
+  'downloadTemplates', 'searchHistory',
 ]);
 
 function register() {
   ipcMain.handle('get-pref', (_, key) => prefs.get(key));
   ipcMain.handle('set-pref', (_, key, value) => {
-    if (!ALLOWED_PREF_KEYS.has(key)) return false;
+    if (!ALLOWED_PREF_KEYS.has(key)) {
+      logger.warn('[prefs] 拒绝写入未白名单的键:', key);
+      return false;
+    }
     prefs.set(key, value);
     return true;
   });

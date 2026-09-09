@@ -8,7 +8,7 @@
 // ══════════════════════════════════════════════════════════
 // ES Module 导入 — 确保所有模块被 Vite 包含
 // ══════════════════════════════════════════════════════════
-const logger = require('../../utils/logger');
+import { logger } from './logger.js';
 // 基础工具模块
 import './state.js';
 import './toast.js';
@@ -31,8 +31,8 @@ import './views/converter.js';
 import './views/playlist.js';
 import './player-controls.js';
 
-// 初始化模块（export 引入，供后续使用）
-import { persistPlayQueue } from './init.js';
+// 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
+import './init.js';
 import './i18n.js';
 import './logger.js';
 import './updater.js';
@@ -49,6 +49,7 @@ const mockApi = {
   getSingerAlbums: async () => ({ albums: [], total: 0 }),
   getAlbumSongs: async () => [],
   getDownloadUrl: async () => ({ url: '' }),
+  getDownloadUrlSmart: async () => ({ url: '' }),
   getLyrics: async () => ({ lrc: '' }),
   addToQueue: async (s) => { showToast(`已加入队列: ${s.title}`, 'info'); return { queued: true, taskId: 'mock-' + Date.now() }; },
   cancelDownload: () => {},
@@ -147,6 +148,9 @@ function mockLocalSongs() {
 
 // ── 音频元素（模块级，init 和 syncToMiniPlayer 都要访问）────────
 let _audio = null;
+// 25s 加载超时守卫状态（事件绑定区使用）
+let _loadWatchSince = 0;
+let _loadWatchTimer = null;
 
 // ── 初始化 ─────────────────────────────────────────────
 async function init() {
@@ -160,7 +164,18 @@ async function init() {
   try {
     const savedSaveDir = await api.getPref('saveDir');
     if (savedSaveDir) setState('saveDir', savedSaveDir);
-    document.getElementById('saveDirText').textContent = getState('saveDir') || '';
+    // 未设置过下载目录时显示主进程默认目录（音乐\MusicDownloader），
+    // 避免首页路径栏空白让用户误以为必须手动选目录
+    document.getElementById('saveDirText').textContent = getState('saveDir') || (await api.getDefaultDir()) || '';
+
+    // 恢复音质选择（此前仅设置页变更时同步，启动时从未恢复）
+    try {
+      const savedQuality = await api.getPref('quality');
+      if (savedQuality) {
+        const qs = document.getElementById('qualitySelect');
+        if (qs) qs.value = savedQuality;
+      }
+    } catch (_e) { /* 音质恢复失败使用默认 */ }
 
     // 恢复主题（尽早应用，避免闪烁）
     try {
@@ -185,12 +200,10 @@ async function init() {
       }
     } catch (_e) { /* 忽略 */ }
 
-    // 恢复命名模板
+    // 恢复命名模板（编辑入口在设置页，这里只同步 state）
     const savedTemplate = await api.getPref('namingTemplate');
     if (savedTemplate) {
       setState('namingTemplate', savedTemplate);
-      const tplInput = document.getElementById('namingTemplateInput');
-      if (tplInput) tplInput.value = savedTemplate;
     }
 
     const savedLocalDir = await api.getPref('localDirPath');
@@ -226,8 +239,39 @@ async function init() {
   try {
     _audio = document.getElementById('audioPlayer');
     if (_audio) {
-      _audio.addEventListener('timeupdate', updateProgress);
+      // timeupdate 只注册一次：同时驱动进度条和迷你播放器同步
+      // （此前注册了两个 timeupdate，updateProgress 每帧跑两遍）
+      _audio.addEventListener('timeupdate', () => {
+        updateProgress();
+        syncToMiniPlayer();
+      });
       _audio.addEventListener('ended', onAudioEnded);
+      // 音源加载/解码出错（URL 失效、代理文件损坏）：toast + 跳下一曲，避免静默卡死
+      _audio.addEventListener('error', () => {
+        const cur = getState('currentPlaying');
+        if (!cur || !_audio.error) return;
+        showToast('⚠️ 音源播放出错，自动播放下一曲', 'warn', 3000);
+        if (typeof window.nextSong === 'function') window.nextSong();
+      });
+      // 25s 加载超时守卫（借鉴 lx usePlayEvent）：一直没等到可播数据则跳下一曲，
+      // 避免 CDN 半开连接导致播放器永久卡死
+      _loadWatchTimer = setInterval(() => {
+        const cur = getState('currentPlaying');
+        const isStuck = cur && _audio.readyState < 2 && !_audio.paused;
+        if (isStuck) {
+          const now = Date.now();
+          if (!_loadWatchSince) _loadWatchSince = now;
+          if (now - _loadWatchSince > 25000) {
+            _loadWatchSince = 0;
+            showToast('⚠️ 音源加载超时，自动播放下一曲', 'warn', 3000);
+            if (typeof window.nextSong === 'function') window.nextSong();
+          }
+        } else {
+          _loadWatchSince = 0;
+        }
+      }, 1000);
+      _audio.addEventListener('playing', () => { _loadWatchSince = 0; });
+      _audio.addEventListener('pause', () => { _loadWatchSince = 0; });
       _audio.addEventListener('pause', () => {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
@@ -243,10 +287,6 @@ async function init() {
         if (typeof startSpectrum === 'function') startSpectrum();
         syncToMiniPlayer();
         syncToTray();
-      });
-      _audio.addEventListener('timeupdate', () => {
-        updateProgress();
-        syncToMiniPlayer();
       });
       _audio.addEventListener('loadedmetadata', () => {
         document.getElementById('timeTotal').textContent = fmtTime(_audio.duration);
@@ -273,6 +313,18 @@ async function init() {
     api.onTrayTogglePlay(() => { if (typeof togglePlay === 'function') togglePlay(); });
     api.onTrayPrev(() => { if (typeof prevSong === 'function') prevSong(); });
     api.onTrayNext(() => { if (typeof nextSong === 'function') nextSong(); });
+  }
+
+  // ── 应用菜单 IPC 监听（主进程菜单项经 webContents.send 下发）──
+  // 此前渲染层从未注册这两个监听：菜单的「聚焦搜索」「定时停止」是断链的。
+  if (window.ipcRenderer && typeof window.ipcRenderer.on === 'function') {
+    window.ipcRenderer.on('focus-search', () => {
+      const el = document.getElementById('searchInput');
+      if (el) { el.focus(); el.select?.(); }
+    });
+    window.ipcRenderer.on('sleep-timer', (minutes) => {
+      if (typeof window.setSleepTimer === 'function') window.setSleepTimer(minutes);
+    });
   }
 
   // ── 播放状态同步到系统托盘 ──────────────────────────
@@ -407,6 +459,13 @@ async function init() {
   // 加载首页推荐（失败不阻断主流程）
   loadHomeRecommendations().catch(e => logger.warn('首页推荐加载失败:', e.message));
 
+  // 启动时从 prefs 恢复最近播放记录（此前无人调用，刷新后清零）
+  if (typeof window.loadRecentlyPlayed === 'function') {
+    window.loadRecentlyPlayed()
+      .then(() => { if (typeof window.renderRecentlyPlayed === 'function') window.renderRecentlyPlayed(); })
+      .catch(e => logger.warn('[init] 最近播放恢复失败:', e.message));
+  }
+
   // 焦点到搜索框
   const searchInput = document.getElementById('searchInput');
   if (searchInput) searchInput.focus();
@@ -479,16 +538,10 @@ async function changeSaveDir() {
 }
 
 // ── 命名模板 ──────────────────────────────────────────
+// 编辑入口在设置页（settingFilenameTmpl）；此函数保留供设置页保存路径使用
 async function saveNamingTemplate(template) {
   await api.setPref('namingTemplate', template);
   setState('namingTemplate', template);
-  showToast('命名模板已保存', 'success', 1500);
-}
-
-function resetNamingTemplate() {
-  const input = document.getElementById('namingTemplateInput');
-  if (input) input.value = '{artist} - {title}';
-  saveNamingTemplate('{artist} - {title}');
 }
 
 // ── 歌单弹层 ──────────────────────────────────────────
@@ -641,7 +694,7 @@ async function addSingleToQueue(idx) {
   try {
     const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    const r = await api.addToQueue({ ...s, saveDir, quality });
+    await api.addToQueue({ ...s, saveDir, quality });
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
     showToast('加入失败: ' + e.message, 'error');
@@ -806,7 +859,6 @@ window.addPlaylistToQueueClick = addPlaylistToQueueClick;
 window.downloadSongFromList = downloadSongFromList;
 window.openAlbumView = openAlbumView;
 window.saveNamingTemplate = saveNamingTemplate;
-window.resetNamingTemplate = resetNamingTemplate;
 
 // ── 播放队列面板 ────────────────────────────────────
 let _pqVisible = false;
