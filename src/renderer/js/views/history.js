@@ -23,11 +23,12 @@ async function loadHistory() {
     const opts = { limit: PAGE_SIZE, offset: historyPage * PAGE_SIZE };
     if (historyFilter) opts.keyword = historyFilter;
     
-    const [items, stats] = await Promise.all([
+    const [result, stats] = await Promise.all([
       api.queryHistory(opts),
       api.getHistoryStats(),
     ]);
-    renderHistory(items, stats);
+    // queryHistory 返回 { items, total }，解包后再渲染
+    renderHistory((result && result.items) || [], stats);
   } catch (e) {
     logger.warn('加载历史失败:', e);
     if (_historyDom.list) {
@@ -84,8 +85,12 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
       cover: '', duration: 0,
     });
     showToast(`「${title}」已重新加入下载队列`, 'success');
-    const dlNav = document.querySelector('.nav-item[data-tab="download"]');
-    if (dlNav) switchTab('download', dlNav);
+    // 已在合并页内：直接切到队列子 tab（不再跨页跳转）
+    if (typeof switchDlSubTab === 'function') switchDlSubTab('queue');
+    else {
+      const dlNav = document.querySelector('.nav-item[data-tab="download"]');
+      if (dlNav) switchTab('download', dlNav);
+    }
   } catch (e) {
     showToast('重试失败: ' + e.message, 'error');
   }

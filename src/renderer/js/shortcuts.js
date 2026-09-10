@@ -103,7 +103,9 @@ function handleKey(e) {
 }
 
 function focusTab(tabName, focusElId) {
-  const btn = document.querySelector(`.nav-item[data-tab="${tabName}"]`);
+  // 'history' 已并入 download 页（历史子 tab）：落到 download 导航项
+  const navName = tabName === 'history' ? 'download' : tabName;
+  const btn = document.querySelector(`.nav-item[data-tab="${navName}"]`);
   if (btn && typeof switchTab === 'function') switchTab(tabName, btn);
   if (focusElId) {
     setTimeout(() => {

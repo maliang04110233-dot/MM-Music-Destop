@@ -53,6 +53,10 @@
   color: var(--neon-cyan); font-weight: 600;
 }
 
+/* ── 下载页子 tab（队列 / 历史 合并页首层切换）──────── */
+.dl-subtabs { margin-bottom: -2px; }
+.dl-subtabs .filter-tab { padding: 6px 16px; font-size: 13px; }
+
 /* ── 下载选择栏 ─────────────────────────────────── */
 .dl-selection-bar {
   display: flex; align-items: center; gap: 8px;

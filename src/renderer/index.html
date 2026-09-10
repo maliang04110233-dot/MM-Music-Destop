@@ -74,9 +74,6 @@
     <button class="nav-item" data-tab="local" onclick="switchTab('local',this)">
       <span class="icon">📂</span> 本地歌曲
     </button>
-    <button class="nav-item" data-tab="history" onclick="switchTab('history',this)">
-      <span class="icon">📜</span> 下载历史
-    </button>
     <button class="nav-item" data-tab="ai-music" onclick="switchTab('ai-music',this)">
       <span class="icon">🤖</span> AI 创作
     </button>
@@ -321,6 +318,14 @@
 
     <!-- 下载页面 -->
         <div id="downloadPage" class="download-page" style="display:none;flex-direction:column;gap:12px;padding:4px 0;height:100%;min-height:0;overflow:hidden;">
+          <!-- 队列 / 历史 子页面切换 -->
+          <div class="dl-subtabs" style="display:flex;gap:4px;flex-shrink:0;">
+            <button class="filter-tab active" id="dlSubTabQueue" onclick="switchDlSubTab('queue')" data-i18n="download.subTabQueue">⬇ 下载队列</button>
+            <button class="filter-tab" id="dlSubTabHistory" onclick="switchDlSubTab('history')" data-i18n="download.subTabHistory">📜 下载历史</button>
+          </div>
+
+          <!-- 子页 1：下载队列 -->
+          <div id="dlQueuePane" style="display:flex;flex-direction:column;gap:12px;flex:1 1 0;min-height:0;">
           <div class="download-header" style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">
             <div style="font-size:16px;font-weight:600;" data-i18n="download.title">⬇ 下载队列</div>
             <span class="panel-badge" id="queueBadge">0</span>
@@ -352,28 +357,29 @@
           <div id="queueList" class="queue-list" style="flex:1 1 0;overflow-y:auto;min-height:0;max-height:none;">
             <div class="queue-empty" data-i18n="download.empty">暂无下载任务</div>
           </div>
-        </div>
+          </div><!-- /dlQueuePane -->
 
-    <!-- 下载历史页面 -->
-    <div id="historyPage" style="display:none;flex-direction:column;gap:12px;height:100%;">
-      <div class="history-header" style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
-        <div style="font-size:16px;font-weight:600;" data-i18n="history.title">📜 下载历史</div>
-        <div class="search-input-wrap" style="max-width:250px;">
-          <input class="search-input" id="historyFilter" placeholder="搜索历史..."
-            oninput="filterHistory()" onkeydown="if(event.key==='Enter')filterHistory()">
-        </div>
-        <span class="panel-badge" id="historyInfo" data-i18n="history.loading">加载中...</span>
-        <div style="flex:1"></div>
-        <button class="tab" onclick="clearAllHistory()" data-i18n="history.clearAll">🗑 清空历史</button>
-      </div>
-      <div id="historyList" class="history-list" style="flex:1;overflow-y:auto;">
-        <div class="loading"><div class="spinner"></div> 加载中...</div>
-      </div>
-      <div class="history-pagination" id="historyPagination" style="display:flex;gap:8px;flex-shrink:0;">
-        <button class="page-btn" onclick="historyPrevPage()" data-i18n="history.prevPage">上一页</button>
-        <button class="page-btn" onclick="historyNextPage()" data-i18n="history.nextPage">下一页</button>
-      </div>
-    </div>
+          <!-- 子页 2：下载历史 -->
+          <div id="historyPage" class="dl-history-pane" style="display:none;flex-direction:column;gap:12px;flex:1 1 0;min-height:0;">
+            <div class="history-header" style="display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;">
+              <div style="font-size:16px;font-weight:600;" data-i18n="history.title">📜 下载历史</div>
+              <div class="search-input-wrap" style="max-width:250px;">
+                <input class="search-input" id="historyFilter" placeholder="搜索历史..."
+                  oninput="filterHistory()" onkeydown="if(event.key==='Enter')filterHistory()">
+              </div>
+              <span class="panel-badge" id="historyInfo" data-i18n="history.loading">加载中...</span>
+              <div style="flex:1"></div>
+              <button class="tab" onclick="clearAllHistory()" data-i18n="history.clearAll">🗑 清空历史</button>
+            </div>
+            <div id="historyList" class="history-list" style="flex:1;overflow-y:auto;min-height:0;">
+              <div class="loading"><div class="spinner"></div> 加载中...</div>
+            </div>
+            <div class="history-pagination" id="historyPagination" style="display:flex;gap:8px;flex-shrink:0;">
+              <button class="page-btn" onclick="historyPrevPage()" data-i18n="history.prevPage">上一页</button>
+              <button class="page-btn" onclick="historyNextPage()" data-i18n="history.nextPage">下一页</button>
+            </div>
+          </div><!-- /historyPage -->
+        </div><!-- /downloadPage -->
 
     <!-- AI 音乐页面 -->
     <div id="aiMusicPage" style="display:none;flex-direction:column;height:100%;padding:16px;">

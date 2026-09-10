@@ -497,7 +497,8 @@ function switchTab(tab, btn) {
   searchPage.style.display = 'none';
   downloadPage.style.display = 'none';
   localPage.classList.remove('active');
-  historyPage.style.display = 'none';
+  // historyPage 已并入 downloadPage 作为子页，路由上 'history' 视为 'download' 的历史子 tab
+  if (historyPage) historyPage.style.display = 'none';
   if (aiMusicPage) aiMusicPage.style.display = 'none';
   if (converterPage) converterPage.style.display = 'none';
 
@@ -506,15 +507,14 @@ function switchTab(tab, btn) {
     if (!getState('homeRecommendations')) loadHomeRecommendations();
   } else if (tab === 'search') {
     searchPage.style.display = 'flex';
-  } else if (tab === 'download') {
+  } else if (tab === 'download' || tab === 'history') {
     downloadPage.style.display = 'flex';
+    // 合并页：download → 队列子页；history → 历史子页（Ctrl+H 等旧入口兼容）
+    switchDlSubTab(tab === 'history' ? 'history' : 'queue');
   } else if (tab === 'local') {
     localPage.classList.add('active');
     const localSongs = getState('localSongs');
     if (!localSongs || !localSongs.length) scanLocalDir();
-  } else if (tab === 'history') {
-    historyPage.style.display = 'flex';
-    loadHistory();
   } else if (tab === 'ai-music') {
     if (aiMusicPage) {
       aiMusicPage.style.display = 'flex';
@@ -526,6 +526,22 @@ function switchTab(tab, btn) {
       if (typeof initConverter === 'function') initConverter();
     }
   }
+}
+
+// ── 下载页子 tab（下载队列 / 下载历史 合并页）────────
+function switchDlSubTab(sub) {
+  const queuePane = document.getElementById('dlQueuePane');
+  const historyPane = document.getElementById('historyPage');
+  const tabQueue = document.getElementById('dlSubTabQueue');
+  const tabHistory = document.getElementById('dlSubTabHistory');
+  if (!queuePane || !historyPane) return;
+  const showHistory = sub === 'history';
+  queuePane.style.display = showHistory ? 'none' : 'flex';
+  historyPane.style.display = showHistory ? 'flex' : 'none';
+  if (tabQueue) tabQueue.classList.toggle('active', !showHistory);
+  if (tabHistory) tabHistory.classList.toggle('active', showHistory);
+  // 历史子页首开时拉数据；回队列子页无需刷新（renderQueue 由事件驱动）
+  if (showHistory && typeof loadHistory === 'function') loadHistory();
 }
 
 async function changeSaveDir() {
@@ -821,6 +837,7 @@ async function openAlbumView(albumMid, source, albumName) {
 export {
   init,
   switchTab,
+  switchDlSubTab,
   changeSaveDir,
   openPlaylistModal,
   closePlaylistModal,
@@ -845,6 +862,7 @@ Object.defineProperty(window, 'api', {
 });
 window.init = init;
 window.switchTab = switchTab;
+window.switchDlSubTab = switchDlSubTab;
 window.changeSaveDir = changeSaveDir;
 window.openPlaylistModal = openPlaylistModal;
 window.closePlaylistModal = closePlaylistModal;

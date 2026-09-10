@@ -5,7 +5,7 @@
   "nav.search": "搜索",
   "nav.download": "下载",
   "nav.local": "本地歌曲",
-  "nav.history": "下载历史",
+  
   "nav.aiMusic": "AI 创作",
   "nav.converter": "格式转换",
   "nav.openDownloadDir": "打开下载目录",
@@ -66,6 +66,8 @@
   "local.completingCover": "正在补全封面...",
   "local.cancel": "取消",
   "download.title": "⬇ 下载队列",
+  "download.subTabQueue": "⬇ 下载队列",
+  "download.subTabHistory": "📜 下载历史",
   "download.filterAll": "全部",
   "download.filterActive": "下载中",
   "download.filterDone": "已完成",
