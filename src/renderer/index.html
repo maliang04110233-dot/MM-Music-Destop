@@ -526,14 +526,8 @@
           </div>
         </div>
 
-        <!-- 次要工具行：快退 10s / 快进 10s / 封面动画 / 播放队列 / 迷你播放器 -->
+        <!-- 次要工具行：封面动画 / 播放队列 / 迷你播放器（快进快退走快捷键 ←→ 与进度条点击） -->
         <div class="pc-tool-row">
-          <button class="ctrl-btn ctrl-sm" onclick="seekBack10()" title="后退 10 秒">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11 6v12L2 12l9-6zm0-6v2.5L3.5 12 11 17.5V20L0 12 11 0zm11 6v12l-9-6 9-6zm0-6v2.5L14.5 12 22 17.5V20L11 12 22 0z" transform="scale(0.92) translate(1,1)"/></svg>
-          </button>
-          <button class="ctrl-btn ctrl-sm" onclick="seekForward10()" title="前进 10 秒">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l9-6-9-6zm0-6v2.5L20.5 12 13 17.5V20L24 12 13 0zm-11 6v12l9-6-9-6zm0-6v2.5L9.5 12 2 17.5V20L13 12 2 0z" transform="scale(0.92) translate(-1,1)"/></svg>
-          </button>
           <button class="ctrl-btn ctrl-sm" id="btnCoverAnim" title="切换封面动画" onclick="cycleCoverAnimation()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/></svg>
           </button>
