@@ -127,11 +127,11 @@
   background: var(--bg-card);
   border: 1px solid var(--neon-blue-dim);
   border-radius: 20px;
-  padding: 20px 18px 18px;
+  padding: 16px 16px 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   position: relative;
   overflow: hidden;
   /* 玻璃 + 扫描线纹理 */
@@ -175,8 +175,8 @@
 /* ── 圆形封面盘 ─────────────────────────────────────── */
 .player-disc-wrap {
   position: relative;
-  width: 180px;
-  height: 180px;
+  width: 150px;
+  height: 150px;
   flex-shrink: 0;
 }
 .player-disc-glow {
@@ -237,7 +237,7 @@
 }
 
 .player-disc-ph {
-  font-size: 52px;
+  font-size: 44px;
   opacity: 0.3;
   filter: drop-shadow(0 0 8px rgba(0,255,200,0.3));
 }
@@ -249,8 +249,24 @@
 
 /* ── 歌曲信息 ───────────────────────────────────────── */
 .player-song-info {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
+  flex-shrink: 0;
+}
+/* 文本块占满剩余宽度，给标题/艺术家省略号截断留空间 */
+.psi-text {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+/* 工具组：封面动画 / 队列 / 迷你播放器（从控制区并入，省出一整行给歌词） */
+.psi-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
 }
 .player-title {
@@ -324,30 +340,24 @@
 .player-progress-track:hover .player-progress-thumb { opacity: 1; }
 
 /* ── 控制按钮 ───────────────────────────────────────── */
-/* ── 播放器控制区（两行布局）─────────────────────────
+/* ── 播放器控制区（单行主控）────────────────────────
    主行：模式 / 上一首 / 播放 / 下一首 / 音量（大按钮）
-   工具行：快退 / 快进 / 封面动画 / 队列 / 迷你（小按钮）
-   280px 卡片宽度下旧单行 9 键溢出 114px，队列/迷你键被裁切 */
+   封面动画 / 队列 / 迷你三键已并入 song-info 行右侧，
+   省出一整行高度给歌词区 */
 .player-controls {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: 100%;
+  flex-shrink: 0;
 }
 .pc-main-row {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-}
-.pc-tool-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 2px 0;
-  border-top: 1px solid rgba(56, 189, 248, 0.08);
+  width: 100%;
 }
 .ctrl-btn {
   background: none;
@@ -436,11 +446,13 @@
 /* ── 歌词区 ─────────────────────────────────────────── */
 .lyrics-area {
   flex: 1 1 0;        /* 可扩展填满剩余空间，但不压缩（basis=0） */
-  min-height: 60px;   /* 最小高度，防止被 spectrum 完全挤没 */
+  min-height: 160px;  /* 最小高度：保证约 5 行歌词可见 */
   overflow-y: auto;
   padding: 0 4px;
   width: 100%;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
+  mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
 }
 .lyric-line {
   font-size: 12px;

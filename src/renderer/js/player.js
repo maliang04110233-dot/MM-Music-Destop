@@ -1106,7 +1106,13 @@ export function updateLyric(t) {
   if (idx >= 0 && idx < els.length && els[idx]) {
     const el = els[idx];
     el.classList.add('active');
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // 居中滚动：本 Chromium 下 CSS scroll-behavior:smooth 会让 scrollIntoView 立即滚
+    // 却又静默丢帧（表现为 scrollTop 恒 0、当前行永远停在列表底部之外），故手动计算居中位置
+    const la = document.getElementById('lyricsArea');
+    if (la) {
+      const target = el.offsetTop - (la.clientHeight - el.offsetHeight) / 2;
+      la.scrollTop = Math.max(0, Math.min(target, la.scrollHeight - la.clientHeight));
+    }
     // 逐字高亮
     const words = el.querySelectorAll('.lyric-word');
     words.forEach(w => {

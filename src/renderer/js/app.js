@@ -483,7 +483,9 @@ async function init() {
 // ── 页面切换 ───────────────────────────────────────────
 function switchTab(tab, btn) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  btn.classList.add('active');
+  // btn 缺省时按 data-tab 兜底（程序化/CDP 调用不传事件按钮），找不到不阻断切换
+  const navBtn = btn || document.querySelector(`.nav-item[data-tab="${tab}"]`);
+  if (navBtn) navBtn.classList.add('active');
 
   const homePage = document.getElementById('homePage');
   const searchPage = document.getElementById('searchPage');
