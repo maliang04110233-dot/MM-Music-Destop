@@ -42,7 +42,8 @@
   background: linear-gradient(145deg, var(--bg-card) 0%, rgba(22,33,62,.95) 100%);
   border: 1px solid rgba(56,189,248,.2);
   border-radius: 20px;
-  width: 620px;
+  width: 860px;
+  max-width: 92vw;
   /* 固定高度：切二级页时内容少的页（账号 251px）不再把面板塌缩，
      与内容多的页（通用 2003px 触顶）保持同一容器尺寸，内容区内部滚动 */
   height: 82vh;
