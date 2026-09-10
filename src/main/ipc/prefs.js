@@ -20,7 +20,7 @@ const ALLOWED_PREF_KEYS = new Set([
   'namingTemplate',
   // 播放行为
   'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
-  'lyricFontSize', 'lyricOffset', 'playProgressMemory',
+  'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
   // 播放状态持久化
   'recentlyPlayed', 'playStats', 'playProgressMap',
   // EQ

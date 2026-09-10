@@ -817,6 +817,7 @@ export function setVolume(value) {
   const btn = document.getElementById('volumeBtn');
   if (slider) slider.value = vol;
   if (label) label.textContent = vol + '%';
+  if (typeof _persistVolume === 'function') _persistVolume();
   // 更新图标
   if (btn) {
     if (vol === 0) {
@@ -838,8 +839,37 @@ export function toggleMute() {
   }
 }
 
-// 初始化音量
+// 初始化音量：恢复上次记住的音量（prefs.playerVolume），无记录则 80%。
+// 注意恢复逻辑须等 window.api 就绪——player.js 被 app.js import 时 api getter
+// 可能尚未挂上（模块体先于 app.js 执行），故挂 DOMContentLoaded 而非模块加载时执行
 audio.volume = 0.8;
+(function scheduleVolumeRestore() {
+  const restore = () => {
+    if (typeof window.api !== 'undefined' && typeof window.api.getPref === 'function') {
+      window.api.getPref('playerVolume')
+        .then(v => { if (typeof v === 'number' && !isNaN(v)) setVolume(Math.round(Math.min(1, Math.max(0, v)) * 100)); })
+        .catch(() => {});
+    }
+  };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(restore, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', restore, { once: true });
+  }
+})();
+// 音量记忆：变更后防抖写 prefs（拖动滑条时 setVolume 高频触发，不能每步都写盘）
+let _volPersistTimer = null;
+function _persistVolume() {
+  if (_volPersistTimer) clearTimeout(_volPersistTimer);
+  _volPersistTimer = setTimeout(() => {
+    _volPersistTimer = null;
+    try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 持久化失败不影响音量本身 */ }
+  }, 600);
+}
+window.addEventListener('beforeunload', () => {
+  if (_volPersistTimer) { clearTimeout(_volPersistTimer); _volPersistTimer = null; }
+  try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 同上：尽力写盘 */ }
+});
 
 // ── 环形进度 ─────────────────────────────────────────
 function updateRingProgress(fraction) {

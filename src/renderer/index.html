@@ -497,26 +497,54 @@
       </div>
 
       <div class="player-controls">
-        <button class="ctrl-btn" id="btnPlayMode" title="播放模式" onclick="cyclePlayMode()">
-          <svg id="btnPlayModeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-        </button>
-        <button class="ctrl-btn" onclick="seekBack10()" title="后退 10 秒">⏮</button>
-        <button class="ctrl-btn" onclick="prevSong()" title="上一首">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-        </button>
-        <button class="ctrl-btn play-btn" id="btnPlay" onclick="togglePlay()">
-          <svg id="btnPlayIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button class="ctrl-btn" onclick="nextSong()" title="下一首">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-        </button>
-        <button class="ctrl-btn" onclick="seekForward10()" title="前进 10 秒">⏭</button>
-        <button class="ctrl-btn" id="btnCoverAnim" title="切换封面动画" onclick="cycleCoverAnimation()" style="font-size:12px;">💿</button>
-        <button class="ctrl-btn pq-toggle-btn" id="btnQueueToggle" title="播放队列" onclick="togglePlayQueue()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span class="pq-badge" id="pqBadge"></span>
-        </button>
-        <button class="ctrl-btn" id="btnMiniPlayer" title="迷你播放器" onclick="api.openMiniPlayer()" style="font-size:13px;">⧉</button>
+      <div class="player-controls">
+
+        <!-- 主控制行：模式 / 上一首 / 播放 / 下一首 / 音量 -->
+        <div class="pc-main-row">
+          <button class="ctrl-btn" id="btnPlayMode" title="播放模式" onclick="cyclePlayMode()">
+            <svg id="btnPlayModeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+          </button>
+          <button class="ctrl-btn" onclick="prevSong()" title="上一首">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+          </button>
+          <button class="ctrl-btn play-btn" id="btnPlay" onclick="togglePlay()">
+            <svg id="btnPlayIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="ctrl-btn" onclick="nextSong()" title="下一首">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+          <!-- 音量：点击静音，悬停弹出竖/横滑条（setVolume/toggleMute 已有实现，此前无 UI） -->
+          <div class="pc-volume" id="pcVolume">
+            <button class="ctrl-btn" id="volumeBtn" title="静音 / 恢复音量" onclick="toggleMute()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+            </button>
+            <div class="pc-volume-pop" id="volumePop">
+              <input type="range" id="volumeSlider" min="0" max="100" value="80"
+                title="音量" oninput="setVolume(this.value)" onchange="setVolume(this.value)">
+              <span id="volumeValue">80%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 次要工具行：快退 10s / 快进 10s / 封面动画 / 播放队列 / 迷你播放器 -->
+        <div class="pc-tool-row">
+          <button class="ctrl-btn ctrl-sm" onclick="seekBack10()" title="后退 10 秒">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11 6v12L2 12l9-6zm0-6v2.5L3.5 12 11 17.5V20L0 12 11 0zm11 6v12l-9-6 9-6zm0-6v2.5L14.5 12 22 17.5V20L11 12 22 0z" transform="scale(0.92) translate(1,1)"/></svg>
+          </button>
+          <button class="ctrl-btn ctrl-sm" onclick="seekForward10()" title="前进 10 秒">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l9-6-9-6zm0-6v2.5L20.5 12 13 17.5V20L24 12 13 0zm-11 6v12l9-6-9-6zm0-6v2.5L9.5 12 2 17.5V20L13 12 2 0z" transform="scale(0.92) translate(-1,1)"/></svg>
+          </button>
+          <button class="ctrl-btn ctrl-sm" id="btnCoverAnim" title="切换封面动画" onclick="cycleCoverAnimation()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <button class="ctrl-btn ctrl-sm pq-toggle-btn" id="btnQueueToggle" title="播放队列" onclick="togglePlayQueue()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <span class="pq-badge" id="pqBadge"></span>
+          </button>
+          <button class="ctrl-btn ctrl-sm" id="btnMiniPlayer" title="迷你播放器" onclick="api.openMiniPlayer()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15h18"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="lyrics-area" id="lyricsArea" style="display:none;"></div>

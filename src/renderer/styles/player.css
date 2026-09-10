@@ -324,11 +324,30 @@
 .player-progress-track:hover .player-progress-thumb { opacity: 1; }
 
 /* ── 控制按钮 ───────────────────────────────────────── */
+/* ── 播放器控制区（两行布局）─────────────────────────
+   主行：模式 / 上一首 / 播放 / 下一首 / 音量（大按钮）
+   工具行：快退 / 快进 / 封面动画 / 队列 / 迷你（小按钮）
+   280px 卡片宽度下旧单行 9 键溢出 114px，队列/迷你键被裁切 */
 .player-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+.pc-main-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
+}
+.pc-tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 2px 0;
+  border-top: 1px solid rgba(56, 189, 248, 0.08);
 }
 .ctrl-btn {
   background: none;
@@ -350,6 +369,43 @@
 .ctrl-btn.active {
   color: var(--neon-purple);
   filter: drop-shadow(0 0 6px rgba(167,139,250,0.8));
+}
+/* 工具行小键：hover 缩放幅度收小，避免互相贴近时视觉跳动 */
+.ctrl-sm { padding: 4px; }
+.ctrl-sm:hover { transform: scale(1.08); }
+
+/* ── 音量控件（悬停弹出滑条）───────────────────────── */
+.pc-volume { position: relative; display: flex; align-items: center; }
+.pc-volume-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 50%;
+  transform: translateX(50%) translateY(4px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--neon-blue-dim);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .5), 0 0 16px rgba(0, 255, 200, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+  z-index: 50;
+  white-space: nowrap;
+}
+.pc-volume:hover .pc-volume-pop,
+.pc-volume-pop:hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(50%) translateY(0);
+}
+#volumeValue { font-size: 11px; color: var(--neon-dim); min-width: 32px; text-align: right; }
+#volumeSlider {
+  width: 90px;
+  accent-color: var(--neon-cyan);
+  cursor: pointer;
 }
 
 .ctrl-btn.play-btn {
