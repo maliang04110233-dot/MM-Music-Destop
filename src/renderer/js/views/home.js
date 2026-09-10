@@ -332,7 +332,11 @@ async function addRecommendDownload(elId, idx) {
   try {
     const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    await api.addToQueue({ ...song, saveDir, quality });
+    const r = await api.addToQueue({ ...song, saveDir, quality });
+    if (r && r.duplicated) {
+      showToast(`「${song.title}」已在下载队列中`, 'warn', 2500);
+      return;
+    }
     showToast(`「${song.title}」已加入下载队列`, 'success');
   } catch (e) {
     showToast('加入下载失败：' + (e.message || e), 'error', 4000);
@@ -424,7 +428,7 @@ function renderRecentlyPlayed() {
     <div class="recent-item" onclick="playRecentSong(${i})">
       <div class="recent-cover">
         ${s.cover
-          ? `<img src="${s.cover}" alt="" onerror="this.parentElement.innerHTML='🎵'">`
+          ? `<img src="${escAttr(s.cover)}" alt="" onerror="this.parentElement.innerHTML='🎵'">`
           : '🎵'}
       </div>
       <div class="recent-info">

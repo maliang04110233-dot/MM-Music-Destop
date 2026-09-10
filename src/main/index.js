@@ -45,11 +45,28 @@ const QUEUE_FILE = () => path.join(app.getPath('userData'), 'queue.json');
 const PLAY_QUEUE_FILE = () => path.join(app.getPath('userData'), 'play-queue.json');
 
 // 持久化队列（防抖：500ms 内多次变更合并写入；原子写防半写损坏）
+// done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长
+const MAX_DONE_RETAINED = 200;
+function _trimDoneTasks() {
+  const doneCount = downloadQueue.filter(s => s && s.status === 'done').length;
+  if (doneCount <= MAX_DONE_RETAINED) return;
+  let toDrop = doneCount - MAX_DONE_RETAINED;
+  // 队列顺序即展示顺序：正序找最早入队的 done 逐个删除
+  for (let i = 0; i < downloadQueue.length && toDrop > 0; ) {
+    if (downloadQueue[i] && downloadQueue[i].status === 'done') {
+      downloadQueue.splice(i, 1);
+      toDrop--;
+    } else {
+      i++;
+    }
+  }
+}
 function persistQueue() {
   if (queuePersistTimer) return;
   queuePersistTimer = setTimeout(() => {
     queuePersistTimer = null;
     try {
+      _trimDoneTasks();
       atomicWriteJson(QUEUE_FILE(), downloadQueue);
     } catch (e) {
       logger.warn('队列持久化失败:', e.message);

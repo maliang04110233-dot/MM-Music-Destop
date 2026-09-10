@@ -710,7 +710,11 @@ async function addSingleToQueue(idx) {
   try {
     const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    await api.addToQueue({ ...s, saveDir, quality });
+    const r = await api.addToQueue({ ...s, saveDir, quality });
+    if (r && r.duplicated) {
+      showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
+      return;
+    }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
     showToast('加入失败: ' + e.message, 'error');

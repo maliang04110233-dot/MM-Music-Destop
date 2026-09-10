@@ -63,6 +63,12 @@ function register() {
   ipcMain.handle('add-to-queue', async (_, song) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue, processQueue } = require('../context').getCtx();
+    // 查重：同 id+source 且未完成的任务已在队列 → 拒绝，避免重复下载同一首
+    const dup = downloadQueue.find(s =>
+      s && s.id === song.id && s.source === song.source && s.status !== 'done');
+    if (dup) {
+      return { queued: false, duplicated: true, taskId: dup.taskId };
+    }
     const taskId = makeTaskId();
     downloadQueue.push({ ...song, taskId, status: 'pending', progress: 0, addedAt: Date.now() });
     safeSend('queue-updated', downloadQueue);

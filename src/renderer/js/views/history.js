@@ -79,12 +79,16 @@ function renderHistory(items, stats) {
 async function retryFromHistory(id, source, title, artist, album, quality) {
   const saveDir = getState('saveDir');
   try {
-    await api.addToQueue({
+    const r = await api.addToQueue({
       id, source, title, artist, album: album || '',
       saveDir, quality: quality || 'standard',
       cover: '', duration: 0,
     });
-    showToast(`「${title}」已重新加入下载队列`, 'success');
+    if (r && r.duplicated) {
+      showToast(`「${title}」已在下载队列中`, 'warn', 2500);
+    } else {
+      showToast(`「${title}」已重新加入下载队列`, 'success');
+    }
     // 已在合并页内：直接切到队列子 tab（不再跨页跳转）
     if (typeof switchDlSubTab === 'function') switchDlSubTab('queue');
     else {

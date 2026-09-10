@@ -418,7 +418,7 @@ function renderSingerList(list) {
   el.innerHTML = list.map(s => `
     <div class="singer-row" ondblclick="openSingerDetail('${escQ(s.mid)}', '${escQ(s.name)}', '${escQ(s.source)}')">
       ${s.avatar
-        ? `<img class="singer-avatar" src="${s.avatar}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        ? `<img class="singer-avatar" src="${escAttr(s.avatar)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
         : ''}
       <div class="singer-avatar-ph" ${s.avatar ? 'style="display:none"' : ''}>🎤</div>
       <div class="singer-info">
@@ -457,7 +457,7 @@ function renderAlbumList(list) {
   el.innerHTML = list.map(a => `
     <div class="album-row" ondblclick="openAlbumDetail('${escQ(a.mid)}', '${escQ(a.source)}')">
       ${a.cover
-        ? `<img class="album-cover" src="${a.cover}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        ? `<img class="album-cover" src="${escAttr(a.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
         : ''}
       <div class="album-cover-ph" ${a.cover ? 'style="display:none"' : ''}>💿</div>
       <div class="album-info">
@@ -628,7 +628,7 @@ function renderSongList(list) {
       <input type="checkbox" class="song-checkbox" data-idx="${i}" ${checked}
         onchange="toggleSongSelect(${i}, this.checked)">
       ${s.cover
-        ? `<img class="song-cover" src="${s.cover}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        ? `<img class="song-cover" src="${escAttr(s.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
         : ''}
       <div class="song-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
       <div class="song-info">
@@ -762,7 +762,8 @@ async function addDownload(idx) {
     if (existing) { showToast(`「${s.title}」已在队列中`, 'warn', 2500); return; }
     const quality = document.getElementById('qualitySelect').value;
     const saveDir = getState('saveDir');
-    await api.addToQueue({ ...s, saveDir, quality });
+    const r = await api.addToQueue({ ...s, saveDir, quality });
+    if (r && r.duplicated) { showToast(`「${s.title}」已在下载队列中`, 'warn', 2500); return; }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
     logger.warn(`[addDownload] error:`, e);
