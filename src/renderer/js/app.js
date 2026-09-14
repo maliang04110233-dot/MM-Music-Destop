@@ -276,7 +276,10 @@ async function init() {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
         document.getElementById('btnPlay')?.setAttribute('aria-pressed', 'false');
+        document.getElementById('btnPlay')?.classList.remove('buffering');
         document.getElementById('playerCard')?.classList.remove('playing');
+        // 暂停姿态：明确表达"是暂停不是卡死"（封面降饱和 + ⏸ 角标）
+        if (getState('currentPlaying')) document.getElementById('playerCard')?.classList.add('paused');
         if (typeof stopSpectrum === 'function') stopSpectrum();
         syncToMiniPlayer();
         syncToTray();
@@ -285,10 +288,25 @@ async function init() {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
         document.getElementById('btnPlay')?.setAttribute('aria-pressed', 'true');
+        document.getElementById('playerCard')?.classList.remove('paused');
         document.getElementById('playerCard')?.classList.add('playing');
         if (typeof startSpectrum === 'function') startSpectrum();
         syncToMiniPlayer();
         syncToTray();
+      });
+      // 缓冲反馈：waiting/stalled → 播放按钮转圈呼吸；playing/canplay → 恢复
+      // （此前缓冲与暂停视觉上无法区分，用户分不清"正在缓冲"还是"出错"）
+      _audio.addEventListener('waiting', () => {
+        if (getState('currentPlaying')) document.getElementById('btnPlay')?.classList.add('buffering');
+      });
+      _audio.addEventListener('stalled', () => {
+        if (getState('currentPlaying')) document.getElementById('btnPlay')?.classList.add('buffering');
+      });
+      _audio.addEventListener('playing', () => {
+        document.getElementById('btnPlay')?.classList.remove('buffering');
+      });
+      _audio.addEventListener('canplay', () => {
+        document.getElementById('btnPlay')?.classList.remove('buffering');
       });
       _audio.addEventListener('loadedmetadata', () => {
         document.getElementById('timeTotal').textContent = fmtTime(_audio.duration);

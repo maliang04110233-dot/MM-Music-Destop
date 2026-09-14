@@ -1121,7 +1121,8 @@ export function parseLrc(lrc) {
   const hasBilingual = parsedLyrics.some(l => l.subText);
 
   if (lyricsArea) {
-    lyricsArea.style.display = 'block';
+    // 手动隐藏时内容照常解析（恢复时立即可用），只是不显示
+    lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : 'block';
     lyricsArea.classList.remove('static-mode');
     lyricsArea.innerHTML = parsedLyrics.map((l, i) => {
     const wordSpans = l.words.map((w, j) =>
@@ -1168,7 +1169,7 @@ export function showStaticLyrics(text) {
   if (!text || !text.trim()) { showNoLyrics(); return; }
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lines.length || !lyricsArea) { showNoLyrics(); return; }
-  lyricsArea.style.display = 'block';
+  lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : 'block';
   lyricsArea.classList.add('static-mode');
   lyricsArea.innerHTML = lines.map(l => `<div class="lyric-line static">${esc(l)}</div>`).join('');
   lyricsArea.style.fontSize = _lyricFontSize + 'px';
@@ -1179,11 +1180,61 @@ export function showStaticLyrics(text) {
 export function showNoLyrics() {
   const lyricsArea = document.getElementById('lyricsArea');
   if (!lyricsArea) return;
+  // 用户手动隐藏歌词时保持隐藏（只切按钮态，不弹"暂无歌词"占位）
+  if (_lyricsHiddenByUser) { lyricsArea.style.display = 'none'; return; }
   lyricsArea.style.display = 'flex';
   lyricsArea.classList.add('static-mode');
   lyricsArea.innerHTML = '<div class="lyric-line static" style="text-align:center;opacity:0.45">暂无歌词</div>';
   setState('parsedLyrics', []);
 }
+
+// ── 歌词区手动开关（用户控制"全有或全无"的弹出） ──────────
+// 默认跟随后端自动行为（有词显示/无词占位/切歌清空）；
+// 用户点按钮后进入手动模式：隐藏时任何歌词加载都不再弹出，
+// 再点恢复自动。偏好持久化到 prefs.lyricsVisible。
+let _lyricsHiddenByUser = false;
+export function toggleLyricsArea() {
+  _lyricsHiddenByUser = !_lyricsHiddenByUser;
+  const lyricsArea = document.getElementById('lyricsArea');
+  const btn = document.getElementById('btnLyricsToggle');
+  if (lyricsArea) {
+    lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : '';
+    // 恢复时若当前无词，重新展示占位（保持"暂无歌词"的语义可见）
+    if (!_lyricsHiddenByUser && !(getState('parsedLyrics') || []).length) showNoLyrics();
+  }
+  if (btn) {
+    btn.classList.toggle('active', !_lyricsHiddenByUser);
+    btn.setAttribute('aria-pressed', String(!_lyricsHiddenByUser));
+  }
+  try { if (typeof api !== 'undefined' && api.setPref) api.setPref('lyricsVisible', !_lyricsHiddenByUser); } catch (_e) { /* 持久化失败不影响本次切换 */ }
+}
+window.toggleLyricsArea = toggleLyricsArea;
+
+// 启动时恢复用户歌词显隐偏好（默认显示），并同步按钮初始态
+(function restoreLyricsPref() {
+  const restore = () => {
+    const btn = document.getElementById('btnLyricsToggle');
+    try {
+      if (typeof window.api !== 'undefined' && window.api.getPref) {
+        window.api.getPref('lyricsVisible').then(v => {
+          if (v === false) {
+            _lyricsHiddenByUser = false; toggleLyricsArea(); // 切一次 → 隐藏
+          } else {
+            // 默认/记忆为显示：按钮态设为"开"（歌词区本身由加载流程控制显隐）
+            if (btn) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); }
+          }
+        }).catch(() => { if (btn) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); } });
+      } else if (btn) {
+        btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
+      }
+    } catch (_e) { /* ignore */ }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restore, { once: true });
+  } else {
+    setTimeout(restore, 0);
+  }
+})();
 
 // 缓存歌词 DOM 元素，避免每次 timeupdate 重复查询
 let _cachedLyricEls = null;

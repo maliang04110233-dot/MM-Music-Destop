@@ -482,6 +482,40 @@
 }
 .ctrl-btn.play-btn:active { transform: scale(0.96); }
 
+/* ── 缓冲状态：播放按钮转圈 ──────────────────────────
+   waiting/stalled 时按钮图标换成旋转圈，进度条走 10s 内条纹动画。
+   网络取流卡顿时用户能立刻分清"正在缓冲"vs"出错"。 */
+.ctrl-btn.play-btn.buffering {
+  background: linear-gradient(135deg, var(--neon-blue-dim), var(--neon-blue-dim));
+  animation: play-btn-breathe 1.2s ease-in-out infinite;
+}
+@keyframes play-btn-breathe {
+  0%, 100% { box-shadow: 0 0 12px rgba(0,180,255,0.35), inset 0 1px 0 rgba(255,255,255,0.1); }
+  50%      { box-shadow: 0 0 22px rgba(0,180,255,0.6), inset 0 1px 0 rgba(255,255,255,0.15); }
+}
+.ctrl-btn.play-btn.buffering svg {
+  animation: btn-spin 0.9s linear infinite;
+}
+@keyframes btn-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── 暂停姿态：唱片盘暗淡 + 角标提示 ──────────────────
+   暂停时 glow 熄灭已有；补"明确暂停"信号——封面盘降饱和度，
+   卡片右上角显示 ⏸ 角标（不进无障碍树，纯视觉提示）。 */
+.player-card.paused .player-disc-img { filter: saturate(0.55) brightness(0.8); transition: filter 0.3s; }
+.player-card:not(.paused) .player-disc-img { filter: none; transition: filter 0.3s; }
+.player-card.paused::after {
+  content: '⏸';
+  position: absolute;
+  top: 10px; right: 12px;
+  font-size: 13px;
+  opacity: 0.55;
+  z-index: 2;
+  pointer-events: none;
+}
+
 /* ── 歌词区 ─────────────────────────────────────────── */
 .lyrics-area {
   flex: 1 1 0;        /* 可扩展填满剩余空间，但不压缩（basis=0） */
