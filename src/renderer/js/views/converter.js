@@ -10,124 +10,9 @@ let _convInit = false;
 let _convLocalSongs = [];  // 本地歌曲缓存
 let _convOutputDir = null; // 输出目录
 
-// ── 均衡器预设 ────────────────────────────────────────
-// 格式: [dB at 32Hz, 64Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz]
-const EQ_PRESETS = {
-  'flat':      { label: '🎚️ 原声',        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  'bass':      { label: '🔊 低音增强',      bands: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
-  'treble':    { label: '🎸 高音增强',      bands: [0, 0, 0, 0, 0, 0, 2, 4, 5, 6] },
-  'vocal':     { label: '🎤 人声增强',      bands: [-2, -1, 0, 2, 4, 4, 2, 0, -1, -2] },
-  'rock':      { label: '🎸 摇滚',          bands: [5, 4, 2, 0, -1, 0, 2, 4, 5, 5] },
-  'pop':       { label: '✨ 流行',          bands: [-1, 2, 4, 5, 4, 2, 0, -1, -1, -2] },
-  'jazz':      { label: '🎷 爵士',          bands: [3, 2, 1, 2, -1, -1, 0, 2, 3, 4] },
-  'classical': { label: '🎻 古典',          bands: [4, 3, 2, 1, 0, 0, 0, 1, 2, 3] },
-  'electronic':{ label: '💿 电子',          bands: [5, 4, 2, 0, -2, 0, 2, 4, 5, 5] },
-  'live':      { label: '🎙️ 现场感',       bands: [4, 3, 1, 0, 0, -1, 0, 2, 3, 4] },
-  'acoustic':  { label: '🎸 原声',          bands: [3, 2, 1, 1, 0, 0, 1, 2, 3, 3] },
-  'custom':    { label: '✏️ 自定义',        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-};
-
-let _convEqPreset = 'flat';
-let _convCustomEq = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // dB values
-
-// ── 批量重命名 ────────────────────────────────────────
-const RENAME_VARS = [
-  { key: '{title}',   label: '标题' },
-  { key: '{artist}',  label: '艺术家' },
-  { key: '{album}',   label: '专辑' },
-  { key: '{year}',    label: '年份' },
-  { key: '{track}',   label: '音轨号' },
-  { key: '{source}',  label: '来源' },
-  { key: '{quality}', label: '音质' },
-  { key: '{ext}',     label: '扩展名' },
-];
-let _convRenamePattern = '{artist} - {title}';
-
-// ── EQ 预设 ───────────────────────────────────────────
-function applyEqPreset(preset) {
-  _convEqPreset = preset;
-  if (preset === 'custom') {
-    // 自定义，保持当前 _convCustomEq
-  } else {
-    _convCustomEq = [...EQ_PRESETS[preset].bands];
-  }
-  updateEqDisplay();
-  showToast(`EQ 预设: ${EQ_PRESETS[preset].label}`, 'info');
-}
-
-function setCustomEqBand(bandIdx, db) {
-  _convCustomEq[bandIdx] = db;
-  _convEqPreset = 'custom';
-  updateEqDisplay();
-}
-
-function updateEqDisplay() {
-  // 更新下拉显示
-  const sel = document.getElementById('converterEqPreset');
-  if (sel) sel.value = _convEqPreset;
-
-  // 更新自定义滑块显示
-  _convCustomEq.forEach((db, i) => {
-    const slider = document.getElementById(`eqBand${i}`);
-    const valEl = document.getElementById(`eqVal${i}`);
-    if (slider) slider.value = db;
-    if (valEl) valEl.textContent = (db >= 0 ? '+' : '') + db + 'dB';
-  });
-}
-
-function initEqControls() {
-  const container = document.getElementById('converterEqControls');
-  if (!container) return;
-
-  const FREQS = ['32', '64', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
-  container.innerHTML = FREQS.map((freq, i) => `
-    <div class="eq-band">
-      <div class="eq-val" id="eqVal${i}">0dB</div>
-      <input type="range" class="eq-slider" id="eqBand${i}"
-        min="-12" max="12" step="1" value="0"
-        oninput="setCustomEqBand(${i}, Number(this.value))">
-      <div class="eq-freq">${freq}</div>
-    </div>
-  `).join('');
-}
-
-// ── 批量重命名 ─────────────────────────────────────────
-function updateRenamePreview() {
-  const input = document.getElementById('converterRenamePattern');
-  if (!input) return;
-  _convRenamePattern = input.value;
-
-  const previewEl = document.getElementById('converterRenamePreview');
-  if (!previewEl) return;
-
-  // 显示前3个示例
-  const samples = _convQueue.filter(q => q.selected && q.status === 'pending').slice(0, 3);
-  if (samples.length === 0) {
-    previewEl.innerHTML = '<span style="color:var(--text-muted)">先选择歌曲查看预览</span>';
-    return;
-  }
-
-  previewEl.innerHTML = samples.map(s => {
-    const name = applyRenamePattern(s.song || s, _convRenamePattern);
-    return `<div class="rename-preview-item">→ ${escHtml(name)}</div>`;
-  }).join('');
-}
-
-function applyRenamePattern(song, pattern) {
-  return pattern
-    .replace('{title}',   cleanFileName(song.title || '未知标题'))
-    .replace('{artist}',  cleanFileName(song.artist || '未知艺术家'))
-    .replace('{album}',   cleanFileName(song.album || '未知专辑'))
-    .replace('{year}',    (song.year || '').toString().slice(0, 4))
-    .replace('{track}',   String(song.trackNumber || song.track || '').padStart(2, '0'))
-    .replace('{source}',  song.source || '')
-    .replace('{quality}', song.quality || '')
-    .replace('{ext}',     song.format || 'mp3');
-}
-
-function cleanFileName(name) {
-  return name.replace(/[\\/:*?"<>|]/g, '_').trim();
-}
+// （转换页早期的 EQ 预设/批量重命名预览块已删除：相关容器
+// converterEqControls/converterRenamePattern 从未加入 index.html，
+// EQ 活实现在 player.js + 设置页 eqPanel）
 
 // ── 初始化 ────────────────────────────────────────────
 function initConverter() {
@@ -167,10 +52,9 @@ function initConverter() {
   window._converterScan = scanLocalForConvert;
   window._converterSearch = () => filterConverterSongs();
   window._converterSelectOutputDir = selectOutputDir;
-  window._converterUpdateRename = updateRenamePreview;
+  // 队列行的 ✕ 按钮（renderQueue 模板 onclick）走全局名，需挂 window
+  window._converterRemoveFromQueue = removeFromQueue;
 
-  initEqControls();
-  updateEqDisplay();
   renderConverterSongs();
 }
 
@@ -430,7 +314,7 @@ function renderQueue() {
             <option value="aac" ${item.format==='aac'?'selected':''}>AAC</option>
             <option value="ogg" ${item.format==='ogg'?'selected':''}>OGG</option>
           </select>
-          <button onclick="removeFromQueue(${idx})" ${item.status !== 'pending' ? 'disabled' : ''} style="background:transparent;border:none;color:var(--neon-dim);font-size:14px;cursor:pointer;padding:2px 4px;" title="移除">✕</button>
+          <button onclick="_converterRemoveFromQueue(${idx})" ${item.status !== 'pending' ? 'disabled' : ''} style="background:transparent;border:none;color:var(--neon-dim);font-size:14px;cursor:pointer;padding:2px 4px;" title="移除">✕</button>
         </div>
       `).join('')}
     </div>`;

@@ -63,23 +63,6 @@ function loadAll() {
 }
 
 /**
- * 写入全量 Cookie 对象到磁盘（同步覆盖）
- * 同时更新内存缓存，保证后续 get() 一致
- */
-function saveAll(data) {
-  _cache = data && typeof data === 'object' ? { ...data } : {};
-  try {
-    const fp = getFilePath();
-    if (!fp) return false;
-    fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    logger.warn('[cookieStore] 写入失败:', e.message);
-    return false;
-  }
-}
-
-/**
  * 获取单个平台的 Cookie（O(1) 内存查找）
  */
 function get(platform) {

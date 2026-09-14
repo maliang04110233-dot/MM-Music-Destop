@@ -12,8 +12,6 @@ const { autoUpdater } = require('electron-updater');
 const { ipcMain } = require('electron');
 const logger = require('../utils/logger');
 
-let _updateAvailable = false;
-
 // ── 配置 ──────────────────────────────────────────────
 // 更新源固定为本仓库 GitHub Releases（electron-builder publish: always）
 autoUpdater.setFeedURL({ provider: 'github', repo: 'MusicDL', owner: 'maliang04110233-dot', releaseType: 'release' });
@@ -27,7 +25,6 @@ autoUpdater.on('checking-for-update', () => {
 });
 
 autoUpdater.on('update-available', (info) => {
-  _updateAvailable = true;
   logger.log('[Updater] Update available:', info.version);
   // 通知所有窗口
   const { BrowserWindow } = require('electron');

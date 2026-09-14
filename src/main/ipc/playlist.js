@@ -59,7 +59,8 @@ function register() {
   });
 
   // 添加歌曲到歌单
-  ipcMain.handle('add-to-user-playlist', (_, { playlistId, song }) => {
+  // 参数为位置参数（renderer 侧 api.addToUserPlaylist(playlistId, song)）
+  ipcMain.handle('add-to-user-playlist', (_, playlistId, song) => {
     if (!playlistId || !song) return { success: false, error: '参数不完整' };
     const playlists = prefs.get('userPlaylists') || [];
     const idx = playlists.findIndex(p => p.id === playlistId);
@@ -77,15 +78,15 @@ function register() {
     return { success: true, playlist: pl };
   });
 
-  // 从歌单移除歌曲
-  ipcMain.handle('remove-from-user-playlist', (_, { playlistId, songId }) => {
+  // 从歌单移除歌曲（位置参数，同上）
+  ipcMain.handle('remove-from-user-playlist', (_, playlistId, songId) => {
     if (!playlistId || !songId) return { success: false, error: '参数不完整' };
     const playlists = prefs.get('userPlaylists') || [];
     const idx = playlists.findIndex(p => p.id === playlistId);
     if (idx < 0) return { success: false, error: '歌单不存在' };
 
     const pl = playlists[idx];
-    pl.songs = pl.songs.filter(s => s.id !== songId);
+    pl.songs = pl.songs.filter(s => String(s.id) !== String(songId));
     pl.updatedAt = Date.now();
     playlists[idx] = pl;
     prefs.set('userPlaylists', playlists);

@@ -17,7 +17,6 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 
 /**
  * 原子写 JSON：tmp + rename

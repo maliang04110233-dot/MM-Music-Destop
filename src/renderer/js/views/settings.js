@@ -392,39 +392,10 @@ function setupGeneralSettingListeners() {
   }
 }
 
-// ── 云同步 ───────────────────────────────────────────
-async function exportAllData() {
-  try {
-    const result = await api.exportAllData();
-    if (result.success) {
-      showToast(`✅ 数据已导出到:\n${result.path}`, 'success');
-    } else if (!result.canceled) {
-      showToast('导出失败: ' + (result.error || '未知错误'), 'error');
-    }
-  } catch (e) {
-    showToast('导出失败: ' + e.message, 'error');
-  }
-}
+// （云同步导出/导入的 UI 入口是 exportConfig/importConfig，见 window 桥接区；
+// 早期的 exportAllData/importAllData 重复实现已删除）
 
-async function importAllData() {
-  if (!confirm('导入将覆盖现有数据（歌单、设置等），是否继续？')) return;
-  try {
-    const result = await api.importAllData();
-    if (result.success) {
-      showToast(result.message || '✅ 导入成功', 'success');
-      // 刷新歌单
-      if (typeof loadUserPlaylists === 'function') loadUserPlaylists();
-      // 刷新下载模板
-      if (typeof loadDownloadTemplates === 'function') loadDownloadTemplates();
-      // 重新加载通用设置
-      loadGeneralSettings();
-    } else if (!result.canceled) {
-      showToast('导入失败: ' + (result.error || '未知错误'), 'error');
-    }
-  } catch (e) {
-    showToast('导入失败: ' + e.message, 'error');
-  }
-}
+// ── 云同步 ───────────────────────────────────────────
 
 // ── 下载路径模板 ──────────────────────────────────────
 let _dlTemplates = [];
@@ -697,6 +668,9 @@ window.loadDownloadTemplates = loadDownloadTemplates;
 window.openDlTemplateEditor = openDlTemplateEditor;
 window.closeDlTemplateEditor = closeDlTemplateEditor;
 window.saveDlTemplate = saveDlTemplate;
+// 模板列表项（loadDownloadTemplates 渲染的 onclick）走全局名
+window.setActiveTemplate = setActiveTemplate;
+window.deleteDlTemplate = deleteDlTemplate;
 window.applyTheme = applyTheme;
 window.PLATFORMS = PLATFORMS;
 

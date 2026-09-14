@@ -74,6 +74,9 @@
     <button class="nav-item" data-tab="local" onclick="switchTab('local',this)">
       <span class="icon">📂</span> 本地歌曲
     </button>
+    <button class="nav-item" data-tab="playlist" onclick="switchTab('playlist',this)">
+      <span class="icon">🎼</span> 我的歌单
+    </button>
     <button class="nav-item" data-tab="ai-music" onclick="switchTab('ai-music',this)">
       <span class="icon">🤖</span> AI 创作
     </button>
@@ -458,6 +461,19 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 我的歌单 -->
+    <div id="playlistPage" style="display:none;flex-direction:column;gap:14px;height:100%;overflow-y:auto;padding:16px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:24px;">🎼</span>
+        <div style="flex:1;">
+          <div style="font-size:18px;font-weight:600;">我的歌单</div>
+          <div style="font-size:12px;color:var(--neon-dim);">创建歌单，收藏喜欢的歌曲，一键整单播放</div>
+        </div>
+        <button class="btn-primary" onclick="openPlaylistEditor(null)" style="white-space:nowrap;">➕ 新建歌单</button>
+      </div>
+      <div id="userPlaylistGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;"></div>
     </div>
 
     </div><!-- /content-main -->
@@ -1057,25 +1073,47 @@
   </div>
 </div>
 
-<!-- 下载路径模板编辑器弹窗 -->
-<div class="playlist-modal-overlay hidden" id="dlTemplateEditorModal" onclick="event.target === this && closeDlTemplateEditor()">
-  <div class="playlist-modal" style="min-width:400px;max-width:520px;">
+<!-- 我的歌单：歌单详情弹窗 -->
+<div class="playlist-modal-overlay hidden" id="playlistDetailModal" onclick="event.target === this && closePlaylistDetail()">
+  <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:80vh;display:flex;flex-direction:column;">
     <div class="playlist-modal-header">
-      <span class="playlist-modal-title" id="dlTemplateEditorTitle">➕ 新建路径模板</span>
-      <button class="playlist-modal-close" onclick="closeDlTemplateEditor()">✕</button>
+      <span class="playlist-modal-title" id="playlistDetailTitle">歌单</span>
+      <button class="playlist-modal-close" onclick="closePlaylistDetail()">✕</button>
+    </div>
+    <div style="padding:4px 16px;font-size:12px;color:var(--neon-dim);" id="playlistDetailDesc">暂无描述</div>
+    <div class="playlist-modal-body" id="playlistDetailSongs" style="flex:1;min-height:0;overflow-y:auto;padding:12px 16px 16px;"></div>
+  </div>
+</div>
+
+<!-- 我的歌单：新建/编辑歌单弹窗 -->
+<div class="playlist-modal-overlay hidden" id="playlistEditorModal" onclick="event.target === this && closePlaylistEditor()">
+  <div class="playlist-modal" style="min-width:360px;max-width:420px;">
+    <div class="playlist-modal-header">
+      <span class="playlist-modal-title" id="playlistEditorTitle">📋 新建歌单</span>
+      <button class="playlist-modal-close" onclick="closePlaylistEditor()">✕</button>
     </div>
     <div class="playlist-modal-body" style="display:flex;flex-direction:column;gap:12px;padding:16px;">
-      <div class="setting-row">
-        <label class="setting-label">模板名称</label>
-        <input type="text" class="setting-input" id="dlTemplateName" placeholder="例如: 按歌手分目录" maxlength="30">
+      <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+        <label class="setting-label">歌单名称</label>
+        <input type="text" class="setting-input" id="playlistEditorName" placeholder="例如: 深夜循环" maxlength="30">
       </div>
       <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
-        <label class="setting-label">路径格式</label>
-        <input type="text" class="setting-input" id="dlTemplatePath" placeholder="例如: D:/音乐/{artist}/{album}/{title}" style="font-family:monospace;font-size:12px;">
-        <div id="dlTemplateVarHints" class="setting-hint" style="font-size:11px;color:var(--neon-dim);">可用变量: {artist} {album} {title} {source} {year} {track}</div>
+        <label class="setting-label">描述（可选）</label>
+        <input type="text" class="setting-input" id="playlistEditorDesc" placeholder="一句话介绍这个歌单" maxlength="60">
       </div>
-      <button class="btn-primary" onclick="saveDlTemplate()" style="margin-top:4px;">💾 保存模板</button>
+      <button class="btn-primary" onclick="savePlaylist()" style="margin-top:4px;">💾 保存</button>
     </div>
+  </div>
+</div>
+
+<!-- 我的歌单：添加到歌单选择弹窗 -->
+<div class="playlist-modal-overlay hidden" id="playlistSelectModal" onclick="event.target === this && closePlaylistSelectModal()">
+  <div class="playlist-modal" style="min-width:320px;max-width:400px;">
+    <div class="playlist-modal-header">
+      <span class="playlist-modal-title">📋 添加到歌单</span>
+      <button class="playlist-modal-close" onclick="closePlaylistSelectModal()">✕</button>
+    </div>
+    <div class="playlist-modal-body" id="playlistSelectList" style="display:flex;flex-direction:column;gap:6px;padding:16px;"></div>
   </div>
 </div>
 

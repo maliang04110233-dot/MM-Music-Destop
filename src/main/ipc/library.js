@@ -213,7 +213,7 @@ function register() {
     const results = [];
     for (const s of songs) {
       try {
-        const r = await scheduleOnlineLrcFetch(s.filePath, { readAudioMetadata, getLyrics: require('../../api').getLyrics });
+        await scheduleOnlineLrcFetch(s.filePath, { readAudioMetadata, getLyrics: require('../../api').getLyrics });
         results.push({ filePath: s.filePath, ok: true });
       } catch (e) {
         results.push({ filePath: s.filePath, ok: false, error: e.message });

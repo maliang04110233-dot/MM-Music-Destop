@@ -926,8 +926,8 @@ function detectDuplicateSongs() {
 function renderDuplicateModal() {
   const { groups, selected } = _dupState;
 
-  const groupsHtml = groups.map((group, i) => {
-    const songsHtml = group.map((s) => {
+  const groupsHtml = groups.map((group, _i) => {
+    const songsHtml = group.map((s, j) => {
       const isSelected = selected.has(s.filePath);
       const isBest = j === 0;
       return `
