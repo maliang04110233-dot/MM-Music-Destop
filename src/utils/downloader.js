@@ -296,19 +296,32 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
         }).catch(e => reject(e));
       }
 
-      if (res.statusCode !== 200) {
+      // 200 = 全量下载；206 = 服务器支持 Range 续传（此前 206 会落到下方的
+      // !==200 分支被当错误拒绝，续传从未真正工作过）
+      if (res.statusCode !== 200 && res.statusCode !== 206) {
         cleanupTmp();  // 修复 P1-9：HTTP 错误也清理 .tmp
         return reject(new Error(`HTTP ${res.statusCode}: 下载失败`));
       }
+      const isResume = res.statusCode === 206 && resumeOffset > 0;
 
       const totalSize = parseInt(res.headers['content-length'] || '0', 10);
-      let downloaded = resumeOffset; // 断点续传：从偏移量开始计数
-      const fullSize = totalSize > 0 ? totalSize + resumeOffset : 0;
+      // 206 = 本次响应只含剩余部分（content-length 是剩余大小）；200 + Range 头
+      // = 服务器不支持续传、全量重发，此时进度基线必须归零
+      const isFullResend = res.statusCode === 200 && resumeOffset > 0;
+      const startOffset = isResume && !isFullResend ? resumeOffset : 0;
+      let downloaded = startOffset;
+      const fullSize = totalSize > 0 ? totalSize + startOffset : 0;
 
-      // 断点续传：206 Partial Content 表示服务器支持
-      const isResume = res.statusCode === 206;
-      const writeFlags = (isResume && resumeOffset > 0) ? 'a' : 'w'; // 追加模式
-      const writeStream = fs.createWriteStream(tmpPath, { flags: writeFlags });
+      // 防"200 + HTML 错误页"陷阱：部分 CDN 出错时不回 4xx/5xx 而是回 200 +
+      // 一段小体积错误页（text/html），不拦截的话会写库成功、嵌完 ID3 才发现
+      // 歌曲损坏。音频/图片二进制响应不会是 text/html，故按 Content-Type 拦截。
+      const contentType = String(res.headers['content-type'] || '').toLowerCase();
+      if (contentType.includes('text/html')) {
+        cleanupTmp();
+        return reject(new Error(`服务端返回 HTML 而非音频数据（Content-Type: ${contentType.slice(0, 40)}），疑似 CDN 错误页`));
+      }
+
+      const writeStream = fs.createWriteStream(tmpPath, { flags: isResume ? 'a' : 'w' });
 
       // 限速流
       const throttle = speedLimit > 0 ? createThrottleStream(speedLimit) : null;
@@ -520,6 +533,7 @@ function formatDuration(ms) {
  *
  * 这里对传输失败做指数退避重试（默认 2 次），仅在「瞬时网络错误」时重试，
  * HTTP 业务错误（由上层 processOneSong 处理）不在此重试。
+ * 瞬时错误中断后 .tmp 里已有部分数据，重试自动带上 resumeOffset 断点续传。
  *
  * @param {string} url
  * @param {string} savePath
@@ -530,13 +544,23 @@ function formatDuration(ms) {
 function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, options = {}) {
   const maxRetry = (typeof options.maxRetry === 'number' && options.maxRetry >= 0) ? options.maxRetry : 2;
   let attempt = 0;
+  let resumeOffset = 0; // 瞬时错误重试时带上已落盘的 .tmp 偏移，从断点续传而非从零重下
   const tryOnce = async () => {
     try {
-      return await downloadFile(url, savePath, onProgress, extraHeaders, 0, options);
+      const opts = { ...options, resumeOffset };
+      const result = await downloadFile(url, savePath, onProgress, extraHeaders, 0, opts);
+      return result;
     } catch (e) {
       attempt++;
       const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(e.message || '');
       if (attempt <= maxRetry && isTransient) {
+        // 只有成功写入过部分数据才值得续传；用已落盘 .tmp 大小作为偏移
+        try {
+          resumeOffset = fs.existsSync(savePath + '.tmp') ? fs.statSync(savePath + '.tmp').size : 0;
+        } catch (_e) { resumeOffset = 0; }
+        if (resumeOffset > 0) {
+          logger.info(`[downloadFileWithRetry] 检测到已下载 ${resumeOffset} 字节，将尝试断点续传`);
+        }
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
         logger.warn(`[downloadFileWithRetry] 第 ${attempt} 次传输失败（瞬时错误），${delay}ms 后重试:`, e.message);
         await new Promise(r => setTimeout(r, delay));
