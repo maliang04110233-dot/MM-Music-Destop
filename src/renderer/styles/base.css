@@ -252,6 +252,11 @@ input, textarea, select { font-family: inherit; }
 .toast-success { background: #166534; border: 1px solid #4ade80; }
 .toast-warn { background: #f39c12; }
 .toast-error { background: #7f1d1d; border: 1px solid #f87171; }
+/* 重复下载确认 toast：文案+按钮横排，按钮不换行挤压文本 */
+.toast-redownload { display: flex; align-items: center; gap: 12px; max-width: 420px; }
+.toast-redownload-text { flex: 1; min-width: 0; }
+.toast-redownload-btn { flex-shrink: 0; border: none; border-radius: 4px; padding: 5px 12px; background: #1a1a2e; color: #f39c12; font-size: 12px; font-weight: 600; cursor: pointer; }
+.toast-redownload-btn:hover { background: #2a2a4e; }
 @keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes toast-out { to { transform: translateX(20px); opacity: 0; } }
 

@@ -5,7 +5,6 @@
   "nav.search": "搜索",
   "nav.download": "下载",
   "nav.local": "本地歌曲",
-  
   "nav.aiMusic": "AI 创作",
   "nav.converter": "格式转换",
   "nav.openDownloadDir": "打开下载目录",
@@ -218,5 +217,10 @@
   "loading.default": "加载中...",
   "settings.general.backupTitle": "☁️ 备份与恢复",
   "settings.general.backupExportHint": "导出偏好设置、播放历史、下载记录、下载模板到 JSON 文件",
-  "settings.general.backupImportHint": "从 JSON 备份文件恢复偏好设置和历史记录（需重启生效）"
+  "settings.general.backupImportHint": "从 JSON 备份文件恢复偏好设置和历史记录（需重启生效）",
+  "toast.alreadyDownloaded": "「{title}」已下载过",
+  "toast.alreadyDownloadedAt": "「{title}」{when}已下载过",
+  "toast.redownload": "仍要下载",
+  "toast.skippedDownloaded": "跳过 {count} 首已下载过",
+  "toast.skippedQueueDup": "跳过 {count} 首队内重复"
 }

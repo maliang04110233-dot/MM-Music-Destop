@@ -65,6 +65,39 @@ function fmtHistoryTime(ts) {
   return Math.floor(diff / 86400000) + '天前';
 }
 
+// ── 重复下载确认 Toast ────────────────────────────────
+/**
+ * 显示"已下载过，是否重下"的可交互 Toast（跨会话下载去重）
+ *
+ * @param {string} title  歌曲标题（toast 文案里展示）
+ * @param {number} finishedAt 上次下载完成时间戳（可空，显示"3天前"）
+ * @param {function} onConfirm 用户点击「仍要下载」后的回调（由调用方带 forceRedownload 重发）
+ */
+function showRedownloadToast(title, finishedAt, onConfirm) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const when = finishedAt ? fmtHistoryTime(finishedAt) : '';
+  const el = document.createElement('div');
+  el.className = 'toast toast-warn toast-redownload';
+  const text = document.createElement('span');
+  text.className = 'toast-redownload-text';
+  text.textContent = when
+    ? `「${title}」${when}已下载过`
+    : `「${title}」已下载过`;
+  const btn = document.createElement('button');
+  btn.className = 'toast-redownload-btn';
+  btn.type = 'button';
+  btn.textContent = '仍要下载';
+  el.appendChild(text);
+  el.appendChild(btn);
+  container.appendChild(el);
+  btn.addEventListener('click', () => { el.remove(); if (onConfirm) onConfirm(); });
+  setTimeout(() => {
+    el.style.animation = 'toast-out .25s ease forwards';
+    setTimeout(() => el.remove(), 250);
+  }, 6000);
+}
+
 // ── ES Module 导出 ──────────────────────────────────────
 export {
   esc,
@@ -77,6 +110,7 @@ export {
   statusLabel,
   formatPlayCount,
   fmtHistoryTime,
+  showRedownloadToast,
 };
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -90,3 +124,4 @@ window.srcLabel = srcLabel;
 window.statusLabel = statusLabel;
 window.formatPlayCount = formatPlayCount;
 window.fmtHistoryTime = fmtHistoryTime;
+window.showRedownloadToast = showRedownloadToast;

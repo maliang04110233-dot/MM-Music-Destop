@@ -217,5 +217,10 @@
   "loading.default": "Loading...",
   "settings.general.backupTitle": "☁️ Backup & Restore",
   "settings.general.backupExportHint": "Export preferences, play history, download records, download templates to JSON file",
-  "settings.general.backupImportHint": "Restore preferences and history from JSON backup (restart to take effect)"
+  "settings.general.backupImportHint": "Restore preferences and history from JSON backup (restart to take effect)",
+  "toast.alreadyDownloaded": "\"{title}\" already downloaded",
+  "toast.alreadyDownloadedAt": "\"{title}\" was downloaded {when} ago",
+  "toast.redownload": "Download anyway",
+  "toast.skippedDownloaded": "Skipped {count} already downloaded",
+  "toast.skippedQueueDup": "Skipped {count} already in queue"
 }

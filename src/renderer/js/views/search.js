@@ -317,13 +317,6 @@ function _searchCacheSet(key, data) {
   _searchCache.set(key, { data, ts: Date.now() });
 }
 
-function clearSearchCache(platform) {
-  if (!platform) { _searchCache.clear(); return; }
-  for (const key of _searchCache.keys()) {
-    if (key.includes(':' + platform + ':')) _searchCache.delete(key);
-  }
-}
-
 async function doSearchByType(type, page, keyword, source) {
   const cacheKey = _searchCacheKey(type, page, keyword, source);
   const cached = _searchCacheGet(cacheKey);
@@ -510,15 +503,19 @@ async function downloadAlbum(albumMid, source) {
     if (!songs.length) { showToast('专辑无歌曲', 'warn'); return; }
     const quality = document.getElementById('qualitySelect').value;
     const saveDir = getState('saveDir');
-    let queued = 0;
+    let queued = 0, dlSkipped = 0;
     for (const s of songs) {
       const existing = (state.get('queueSnapshot') || []).find(q =>
         q.id === s.id && q.source === s.source && q.status !== 'done');
       if (existing) continue;
-      await api.addToQueue({ ...s, saveDir, quality });
-      queued++;
+      // 批量场景：历史已下载且文件还在 → 静默跳过（add-to-queue 返回 alreadyDownloaded）
+      const r = await api.addToQueue({ ...s, saveDir, quality });
+      if (r && r.queued) queued++;
+      else if (r && r.alreadyDownloaded) dlSkipped++;
     }
-    showToast(`专辑 ${songs.length} 首已加入下载队列`, 'success');
+    let msg = `专辑 ${queued} 首已加入下载队列`;
+    if (dlSkipped) msg += `，跳过 ${dlSkipped} 首已下载过`;
+    showToast(msg, 'success');
   } catch (e) {
     showToast('下载专辑失败: ' + (e.message || e), 'error');
   }
@@ -696,7 +693,7 @@ async function batchDownload() {
   const toAdd = Array.from(selected).map(i => songs[i]).filter(Boolean);
   const quality = document.getElementById('qualitySelect').value;
   const saveDir = getState('saveDir');
-  let queued = 0, skipped = 0;
+  let queued = 0, skipped = 0, dlSkipped = 0;
   const total = toAdd.length;
 
   // 显示进度条
@@ -715,8 +712,10 @@ async function batchDownload() {
       q.id === s.id && q.source === s.source && q.status !== 'done');
     if (existing) { skipped++; } else {
       try {
-        await api.addToQueue({ ...s, saveDir, quality });
-        queued++;
+        // 批量场景：历史已下载且文件还在 → 主进程静默跳过，这里只计数
+        const r = await api.addToQueue({ ...s, saveDir, quality });
+        if (r && r.queued) queued++;
+        else if (r && r.alreadyDownloaded) dlSkipped++;
       } catch (e) { logger.warn('加入队列失败:', s.title, e.message); }
     }
     // 更新进度
@@ -731,7 +730,7 @@ async function batchDownload() {
     setTimeout(() => { progressWrap.style.display = 'none'; }, 1500);
   }
 
-  showToast(`已加入 ${queued} 首${skipped ? `（跳过 ${skipped} 首已在队列）` : ''}`, 'success');
+  showToast(`已加入 ${queued} 首${skipped ? `（跳过 ${skipped} 首已在队列）` : ''}${dlSkipped ? `（跳过 ${dlSkipped} 首已下载过）` : ''}`, 'success');
   // 批量下载后退出选择模式
   exitSearchBatchMode();
 }
@@ -764,6 +763,14 @@ async function addDownload(idx) {
     const saveDir = getState('saveDir');
     const r = await api.addToQueue({ ...s, saveDir, quality });
     if (r && r.duplicated) { showToast(`「${s.title}」已在下载队列中`, 'warn', 2500); return; }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(s.title, r.finishedAt, () => {
+        api.addToQueue({ ...s, saveDir, quality, forceRedownload: true })
+          .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+      });
+      return;
+    }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
     logger.warn(`[addDownload] error:`, e);

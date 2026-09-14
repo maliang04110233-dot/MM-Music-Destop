@@ -119,6 +119,45 @@ test('history: 上限淘汰', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('history: findDownloaded 跨会话去重判定', () => {
+  const dir = makeTempDir();
+  const history = require('../src/utils/history');
+  history.init(dir);
+  history.clear();
+
+  // 一个真实存在的文件模拟已下载落盘
+  const realPath = path.join(dir, '晴天.mp3');
+  fs.writeFileSync(realPath, 'fake-audio');
+
+  history.add({ id: '1', source: 'netease', title: '晴天', status: 'done', savePath: realPath, finishedAt: 1 });
+  // error 记录不算
+  history.add({ id: '2', source: 'qq', title: '失败曲', status: 'error', savePath: path.join(dir, 'x.mp3'), finishedAt: 2 });
+  // done 但文件已删
+  history.add({ id: '3', source: 'qq', title: '被删曲', status: 'done', savePath: path.join(dir, 'gone.mp3'), finishedAt: 3 });
+  // done 但无 savePath
+  history.add({ id: '4', source: 'bilibili', title: '无路径', status: 'done', finishedAt: 4 });
+
+  // 命中：同 id+source、done、文件在磁盘
+  const hit = history.findDownloaded('1', 'netease');
+  assert.ok(hit, '已下载且文件存在 → 命中');
+  assert.strictEqual(hit.savePath, realPath);
+
+  // id 数字/字符串类型不一致也应命中（B站 id 可能是数字）
+  assert.ok(history.findDownloaded(1, 'netease'), '数字 id 应命中字符串记录');
+
+  // 不命中的各种情形
+  assert.strictEqual(history.findDownloaded('2', 'qq'), null, 'error 记录不算已下载');
+  assert.strictEqual(history.findDownloaded('3', 'qq'), null, '文件已删除不算已下载');
+  assert.strictEqual(history.findDownloaded('4', 'bilibili'), null, '无 savePath 不算已下载');
+  assert.strictEqual(history.findDownloaded('1', 'qq'), null, '同 id 不同源不命中');
+  assert.strictEqual(history.findDownloaded('999', 'netease'), null, '不存在的 id 不命中');
+  assert.strictEqual(history.findDownloaded('', 'netease'), null, '空 id 不命中');
+  assert.strictEqual(history.findDownloaded('1', ''), null, '空 source 不命中');
+
+  history.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('history: 损坏文件 → 备份 .bak + 空历史起步，新记录可写入', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'history-corrupt-'));
   fs.writeFileSync(path.join(dir, 'history.json'), '[{"id":1,"title":"半写', 'utf8');

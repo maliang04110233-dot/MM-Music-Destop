@@ -79,6 +79,8 @@ function renderHistory(items, stats) {
 async function retryFromHistory(id, source, title, artist, album, quality) {
   const saveDir = getState('saveDir');
   try {
+    // 历史页的重试按钮只出现在 error 记录上，但同曲可能在其他源下过：
+    // 仍查一次历史去重，命中弹「仍要下载」；forceRedownload 时跳过确认
     const r = await api.addToQueue({
       id, source, title, artist, album: album || '',
       saveDir, quality: quality || 'standard',
@@ -86,6 +88,15 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
     });
     if (r && r.duplicated) {
       showToast(`「${title}」已在下载队列中`, 'warn', 2500);
+    } else if (r && r.alreadyDownloaded) {
+      showRedownloadToast(title, r.finishedAt, () => {
+        api.addToQueue({
+          id, source, title, artist, album: album || '',
+          saveDir, quality: quality || 'standard',
+          cover: '', duration: 0, forceRedownload: true,
+        }).then(() => showToast(`「${title}」已重新加入下载队列`, 'success'))
+          .catch(e => showToast('重试失败: ' + e.message, 'error'));
+      });
     } else {
       showToast(`「${title}」已重新加入下载队列`, 'success');
     }

@@ -270,6 +270,10 @@ async function init() {
           _loadWatchSince = 0;
         }
       }, 1000);
+      // 页面卸载时停掉守卫定时器，避免遗留 interval
+      window.addEventListener('beforeunload', () => {
+        if (_loadWatchTimer) clearInterval(_loadWatchTimer);
+      });
       _audio.addEventListener('playing', () => { _loadWatchSince = 0; });
       _audio.addEventListener('pause', () => { _loadWatchSince = 0; });
       _audio.addEventListener('pause', () => {
@@ -514,6 +518,7 @@ function switchTab(tab, btn) {
   const historyPage = document.getElementById('historyPage');
   const aiMusicPage = document.getElementById('aiMusicPage');
   const converterPage = document.getElementById('converterPage');
+  const playlistPage = document.getElementById('playlistPage');
 
   homePage.style.display = 'none';
   searchPage.style.display = 'none';
@@ -523,6 +528,7 @@ function switchTab(tab, btn) {
   if (historyPage) historyPage.style.display = 'none';
   if (aiMusicPage) aiMusicPage.style.display = 'none';
   if (converterPage) converterPage.style.display = 'none';
+  if (playlistPage) playlistPage.style.display = 'none';
 
   if (tab === 'home') {
     homePage.style.display = 'flex';
@@ -537,6 +543,11 @@ function switchTab(tab, btn) {
     localPage.classList.add('active');
     const localSongs = getState('localSongs');
     if (!localSongs || !localSongs.length) scanLocalDir();
+  } else if (tab === 'playlist') {
+    if (playlistPage) {
+      playlistPage.style.display = 'flex';
+      if (typeof initPlaylistView === 'function') initPlaylistView();
+    }
   } else if (tab === 'ai-music') {
     if (aiMusicPage) {
       aiMusicPage.style.display = 'flex';
@@ -737,6 +748,14 @@ async function addSingleToQueue(idx) {
       showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
       return;
     }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(s.title, r.finishedAt, () => {
+        api.addToQueue({ ...s, saveDir, quality, forceRedownload: true })
+          .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+      });
+      return;
+    }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
     showToast('加入失败: ' + e.message, 'error');
@@ -770,7 +789,12 @@ async function addPlaylistToQueueClick(skipExisting) {
     const saveDir = getState('saveDir');
     const payload = { songs: toAdd.map(s => ({ ...s, saveDir, quality })) };
     const r = await api.addPlaylistToQueue(payload);
-    const msg = `已加入 ${r.queued} 首` + (skipped ? `（跳过 ${skipped} 首已下载）` : '');
+    const dlSkipped = r && r.skippedDownloaded ? r.skippedDownloaded : 0;
+    let msg = `已加入 ${r.queued} 首`;
+    const skippedParts = [];
+    if (skipped) skippedParts.push(`跳过 ${skipped} 首队内重复`);
+    if (dlSkipped) skippedParts.push(`跳过 ${dlSkipped} 首已下载过`);
+    if (skippedParts.length) msg += `（${skippedParts.join('，')}）`;
     showToast(msg, 'success');
     checkedSet.clear();
     renderPlaylistModal(state.getPlaylistSongs());

@@ -337,6 +337,14 @@ async function addRecommendDownload(elId, idx) {
       showToast(`「${song.title}」已在下载队列中`, 'warn', 2500);
       return;
     }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(song.title, r.finishedAt, () => {
+        api.addToQueue({ ...song, saveDir, quality, forceRedownload: true })
+          .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入下载失败：' + (e.message || e), 'error', 4000));
+      });
+      return;
+    }
     showToast(`「${song.title}」已加入下载队列`, 'success');
   } catch (e) {
     showToast('加入下载失败：' + (e.message || e), 'error', 4000);
@@ -494,6 +502,8 @@ window.clearLoadingPlaceholders = clearLoadingPlaceholders;
 window.updateAllPlaylistsGrid = updateAllPlaylistsGrid;
 window.renderRecentlyPlayed = renderRecentlyPlayed;
 window.playRecentSong = playRecentSong;
+// 推荐卡片"📋 添加到歌单"按钮（模板 onclick）
+window.quickAddRecommendToPlaylist = quickAddRecommendToPlaylist;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHomeDom();

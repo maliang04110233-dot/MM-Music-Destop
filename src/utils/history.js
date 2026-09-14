@@ -98,6 +98,28 @@ function add(entry) {
 }
 
 /**
+ * 查询某首歌是否已成功下载过（跨会话去重用，参考 streamrip 的去重数据库）
+ *
+ * 判定条件：status === 'done' 且 savePath 指向的文件仍存在于磁盘。
+ * 文件已被用户删除/移动的历史记录不算重复——用户重下大概率是故意的（找回文件）。
+ *
+ * @param {string} id    歌曲 id（内部统一转 String 比较，避免数字/字符串类型不一致漏判）
+ * @param {string} source 平台源
+ * @returns {Object|null} 命中的历史条目，未命中返回 null
+ */
+function findDownloaded(id, source) {
+  if (!_cache) _cache = _load();
+  if (id == null || id === '' || !source) return null;
+  const sid = String(id);
+  return _cache.find(e =>
+    e && e.status === 'done' &&
+    e.source === source &&
+    String(e.id) === sid &&
+    e.savePath && fs.existsSync(e.savePath)
+  ) || null;
+}
+
+/**
  * 查询历史
  * @param {Object} opts - { limit, offset, source, status, keyword }
  */
@@ -178,6 +200,6 @@ function destroy() {
 }
 
 module.exports = {
-  init, add, query, stats, flush, clear, destroy, importEntries,
+  init, add, query, stats, flush, clear, destroy, importEntries, findDownloaded,
   MAX_ENTRIES,
 };

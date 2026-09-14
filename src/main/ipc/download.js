@@ -11,6 +11,7 @@ const { ipcMain } = require('electron');
 const api = require('../../api');
 const { getDownloadQueue, safeSend } = require('../context');
 const { proxyPlay } = require('../playCache');
+const history = require('../../utils/history');
 const logger = require('../../utils/logger');
 
 function register() {
@@ -63,11 +64,25 @@ function register() {
   ipcMain.handle('add-to-queue', async (_, song) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue, processQueue } = require('../context').getCtx();
-    // 查重：同 id+source 且未完成的任务已在队列 → 拒绝，避免重复下载同一首
+    // 查重 1：同 id+source 且未完成的任务已在队列 → 拒绝，避免重复下载同一首
     const dup = downloadQueue.find(s =>
       s && s.id === song.id && s.source === song.source && s.status !== 'done');
     if (dup) {
       return { queued: false, duplicated: true, taskId: dup.taskId };
+    }
+    // 查重 2（跨会话）：历史里已成功下载过、文件还在磁盘上 → 弹确认框，
+    // 用户可选择强制重下（参考 streamrip 的下载去重；渲染层批量场景
+    // 传 forceRedownload 静默跳过，不走对话框）
+    if (!song.forceRedownload) {
+      const done = history.findDownloaded(song.id, song.source);
+      if (done) {
+        return {
+          queued: false,
+          alreadyDownloaded: true,
+          savePath: done.savePath,
+          finishedAt: done.finishedAt,
+        };
+      }
     }
     const taskId = makeTaskId();
     downloadQueue.push({ ...song, taskId, status: 'pending', progress: 0, addedAt: Date.now() });
@@ -173,8 +188,8 @@ function register() {
         existingIds.add(`${s.source}:${s.id}`);
       }
 
-      // 2. 逐首入队
-      let queued = 0, skippedDup = 0, skippedNoId = 0;
+      // 2. 逐首入队（批量场景查历史去重：已成功下载过且文件还在的静默跳过）
+      let queued = 0, skippedDup = 0, skippedNoId = 0, skippedDownloaded = 0;
       for (const s of songs) {
         if (!s || s.id == null || s.id === '' || !s.source) {
           skippedNoId++;
@@ -183,6 +198,10 @@ function register() {
         const key = `${s.source}:${s.id}`;
         if (existingIds.has(key)) {
           skippedDup++;
+          continue;
+        }
+        if (!s.forceRedownload && history.findDownloaded(s.id, s.source)) {
+          skippedDownloaded++;
           continue;
         }
         downloadQueue.push({
@@ -198,15 +217,16 @@ function register() {
 
       // 修复 B21：DEBUG 模式下才打 stderr，避免污染日志
       if (process.env.DEBUG) {
-        process.stderr.write(`[add-playlist-to-queue] queued=${queued} skippedDup=${skippedDup} skippedNoId=${skippedNoId} queueLen=${downloadQueue.length}\n`);
+        process.stderr.write(`[add-playlist-to-queue] queued=${queued} skippedDup=${skippedDup} skippedNoId=${skippedNoId} skippedDownloaded=${skippedDownloaded} queueLen=${downloadQueue.length}\n`);
       }
-    
+
       if (queued > 0) {
         safeSend('queue-updated', downloadQueue);
         persistQueue();
         processQueue();
       }
-    return { queued, skipped: skippedDup };
+      // skipped 字段保持原语义（队内重复）；skippedDownloaded 单独返回供前端展示
+    return { queued, skipped: skippedDup, skippedDownloaded };
     } catch (e) {
       logger.warn('[add-playlist-to-queue] 失败:', e);
       return { queued: 0, skipped: 0, error: e.message || String(e) };
