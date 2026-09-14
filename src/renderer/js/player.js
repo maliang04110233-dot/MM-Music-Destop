@@ -866,6 +866,36 @@ function _persistVolume() {
     try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 持久化失败不影响音量本身 */ }
   }, 600);
 }
+
+// ── 音量弹层交互升级：拖动锁定 + 滚轮调节 ─────────────
+// 旧交互仅 hover：拖动滑条到一半移出弹层直接断（opacity:0 + pointer-events:none
+// 立即生效），且除拖滑条外无快速调节手段。
+// 改为：滑条按下/聚焦期间弹层锁定显示（.pinned），松手 800ms 后自动收回；
+// 滚轮在音量按钮或弹层上直接 ±5%。
+function _initVolumeUX() {
+  const wrap = document.getElementById('pcVolume');
+  const slider = document.getElementById('volumeSlider');
+  if (!wrap || !slider) return;
+  let releaseTimer = null;
+  const pin = () => { wrap.classList.add('pinned'); if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null; } };
+  const scheduleRelease = () => {
+    if (releaseTimer) clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(() => { wrap.classList.remove('pinned'); releaseTimer = null; }, 800);
+  };
+  slider.addEventListener('pointerdown', pin);
+  slider.addEventListener('focus', pin);
+  slider.addEventListener('pointerup', scheduleRelease);
+  slider.addEventListener('blur', scheduleRelease);
+  // 拖动结束后指针通常已移出弹层，靠 pinned 保持收尾视觉一致
+  slider.addEventListener('change', scheduleRelease);
+  // 滚轮调节：在音量控件任意位置滚动直接加减，不必打开弹层
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const cur = Math.round(audio.volume * 100);
+    const next = Math.max(0, Math.min(100, cur + (e.deltaY < 0 ? 5 : -5)));
+    if (next !== cur) setVolume(next);
+  }, { passive: false });
+}
 window.addEventListener('beforeunload', () => {
   if (_volPersistTimer) { clearTimeout(_volPersistTimer); _volPersistTimer = null; }
   try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 同上：尽力写盘 */ }
@@ -886,6 +916,10 @@ export function updateProgress() {
   const fraction = audio.duration ? audio.currentTime / audio.duration : 0;
   const fill = document.getElementById('playerProgressFill');
   if (fill) fill.style.width = pct + '%';
+  const thumb = document.getElementById('playerProgressThumb');
+  if (thumb) thumb.style.left = 'calc(' + pct + '% - 5px)';
+  const bar = document.getElementById('playerProgressBar');
+  if (bar) bar.setAttribute('aria-valuenow', Math.round(pct));
   const now = document.getElementById('timeNow');
   if (now) now.textContent = fmtTime(audio.currentTime);
   const total = document.getElementById('timeTotal');
@@ -904,9 +938,90 @@ export function updateProgress() {
 export function seekAudio(e) {
   const bar = document.getElementById('playerProgressBar');
   if (!bar) return;
-  const rect = bar.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const pct = _pointerToPct(bar, e);
   if (audio.duration) audio.currentTime = pct * audio.duration;
+}
+
+/** 指针事件 → 进度百分比（0~1，含边界钳制） */
+function _pointerToPct(bar, e) {
+  const rect = bar.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+}
+
+/** 百分比 → 显示时间文本 */
+function _fmtTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+/**
+ * 进度条拖动（scrubbing）：按住拖动实时预览进度，松手落定。
+ * 替代旧版"只能点击"的交互——4px 命中区 + 无拖动是播放器最常见的可用性抱怨。
+ * 悬停时显示时间预览气泡（progressHoverTime）。
+ */
+function _initProgressDrag() {
+  const bar = document.getElementById('playerProgressBar');
+  if (!bar) return;
+  const fill = document.getElementById('playerProgressFill');
+  const thumb = document.getElementById('playerProgressThumb');
+  const hoverTime = document.getElementById('progressHoverTime');
+  const ariaTarget = bar;
+
+  // 悬停预览：指针在轨道上移动时显示对应时间气泡
+  bar.addEventListener('pointermove', (e) => {
+    if (!audio.duration || bar.classList.contains('dragging')) return;
+    const pct = _pointerToPct(bar, e);
+    if (hoverTime) {
+      hoverTime.textContent = _fmtTime(pct * audio.duration);
+      hoverTime.style.left = (pct * 100) + '%';
+    }
+  });
+
+  // 拖动开始：按住即进入 scrubbing，实时移动填充和气泡
+  bar.addEventListener('pointerdown', (e) => {
+    if (!audio.duration) return;
+    e.preventDefault();
+    bar.classList.add('dragging');
+    bar.setPointerCapture(e.pointerId);
+    const preview = (pct) => {
+      if (fill) fill.style.width = (pct * 100) + '%';
+      if (thumb) thumb.style.left = 'calc(' + (pct * 100) + '% - 5px)';
+      if (hoverTime) {
+        hoverTime.textContent = _fmtTime(pct * audio.duration);
+        hoverTime.style.left = (pct * 100) + '%';
+      }
+      if (ariaTarget) ariaTarget.setAttribute('aria-valuenow', Math.round(pct * 100));
+    };
+    preview(_pointerToPct(bar, e));
+    const onMove = (ev) => preview(_pointerToPct(bar, ev));
+    const onUp = (ev) => {
+      bar.classList.remove('dragging');
+      bar.removeEventListener('pointermove', onMove);
+      try { bar.releasePointerCapture(ev.pointerId); } catch (_e) { /* 已释放 */ }
+      const pct = _pointerToPct(bar, ev);
+      if (audio.duration) audio.currentTime = pct * audio.duration;
+    };
+    bar.addEventListener('pointermove', onMove);
+    bar.addEventListener('pointerup', onUp, { once: true });
+    bar.addEventListener('pointercancel', () => {
+      bar.classList.remove('dragging');
+      bar.removeEventListener('pointermove', onMove);
+    }, { once: true });
+  });
+
+  // 键盘可达：←/→ 微调 5 秒
+  bar.tabIndex = 0;
+  bar.addEventListener('keydown', (e) => {
+    if (!audio.duration) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const step = e.shiftKey ? 30 : 5;
+      audio.currentTime = Math.max(0, Math.min(audio.duration,
+        audio.currentTime + (e.key === 'ArrowLeft' ? -step : step)));
+    }
+  });
 }
 
 export function onAudioEnded() {
@@ -1137,6 +1252,14 @@ export function updateLyric(t) {
 //   parseLrc, showStaticLyrics, showNoLyrics, updateLyric
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
+// 进度条拖动/悬停预览/键盘微调 + 音量拖动锁定/滚轮调节。
+// module script 在 DOM 解析完后执行，但仍加 readyState 守卫以防未来加载位置变动。
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { _initProgressDrag(); _initVolumeUX(); }, { once: true });
+} else {
+  _initProgressDrag();
+  _initVolumeUX();
+}
 window.loadAndPlay = loadAndPlay;
 window.togglePlay = togglePlay;
 window.updateProgress = updateProgress;

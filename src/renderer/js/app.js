@@ -275,6 +275,7 @@ async function init() {
       _audio.addEventListener('pause', () => {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+        document.getElementById('btnPlay')?.setAttribute('aria-pressed', 'false');
         document.getElementById('playerCard')?.classList.remove('playing');
         if (typeof stopSpectrum === 'function') stopSpectrum();
         syncToMiniPlayer();
@@ -283,6 +284,7 @@ async function init() {
       _audio.addEventListener('play', () => {
         const icon = document.getElementById('btnPlayIcon');
         if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+        document.getElementById('btnPlay')?.setAttribute('aria-pressed', 'true');
         document.getElementById('playerCard')?.classList.add('playing');
         if (typeof startSpectrum === 'function') startSpectrum();
         syncToMiniPlayer();

@@ -305,28 +305,40 @@
 
 .player-progress-track {
   flex: 1;
-  height: 4px;
-  background: var(--neon-blue-dim);
+  height: 14px;              /* 命中区：视觉轨道 4px，可点可拖区域 14px */
+  background: transparent;
   border-radius: 2px;
   cursor: pointer;
   position: relative;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
-.player-progress-track:hover { opacity: 1; }
+.player-progress-track::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 5px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--neon-blue-dim);
+}
+.player-progress-track:hover,
+.player-progress-track.dragging { opacity: 1; }
 
 .player-progress-fill {
-  height: 100%;
+  position: absolute;
+  left: 0; top: 5px;
+  height: 4px;
   border-radius: 2px;
   background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
   box-shadow: 0 0 6px rgba(0,255,200,0.6), 0 0 12px rgba(0,255,200,0.3);
   width: 0%;
   transition: width 0.1s linear;
-  position: relative;
 }
+.player-progress-track.dragging .player-progress-fill { transition: none; }
 .player-progress-thumb {
   position: absolute;
-  right: -5px;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 10px;
@@ -336,8 +348,32 @@
   box-shadow: 0 0 6px var(--neon-cyan), 0 0 12px rgba(0,255,200,0.6);
   opacity: 0;
   transition: opacity 0.2s;
+  pointer-events: none;
 }
-.player-progress-track:hover .player-progress-thumb { opacity: 1; }
+.player-progress-track:hover .player-progress-thumb,
+.player-progress-track.dragging .player-progress-thumb { opacity: 1; }
+
+/* 拖动/悬停时间预览气泡 */
+.player-progress-hover-time {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  left: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-deep);
+  border: 1px solid var(--neon-cyan-dim);
+  color: var(--neon-cyan);
+  font-size: 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 60;
+}
+.player-progress-track:hover .player-progress-hover-time,
+.player-progress-track.dragging .player-progress-hover-time { opacity: 1; }
 
 /* ── 控制按钮 ───────────────────────────────────────── */
 /* ── 播放器控制区（单行主控）────────────────────────
@@ -380,11 +416,12 @@
   color: var(--neon-purple);
   filter: drop-shadow(0 0 6px rgba(167,139,250,0.8));
 }
-/* 工具行小键：hover 缩放幅度收小，避免互相贴近时视觉跳动 */
-.ctrl-sm { padding: 4px; }
+/* 工具行小键：命中区 ≥28px（桌面规范），图标不变只扩 padding；
+   hover 缩放幅度收小，避免互相贴近时视觉跳动 */
+.ctrl-sm { padding: 7px; }
 .ctrl-sm:hover { transform: scale(1.08); }
 
-/* ── 音量控件（悬停弹出滑条）───────────────────────── */
+/* ── 音量控件（悬停弹出 / 点击锁定 / 滚轮调节）────── */
 .pc-volume { position: relative; display: flex; align-items: center; }
 .pc-volume-pop {
   position: absolute;
@@ -405,8 +442,10 @@
   z-index: 50;
   white-space: nowrap;
 }
+/* hover 或点击锁定（.pinned）时显示——拖动滑条中途移出不再消失 */
 .pc-volume:hover .pc-volume-pop,
-.pc-volume-pop:hover {
+.pc-volume-pop:hover,
+.pc-volume.pinned .pc-volume-pop {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(50%) translateY(0);
