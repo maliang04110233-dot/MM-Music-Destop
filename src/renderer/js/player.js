@@ -165,10 +165,12 @@ export function updatePlayerCard(song) {
     document.getElementById('playerArtist').textContent = '—';
     document.getElementById('playerDiscImg').style.display = 'none';
     document.getElementById('playerDiscPh').style.display = 'flex';
+    _updateSrcBadge(null);
     return;
   }
   document.getElementById('playerTitle').textContent = song.title || '未知歌曲';
   document.getElementById('playerArtist').textContent = song.artist || '未知艺术家';
+  _updateSrcBadge(song);
   const discPh = document.getElementById('playerDiscPh');
   const discImg = document.getElementById('playerDiscImg');
   if (song.cover && song.cover !== discImg.src) {
@@ -180,6 +182,22 @@ export function updatePlayerCard(song) {
     discPh.style.display = 'flex';
   }
   // 不修改进度条、频谱等播放状态
+}
+
+const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', bilibili: 'B站' };
+/** 换源徽标：实际取流源(song._altSource.source)与原源不同时显示，
+    让"换源成功"从一次性 toast 变为持续可见状态 */
+function _updateSrcBadge(song) {
+  const badge = document.getElementById('playerSrcBadge');
+  if (!badge) return;
+  const alt = song && song._altSource;
+  if (alt && alt.source && alt.source !== song.source) {
+    badge.textContent = `↻ ${SOURCE_NAMES[alt.source] || alt.source}源`;
+    badge.title = `原源 ${SOURCE_NAMES[song.source] || song.source} 不可用，已自动切换`;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 // ── 播放 ─────────────────────────────────────────────
@@ -660,6 +678,7 @@ async function playSongByIdx(idx, song) {
     if (result.matchedSong) {
       showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
+      updatePlayerCard(song); // 换源徽标立即显示（不等下一次切歌）
     }
     const referer = (result.matchedSong?.source || song.source) === 'bilibili' ? 'https://www.bilibili.com/'
                   : (result.matchedSong?.source || song.source) === 'qq' ? 'https://y.qq.com/'
@@ -779,6 +798,17 @@ export function updatePlayModeButton() {
     // 顺序播放
     icon.innerHTML = '<circle cx="12" cy="12" r="10"/>';
   }
+
+  // tooltip / aria-label 随模式更新：纯图标很难分辨四种模式，悬停提示+读屏器
+  // 需要告知当前模式和点击后切换到什么
+  const modeNames = { shuffle: '随机播放', list: '列表循环', one: '单曲循环', order: '顺序播放' };
+  const nextNames = { shuffle: '列表循环', list: '单曲循环', one: '顺序播放', order: '随机播放' };
+  let cur = modeNames.order, next = nextNames.order;
+  if (isShuffled && loopMode === 0) { cur = modeNames.shuffle; next = nextNames.shuffle; }
+  else if (!isShuffled && loopMode === 1) { cur = modeNames.list; next = nextNames.list; }
+  else if (!isShuffled && loopMode === 2) { cur = modeNames.one; next = nextNames.one; }
+  btn.title = `${cur}（点击切换：${next}）`;
+  btn.setAttribute('aria-label', `播放模式：${cur}，点击切换到${next}`);
 }
 
 // ── 封面动画控制 ─────────────────────────────────────

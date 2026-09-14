@@ -284,6 +284,24 @@
   color: var(--neon-dim);
   margin-top: 3px;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+}
+/* 换源徽标：实际取流源与 song.source 不同时显示（如 B站→网易）。
+   后端 matchedFrom/matchedSong 数据现成，纯 UI 层补齐 */
+.player-src-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(0, 255, 200, 0.1);
+  border: 1px solid var(--neon-cyan-dim);
+  color: var(--neon-cyan);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 /* ── 进度条 ─────────────────────────────────────────── */
@@ -298,7 +316,9 @@
   color: var(--neon-dim);
   font-variant-numeric: tabular-nums;
   font-family: 'Consolas', 'Courier New', monospace;
-  min-width: 36px;
+  /* 等宽 min-width：容纳 mmm:ss（超 10 分钟曲目如 12:34），两侧等宽
+     避免进度条在播放过程中被挤压/抖动 */
+  min-width: 44px;
   letter-spacing: 0.5px;
 }
 .player-time:last-child { text-align: right; }
