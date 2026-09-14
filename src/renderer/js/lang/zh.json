@@ -222,5 +222,9 @@
   "toast.alreadyDownloadedAt": "「{title}」{when}已下载过",
   "toast.redownload": "仍要下载",
   "toast.skippedDownloaded": "跳过 {count} 首已下载过",
-  "toast.skippedQueueDup": "跳过 {count} 首队内重复"
+  "toast.skippedQueueDup": "跳过 {count} 首队内重复",
+  "toast.linkShort": "检测到短链，请先在浏览器打开后复制完整链接",
+  "toast.linkRecognized": "🔗 已识别 {source}链接：{title}",
+  "toast.linkFailed": "链接识别：{msg}",
+  "toast.linkUnsupported": "暂不支持该平台的专辑/歌单链接"
 }

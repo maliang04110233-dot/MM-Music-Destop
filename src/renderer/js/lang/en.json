@@ -222,5 +222,9 @@
   "toast.alreadyDownloadedAt": "\"{title}\" was downloaded {when} ago",
   "toast.redownload": "Download anyway",
   "toast.skippedDownloaded": "Skipped {count} already downloaded",
-  "toast.skippedQueueDup": "Skipped {count} already in queue"
+  "toast.skippedQueueDup": "Skipped {count} already in queue",
+  "toast.linkShort": "Short link detected. Open it in a browser first, then copy the full URL",
+  "toast.linkRecognized": "🔗 Link recognized ({source}): {title}",
+  "toast.linkFailed": "Link error: {msg}",
+  "toast.linkUnsupported": "Album/playlist links from this platform are not supported yet"
 }

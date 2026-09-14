@@ -308,6 +308,43 @@ async function getLyrics(id, source, title, artist) {
   return { lrc };
 }
 
+// ─── 粘贴链接智能识别（cobalt 式「贴链接即得歌」）──────────
+const { parseMusicLink, detectShortLink } = require('../utils/linkParser');
+
+/**
+ * 解析用户输入：链接 → { matched, song?, album?, playlist?, shortLink? }
+ *
+ * 单曲链接拉详情；专辑/歌单链接返回 { type, id, title } 由渲染层
+ * 走现有专辑/歌单曲目流程（getAlbumSongs / getPlaylistSongs）。
+ * 平台短链（163cn.tv / b23.tv）无法本地解析，返回 shortLink 标记。
+ */
+async function getSongByLink(text) {
+  const link = parseMusicLink(text);
+  if (!link) {
+    const short = detectShortLink(text);
+    if (short) return { matched: false, shortLink: short };
+    return { matched: false };
+  }
+
+  // 单曲：按平台拉详情
+  if (link.type === 'song') {
+    let song = null;
+    try {
+      if (link.platform === 'netease') song = await netease.neteaseGetSongDetail(link.id);
+      else if (link.platform === 'qq') song = await qq.qqGetSongDetail(link.id);
+      else if (link.platform === 'bilibili') song = await bilibili.bilibiliGetSongDetail(link.id, getCookie('bilibili'));
+      else if (link.platform === 'kugou') song = await kugou.kugouGetSongDetail(link.id);
+    } catch (e) {
+      logger.warn('[getSongByLink] 拉详情失败:', e.message || e);
+    }
+    if (!song) return { matched: true, link, error: '未能获取歌曲信息（链接可能已失效或需要登录）' };
+    return { matched: true, link, song };
+  }
+
+  // 专辑/歌单：只解析出 { type, id }，渲染层复用现有曲目录入流程
+  return { matched: true, link };
+}
+
 // ─── Cookie 验证聚合（插件架构版）──────────────────────────
 async function verifyCookie(platform, cookie) {
   const plugin = _registry.get(platform);
@@ -337,6 +374,9 @@ module.exports = {
   getDownloadUrlSmart,
   getLyrics,
   verifyCookie,
+  getSongByLink,
+  parseMusicLink,
+  detectShortLink,
   // Cookie
   setCookieStore,
   getCookie,

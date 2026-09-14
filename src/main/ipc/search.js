@@ -107,6 +107,17 @@ function register() {
       return { albums: [], total: 0, error: e.message };
     }
   });
+
+  // 粘贴链接智能识别：文本 → { matched, song? | link?, shortLink?, error? }
+  ipcMain.handle('get-song-by-link', async (_, ...a) => {
+    const [text] = args(a, a[0] || {});
+    try {
+      return await api.getSongByLink(String(text || ''));
+    } catch (e) {
+      logger.warn('链接识别失败:', e.message || e);
+      return { matched: false, error: e.message || e };
+    }
+  });
 }
 
 module.exports = { register };

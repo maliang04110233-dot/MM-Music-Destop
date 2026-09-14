@@ -324,9 +324,48 @@ async function kugouGetSingerAlbums(singerId, pageNo = 1, pageSize = 20) {
   };
 }
 
+/**
+ * 按 hash 拉单曲详情（粘贴链接智能识别用）
+ *
+ * 链接里只有单 hash（无 SQ/HQ hash），id 用 encodeKugouId(hash,'','') 编码——
+ * kugouGetUrl 对缺失的高品质 hash 已有降级处理。
+ * @param {string} hash 歌曲 FileHash
+ * @returns {Promise<object|null>} 标准歌曲对象，拉不到返回 null
+ */
+async function kugouGetSongDetail(hash) {
+  if (!hash) return null;
+  try {
+    const url = `https://mobilecdn.kugou.com/api/v3/song/detail?hash=${encodeURIComponent(hash)}&mid=${encodeURIComponent(getMid())}`;
+    const detail = await request(url, { timeout: 10000 });
+    const info = detail?.data?.info?.[0] || detail?.data || {};
+    if (!info || (!info.hash && !info.FileName && !info.songname)) return null;
+    // 接口同时回传 SQ/HQ hash 时编码进 id，下载侧可上更高音质
+    const fileHash = info.hash || hash;
+    const sqHash = info.sq_hash || info.SQFileHash || '';
+    const hqHash = info.hq_hash || info.HQFileHash || '';
+    const title = info.songname || info.FileName || (info.filename ? String(info.filename).split(' - ').pop() : '');
+    if (!title) return null;
+    return {
+      id: encodeKugouId(fileHash, sqHash, hqHash),
+      title,
+      artist: info.singername || info.SingerName || '',
+      album: info.albumname || info.AlbumName || '',
+      cover: fileHash
+        ? `https://imgessl.kugou.com/stdmusic/${String(fileHash).slice(0, 2)}/${fileHash}.jpg`
+        : '',
+      duration: (info.duration || info.Duration || 0) * 1000,
+      source: 'kugou',
+    };
+  } catch (e) {
+    logger.warn(`[kugou] song detail 失败 (hash=${String(hash).slice(0, 12)}...):`, e.message || e);
+    return null;
+  }
+}
+
 module.exports = {
   kugouSearch,
   kugouGetUrl,
+  kugouGetSongDetail,
   kugouGetLyrics,
   kugouGetLyricsByTitle,
   kugouSearchAlbum,

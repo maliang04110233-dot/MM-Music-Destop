@@ -27,7 +27,7 @@ const SAFE_CHANNELS_RECEIVE = new Set([
 
 const SAFE_CHANNELS_INVOKE = new Set([
   'search-music', 'search-album', 'search-singer',
-  'get-singer-songs', 'get-singer-albums', 'get-album-songs',
+  'get-singer-songs', 'get-singer-albums', 'get-album-songs', 'get-song-by-link',
   'get-home-recommendations', 'get-home-section', 'get-playlist-songs',
   'get-download-url', 'get-download-url-smart', 'add-to-queue', 'cancel-download', 'retry-download',
   'remove-queue-item', 'clear-finished-queue', 'clear-all-queue',
@@ -66,6 +66,7 @@ const METHOD_MAP = {
   getSingerSongs: 'get-singer-songs',
   getSingerAlbums: 'get-singer-albums',
   getAlbumSongs: 'get-album-songs',
+  getSongByLink: 'get-song-by-link',
   // 推荐
   getHomeSection: 'get-home-section',
   getHomeRecommendations: 'get-home-recommendations',

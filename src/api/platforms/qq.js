@@ -398,6 +398,36 @@ async function _tryRefreshMusickey(cookie, uin) {
   return payload.musickey || payload.loginKey || '';
 }
 
+/**
+ * 按 mid 拉单曲详情（粘贴链接智能识别用）
+ * @param {string} mid 歌曲 mid（songmid）
+ * @returns {Promise<object|null>} 标准歌曲对象（与 qqSearch 返回项同构），拉不到返回 null
+ */
+async function qqGetSongDetail(mid) {
+  try {
+    const result = await qqMusic.api('song', { songmid: String(mid) });
+    const track = result?.data?.track_info || result?.trackInfo || result?.track_info;
+    if (!track || !track.mid) return null;
+    return {
+      id: String(track.mid),
+      numId: track.id ? String(track.id) : '',
+      title: track.name || '',
+      artist: (track.singer || []).map(a => a.name).join(' / '),
+      album: track.album?.name || '',
+      albumMid: track.album?.mid || '',
+      cover: track.album?.mid
+        ? `https://y.qq.com/music/photo_new/T002R300x300M000${track.album.mid}.jpg`
+        : '',
+      duration: track.interval ? track.interval * 1000 : 0,
+      source: 'qq',
+      pay: track.pay,
+    };
+  } catch (e) {
+    logger.warn(`[qq] song detail 失败 (mid=${mid}):`, e.message || e);
+    return null;
+  }
+}
+
 
 async function qqVerifyCookie(cookie) {
   const detect = detectQQCookieType(cookie);
@@ -776,6 +806,7 @@ module.exports = {
   qqGetSingerSongs,
   qqGetSingerAlbums,
   qqGetUrl,
+  qqGetSongDetail,
   qqVerifyCookie,
   qqGetRecommendPlaylists,
   qqGetCategoryPlaylists,

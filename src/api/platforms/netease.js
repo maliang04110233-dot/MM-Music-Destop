@@ -83,6 +83,31 @@ async function neteaseGetUrl(id, quality, cookie = '') {
 }
 
 /**
+ * 按 id 拉单曲详情（粘贴链接智能识别用）
+ * @param {string} id 歌曲 id
+ * @returns {Promise<object|null>} 标准歌曲对象（与 searchMusic 返回项同构），拉不到返回 null
+ */
+async function neteaseGetSongDetail(id) {
+  try {
+    const res = await ncm.song_detail({ ids: String(id) });
+    const s = res?.body?.songs?.[0];
+    if (!s) return null;
+    return {
+      id: String(s.id),
+      title: s.name || '',
+      artist: (s.ar || []).map(a => a.name).join(' / '),
+      album: s.al?.name || '',
+      cover: s.al?.picUrl ? s.al.picUrl + '?param=300y300' : '',
+      duration: s.dt || 0,
+      source: 'netease',
+    };
+  } catch (e) {
+    logger.warn(`[netease] song_detail 失败 (id=${id}):`, e.message || e);
+    return null;
+  }
+}
+
+/**
  * 获取歌词
  * @param {string} id
  * @returns {Promise<string>}
@@ -297,6 +322,7 @@ module.exports = {
   neteaseSearch,
   neteaseGetUrl,
   neteaseGetLyrics,
+  neteaseGetSongDetail,
   neteaseVerifyCookie,
   neteaseGetPlaylistDetail,
   neteaseGetTopList,

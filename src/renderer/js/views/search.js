@@ -369,6 +369,92 @@ async function doSearchByType(type, page, keyword, source) {
 }
 
 // ── 主搜索入口 ───────────────────────────────────────
+// ── 粘贴链接智能识别 ─────────────────────────────────
+// doSearch 先走这里：输入是平台链接时直接拉歌/开歌单弹窗，置 _linkHandled
+// 让 doSearch 跳过常规搜索流程
+let _linkHandled = false;
+
+async function handleLinkInput(text) {
+  let r;
+  try {
+    r = await api.getSongByLink(text);
+  } catch (e) {
+    logger.warn('[linkInput] 识别请求失败:', e);
+    return; // 网络失败按普通关键词继续搜索
+  }
+  if (!r || !r.matched) {
+    // 平台短链无法本地解析：给出明确指引，同样回退普通搜索
+    if (r && r.shortLink) {
+      showToast('检测到短链，请先在浏览器打开后复制完整链接', 'info', 4000);
+    }
+    return;
+  }
+
+  _linkHandled = true;
+
+  // 单曲：直接渲染进搜索结果列表（复用现有单曲卡片，播放/下载/加队列全可用）
+  if (r.song) {
+    addSearchHistory(r.song.title + ' - ' + r.song.artist);
+    setState('currentKeyword', r.song.title);
+    setState('songs', [r.song]);
+    setState('selectedSongs', new Set());
+    if (_dom.songList) _dom.songList.innerHTML = '';
+    if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
+    if (_dom.pagination) _dom.pagination.style.display = 'none';
+    renderSongList([r.song]);
+    showToast(`🔗 已识别 ${srcLabel(r.song.source)}链接：${r.song.title}`, 'success', 3000);
+    return;
+  }
+
+  // 专辑/歌单链接：解析出 { type, id }，复用歌单弹窗展示曲目
+  const link = r.link || {};
+  if (link.type === 'album' || link.type === 'playlist') {
+    // 歌单链接 → openPlaylistModal 内部走 getPlaylistSongs（歌单接口）
+    // 专辑链接 → 同弹窗但走 getAlbumSongs（专辑接口；两者的后端 API 不同）
+    if (link.type === 'playlist' && link.platform === 'netease') {
+      openPlaylistModal('netease', link.id, '网易云歌单');
+    } else if (link.type === 'album') {
+      openAlbumSongsModal(link.platform, link.id);
+    } else {
+      showToast('暂不支持该平台的歌单链接', 'warn', 3000);
+      _linkHandled = false; // 回退普通搜索
+    }
+    return;
+  }
+
+  // matched 但既无 song 又非专辑/歌单（拉详情失败）
+  if (r.error) {
+    showToast('链接识别：' + r.error, 'error', 4000);
+  }
+  _linkHandled = false; // 回退普通搜索，用户至少还能搜歌名
+}
+
+/**
+ * 专辑链接 → 歌单弹窗（走 getAlbumSongs；与 openPlaylistModal 的区别只在拉曲目的接口）
+ */
+async function openAlbumSongsModal(platform, albumId) {
+  const nameMap = { netease: '网易云专辑', qq: 'QQ音乐专辑', kugou: '酷狗专辑', bilibili: 'B站合集' };
+  document.getElementById('playlistModalTitle').textContent = '📀 ' + (nameMap[platform] || '专辑');
+  document.getElementById('playlistModal').classList.remove('hidden');
+  const body = document.getElementById('playlistModalBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
+  state.setPlaylistSongs([]);
+  state.setPlaylistChecked(new Set());
+  try {
+    const songs = await api.getAlbumSongs(platform, albumId, 200);
+    if (!songs.length) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">专辑暂无歌曲（链接可能已失效）</div>';
+      return;
+    }
+    state.setPlaylistSongs(songs);
+    state.setPlaylistChecked(new Set(songs.map((_, i) => i)));
+    state.setPlaylistLocalExists(new Map());
+    renderPlaylistModal(songs);
+  } catch (e) {
+    body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(e.message || e) + '</div>';
+  }
+}
+
 function doSearch(page = 1) {
   const keyword = _dom.searchInput?.value?.trim();
   if (!keyword) { showToast('请输入搜索关键词', 'error'); return; }
@@ -379,6 +465,10 @@ function doSearch(page = 1) {
     showToast('音乐API未加载，请刷新重试', 'error', 3000);
     return;
   }
+
+  // 粘贴链接智能识别：输入是平台链接（含分享文案）→ 直接拉歌，不走关键词搜索
+  handleLinkInput(keyword);
+  if (_linkHandled) { _linkHandled = false; return; }
 
   addSearchHistory(keyword);
   setState('currentKeyword', keyword);
@@ -845,6 +935,8 @@ function switchSource(src, btn) {
 
 // ── 导出 ─────────────────────────────────────────────
 window.doSearch = doSearch;
+window.handleLinkInput = handleLinkInput;
+window.openAlbumSongsModal = openAlbumSongsModal;
 window.switchSearchType = switchSearchType;
 window.renderSongList = renderSongList;
 window.renderAlbumList = renderAlbumList;

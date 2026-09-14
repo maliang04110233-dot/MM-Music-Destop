@@ -92,6 +92,36 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
 }
 
 /**
+ * 按 bvid 拉视频详情（粘贴链接智能识别用）
+ * @param {string} bvid
+ * @param {string} cookie
+ * @returns {Promise<object|null>} 标准歌曲对象，拉不到返回 null
+ */
+async function bilibiliGetSongDetail(bvid, cookie = '') {
+  try {
+    const result = await request(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
+      headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': cookie || 'buvid3=anon;' },
+      timeout: 10000,
+    });
+    const d = result?.data;
+    if (!d || !d.bvid) return null;
+    return {
+      id: d.bvid,
+      aid: d.aid,
+      title: d.title || '',
+      artist: d.owner?.name || '',
+      album: '哔哩哔哩',
+      cover: d.pic || '',
+      duration: (d.duration || 0) * 1000,
+      source: 'bilibili',
+    };
+  } catch (e) {
+    logger.warn(`[bilibili] song detail 失败 (bvid=${bvid}):`, e.message || e);
+    return null;
+  }
+}
+
+/**
  * 验证 B 站 Cookie
  */
 async function bilibiliVerifyCookie(cookie) {
@@ -141,6 +171,7 @@ async function bilibiliGetRanking(limit = 10, cookie = '') {
 module.exports = {
   bilibiliSearch,
   bilibiliGetUrl,
+  bilibiliGetSongDetail,
   bilibiliVerifyCookie,
   bilibiliGetRanking,
   parseDuration,
