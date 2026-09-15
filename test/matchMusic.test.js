@@ -91,25 +91,28 @@ function makeDeps(resultsBySource, cookieSet = new Set()) {
   };
 }
 
-test('findMatchedCandidates: 无 Cookie 时过滤付费候选（30s 试听陷阱）', async () => {
+test('findMatchedCandidates: 无 Cookie 时付费候选降权保留（免费在前）', async () => {
   _resetForTest();
   const song = { id: 'bv1', source: 'bilibili', title: '晴天', artist: '周杰伦', duration: 269000 };
   const deps = makeDeps({
     netease: [
-      { id: 'n1', source: 'netease', title: '晴天', artist: '周杰伦', duration: 269000, fee: 1 }, // VIP，应过滤
-      { id: 'n2', source: 'netease', title: '晴天', artist: '周杰伦', duration: 270000, fee: 0 }, // 免费，应保留
+      { id: 'n1', source: 'netease', title: '晴天', artist: '周杰伦', duration: 269000, fee: 1 }, // VIP：降权垫后
+      { id: 'n2', source: 'netease', title: '晴天', artist: '周杰伦', duration: 270000, fee: 0 }, // 免费：靠前
     ],
     qq: [
-      { id: 'q1', source: 'qq', title: '晴天', artist: '周杰伦', duration: 269000, pay: { payplay: 1 } }, // 付费，应过滤
+      { id: 'q1', source: 'qq', title: '晴天', artist: '周杰伦', duration: 269000, pay: { payplay: 1 } }, // 付费：降权
     ],
     kugou: [
-      { id: 'k1', source: 'kugou', title: '晴天', artist: '周杰伦', duration: 269000 }, // 应保留
+      { id: 'k1', source: 'kugou', title: '晴天', artist: '周杰伦', duration: 269000 }, // 免费靠前
     ],
   }, new Set()); // 无任何 Cookie
 
   const out = await findMatchedCandidates(deps, song);
-  const ids = out.map(c => c.id).sort();
-  assert.deepStrictEqual(ids, ['k1', 'n2']); // n1/q1 被付费过滤
+  const ids = out.map(c => c.id);
+  // 全部保留（原付费直接过滤会让「原歌付费→跨源同曲也付费」换源 0 候选）
+  assert.deepStrictEqual(ids.slice().sort(), ['k1', 'n1', 'n2', 'q1']);
+  // 免费候选（k1/n2）必须排在付费（n1/q1）之前
+  assert.deepStrictEqual(ids.slice(0, 2).sort(), ['k1', 'n2']);
 });
 
 test('findMatchedCandidates: 有 Cookie 时付费候选保留', async () => {

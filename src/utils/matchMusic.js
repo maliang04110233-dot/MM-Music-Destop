@@ -157,11 +157,18 @@ function filterCandidates(songs, origSong, hasCookie) {
     if (cand.source === origSong.source) continue; // 跳过原源
     if (CANDIDATE_SOURCES.includes(cand.source) === false) continue; // 只认音乐源
     if (matchScore(origSong, cand) < 2) continue;
-    if (!hasCookie(cand.source) && isPaidCandidate(cand)) continue;
+    // 无 Cookie 时付费候选降权而非丢弃：QQ 无登录时大量正版曲全 paid，
+    // 直接过滤会导致换源 0 候选（原歌付费 → 其他源同曲也付费 → 全被滤掉）。
+    // 付费候选排免费候选之后，取流仍会试——失败由 getDownloadUrlSmart
+    // 的逐候选重试兜底。
     out.push(cand);
   }
-  // 分数降序，同分时长更近者优先
-  const scoreOf = c => matchScore(origSong, c);
+  // 分数降序，同分时长更近者优先；无 Cookie 时付费候选同分降 0.5 压后
+  const scoreOf = (c) => {
+    let s = matchScore(origSong, c);
+    if (!hasCookie(c.source) && isPaidCandidate(c)) s -= 0.5;
+    return s;
+  };
   const durGap = c => (origSong.duration && c.duration)
     ? Math.abs(origSong.duration - c.duration) : Infinity;
   out.sort((x, y) => (scoreOf(y) - scoreOf(x)) || (durGap(x) - durGap(y)));

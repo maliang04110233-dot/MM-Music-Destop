@@ -73,47 +73,45 @@ async function kugouGetUrl(id, quality = 'standard') {
 
   if (!hash) return { error: '缺少歌曲 hash', fatal: true };
 
-  const brMap = { lossless: 2000, hq: 320, standard: 128 };
-  const br = brMap[quality] || 128;
-  const extMap = { 2000: 'flac', 320: 'mp3', 128: 'mp3' };
-  const ext = extMap[br] || 'mp3';
+  const extMap = { lossless: 'flac', hq: 'mp3', standard: 'mp3' };
+  const ext = extMap[quality] || 'mp3';
 
   try {
-    // 使用移动端 API v3 获取歌曲详情（包含播放地址）
-    const detailUrl = `https://mobilecdn.kugou.com/api/v3/song/detail?hash=${encodeURIComponent(hash)}&mid=${encodeURIComponent(getMid())}`;
-    const detail = await request(detailUrl, { timeout: 10000 });
-
-    const info = detail?.data?.info?.[0] || detail?.data || {};
+    // 主链路：m.kugou.com 移动端 playInfo（免费曲直接返回 sharefs URL，
+    // 付费曲返回 error=需要付费）。原 mobilecdn.kugou.com 在部分网络下
+    // DNS 污染（解析到腾讯 CDN，证书不匹配直接 TLS 报错），已弃用。
     let playUrl = '';
-
-    // 尝试多个可能的字段（不同 API 版本返回不同）
-    if (info.play_url) {
-      playUrl = info.play_url;
-    } else if (info.playUrl) {
-      playUrl = info.playUrl;
-    } else if (info.listen_url) {
-      playUrl = info.listen_url;
-    } else if (info.url) {
-      playUrl = info.url;
+    let payError = '';
+    const info = await request(`https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${encodeURIComponent(hash)}`, { timeout: 10000 });
+    if (info && typeof info === 'object') {
+      playUrl = info.url || info.play_url || '';
+      payError = info.error || '';
     }
 
-    // 备选：使用 trackercdn API 构造 URL
+    // 备选：trackercdn v2（key=md5(hash+kgcloudv2)）——部分网络下仍可用
     if (!playUrl) {
-      // 计算 key（哈希 + "kgcloudv2" 的 MD5 大写在 v1 接口需要，v2/v3 可能有变化）
-      const crypto = require('crypto');
-      const key = crypto.createHash('md5').update(hash + 'kugou2015').digest('hex').toLowerCase();
-      const cdnUrl = `https://trackercdn.kugou.com/i/v2/?appid=1005&pid=2&cmd=25&behavior=play&hash=${hash}&key=${key}&br=${br}&mid=${encodeURIComponent(getMid())}`;
-      const cdnResult = await request(cdnUrl, { timeout: 10000 });
-      const cdnData = cdnResult?.data || {};
-      if (cdnData.play_url) {
-        playUrl = cdnData.play_url;
-      }
+      try {
+        const crypto = require('crypto');
+        const key = crypto.createHash('md5').update(hash + 'kgcloudv2').digest('hex').toLowerCase();
+        const cdnUrl = `https://trackercdn.kugou.com/i/v2/?appid=1005&pid=2&cmd=25&behavior=play&hash=${hash}&key=${key}&br=${quality === 'lossless' ? 2000 : quality === 'hq' ? 320 : 128}&mid=${encodeURIComponent(getMid())}`;
+        const cdnResult = await request(cdnUrl, { timeout: 8000 });
+        const cdnData = cdnResult?.data || cdnResult || {};
+        if (cdnData.play_url) playUrl = cdnData.play_url;
+      } catch (_e) { /* 备选失败走降级链 */ }
     }
 
-    // 降级链
+    // 降级链：无损拿不到试 HQ，HQ 拿不到试标准
     if (!playUrl && quality === 'lossless') return kugouGetUrl(id, 'hq');
     if (!playUrl && quality === 'hq') return kugouGetUrl(id, 'standard');
     if (!playUrl) {
+      // playInfo 明确说付费：版权错误码（getDownloadUrlSmart 会换其他源）
+      if (payError && /付费|VIP|版权/.test(payError)) {
+        return {
+          error: `酷狗：${payError}（该曲需付费/会员，已自动尝试其他源）`,
+          code: 'COPYRIGHT_RESTRICTED',
+          fatal: false,
+        };
+      }
       return {
         error: '酷狗音源获取受限（反爬保护），请改用网易云/QQ音乐/B站搜索相同歌曲下载',
         code: 'PLATFORM_CHANGED',

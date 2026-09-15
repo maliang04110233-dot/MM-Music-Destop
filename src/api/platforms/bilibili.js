@@ -9,6 +9,41 @@ const request = require('../request');
 const logger = require('../../utils/logger');
 const { AppError } = require('../../shared/errors');
 
+// ── 访客 Cookie（无登录态时自动获取）──────────────────
+// B 站 2024 起匿名请求带假 buvid3 会被风控：playurl 不返回 DASH 音频流
+// （走 LOGIN_REQUIRED 误判）。spi 接口可拿正式访客指纹 buvid3/buvid4，
+// 实测带它就能匿名取到 DASH。进程内缓存，spi 挂了回退假 buvid3（老行为）。
+let _visitorCookie = null;
+let _visitorCookieAt = 0;
+const VISITOR_COOKIE_TTL = 3600 * 1000;
+
+async function getVisitorCookie() {
+  const now = Date.now();
+  if (_visitorCookie && now - _visitorCookieAt < VISITOR_COOKIE_TTL) return _visitorCookie;
+  try {
+    const r = await request('https://api.bilibili.com/x/frontend/finger/spi', {
+      headers: { 'Referer': 'https://www.bilibili.com/' },
+      timeout: 6000,
+    });
+    const b3 = r?.data?.b_3;
+    const b4 = r?.data?.b_4;
+    if (b3) {
+      _visitorCookie = 'buvid3=' + b3 + (b4 ? '; buvid4=' + b4 : '');
+      _visitorCookieAt = now;
+      return _visitorCookie;
+    }
+  } catch (e) {
+    logger.warn('[bilibili] 访客指纹获取失败:', e.message);
+  }
+  return 'buvid3=anon;'; // 兜底：老行为（可能拿不到 DASH）
+}
+
+// 统一 Cookie 决策：用户登录态优先，否则访客指纹
+async function resolveCookie(cookie) {
+  if (cookie) return cookie;
+  return getVisitorCookie();
+}
+
 /**
  * 解析时长字符串 "mm:ss" 或 "hh:mm:ss" → 秒
  */
@@ -33,7 +68,7 @@ async function bilibiliSearch(keyword, page = 1, cookie = '') {
   const result = await request(url, {
     headers: {
       'Referer': 'https://www.bilibili.com/',
-      'Cookie': cookie || 'buvid3=anon;',
+      'Cookie': await resolveCookie(cookie),
     },
     timeout: 8000,
   });
@@ -59,9 +94,10 @@ async function bilibiliSearch(keyword, page = 1, cookie = '') {
  */
 async function bilibiliGetUrl(bvid, quality, cookie = '') {
   try {
+    const c = await resolveCookie(cookie);
     // 1) 先拿 cid 和 aid
     const infoResult = await request(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`, {
-      headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': cookie || 'buvid3=anon;' },
+      headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': c },
       timeout: 10000,
     });
     const cid = infoResult?.data?.cid;
@@ -71,7 +107,7 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
     // 2) 拿 DASH 播放地址（fnval=16 必带）
     const streamResult = await request(
       `https://api.bilibili.com/x/player/playurl?avid=${aid}&cid=${cid}&fnval=16&fnver=0&fourk=1&bvid=${bvid}&qn=112`,
-      { headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': cookie || 'buvid3=anon;' }, timeout: 12000 }
+      { headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': c }, timeout: 12000 }
     );
 
     const dash = streamResult?.data?.dash;
@@ -83,6 +119,12 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
         ext: 'm4a',
         referer: 'https://www.bilibili.com/',
       };
+    }
+    // 有 DASH 无 audio 多为番剧/大会员：区分登录墙与地区限制文案
+    if (dash && (!dash.audio || dash.audio.length === 0)) {
+      return cookie
+        ? { error: '该视频无独立音频流（可能是会员番剧或特殊稿件）', code: 'NO_AUDIO_STREAM', fatal: true }
+        : AppError.loginRequired('B站');
     }
     return AppError.loginRequired('B站');
   } catch (e) {
@@ -100,7 +142,7 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
 async function bilibiliGetSongDetail(bvid, cookie = '') {
   try {
     const result = await request(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
-      headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': cookie || 'buvid3=anon;' },
+      headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': await resolveCookie(cookie) },
       timeout: 10000,
     });
     const d = result?.data;
@@ -150,7 +192,7 @@ async function bilibiliGetRanking(limit = 10, cookie = '') {
       headers: {
         'Referer': 'https://www.bilibili.com/',
         'User-Agent': 'Mozilla/5.0',
-        'Cookie': cookie || 'buvid3=anon;',
+        'Cookie': await resolveCookie(cookie),
       },
     });
     return (result?.data || []).slice(0, limit).map(v => ({
