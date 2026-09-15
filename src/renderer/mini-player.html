@@ -50,6 +50,17 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       color: #e8e6ff;
     }
+    /* 超长标题跑马灯（同主窗口逻辑：JS 测溢出写 --marquee-shift） */
+    .mini-title.marquee {
+      text-overflow: clip;
+      --marquee-shift: -80px;
+      animation: mini-marquee 10s linear infinite;
+    }
+    .mini-title.marquee:hover { animation-play-state: paused; }
+    @keyframes mini-marquee {
+      0%, 10% { transform: translateX(0); }
+      90%, 100% { transform: translateX(var(--marquee-shift)); }
+    }
     .mini-artist {
       font-size: 11px; color: #8b89a8;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -132,7 +143,16 @@
       const lyric = document.getElementById('miniLyric');
       const timeEl = document.getElementById('miniTime');
 
-      if (data.title) title.textContent = data.title;
+      if (data.title) {
+        title.textContent = data.title;
+        // 溢出则跑马灯：移除动画类后实测，再写滚动距离
+        title.classList.remove('marquee');
+        const overflow = title.scrollWidth - title.parentElement.clientWidth;
+        if (overflow > 2) {
+          title.style.setProperty('--marquee-shift', `-${overflow + 12}px`);
+          title.classList.add('marquee');
+        }
+      }
       if (data.artist !== undefined) artist.textContent = data.artist || '未知艺术家';
       if (data.cover) {
         cover.src = data.cover;

@@ -159,6 +159,20 @@ export async function saveEqSettings() {
 }
 
 // ── 更新播放器卡片信息（不播放） ─────────────────────
+// 标题超宽时加 marquee 类（CSS 匀速滚动），并把实测溢出量写进 CSS 变量
+function _applyTitleMarquee() {
+  const titleEl = document.getElementById('playerTitle');
+  if (!titleEl) return;
+  const lineEl = titleEl.parentElement;
+  titleEl.classList.remove('marquee');
+  // 类移除后测 scrollWidth（动画会干扰测量）
+  const overflow = titleEl.scrollWidth - lineEl.clientWidth;
+  if (overflow > 2) {
+    titleEl.style.setProperty('--marquee-shift', `-${overflow + 16}px`);
+    titleEl.classList.add('marquee');
+  }
+}
+
 export function updatePlayerCard(song) {
   if (!song) {
     document.getElementById('playerTitle').textContent = '未在播放';
@@ -166,11 +180,13 @@ export function updatePlayerCard(song) {
     document.getElementById('playerDiscImg').style.display = 'none';
     document.getElementById('playerDiscPh').style.display = 'flex';
     _updateSrcBadge(null);
+    _applyTitleMarquee();
     return;
   }
   document.getElementById('playerTitle').textContent = song.title || '未知歌曲';
   document.getElementById('playerArtist').textContent = song.artist || '未知艺术家';
   _updateSrcBadge(song);
+  _applyTitleMarquee();
   const discPh = document.getElementById('playerDiscPh');
   const discImg = document.getElementById('playerDiscImg');
   if (song.cover && song.cover !== discImg.src) {
@@ -527,6 +543,7 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
     const artistEl = document.getElementById('playerArtist');
     if (titleEl) titleEl.textContent = song.title || '未知歌曲';
     if (artistEl) artistEl.textContent = song.artist || '未知艺术家';
+    _applyTitleMarquee();
     updateRingProgress(0);
 
     audio.src = localUrl;
@@ -573,6 +590,7 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
   const artistEl = document.getElementById('playerArtist');
   if (titleEl) titleEl.textContent = song.title || '未知歌曲';
   if (artistEl) artistEl.textContent = song.artist || '未知艺术家';
+  _applyTitleMarquee();
 
   const discPh2 = document.getElementById('playerDiscPh');
   const discImg2 = document.getElementById('playerDiscImg');

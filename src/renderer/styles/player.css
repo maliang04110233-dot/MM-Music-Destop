@@ -257,47 +257,70 @@
 }
 
 /* ── 歌曲信息 ───────────────────────────────────────── */
+/* 三行纵排：标题（全宽）/ 艺术家 / 工具按钮行。
+   原布局标题与 6 个工具按钮同排（300px 侧栏里标题只剩 ~100px），
+   长歌名必截断——标题独占一行 + 超宽跑马灯滚动展示完整名 */
 .player-song-info {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
   flex-shrink: 0;
 }
-/* 文本块占满剩余宽度，给标题/艺术家省略号截断留空间 */
-.psi-text {
-  flex: 1 1 0;
+.player-title-line {
+  width: 100%;
   min-width: 0;
-  text-align: center;
+  overflow: hidden;
 }
-/* 工具组：封面动画 / 队列 / 迷你播放器（从控制区并入，省出一整行给歌词） */
-.psi-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
+/* 超长标题跑马灯：放得下静止居中；放不下匀速滚动（首尾停顿）。
+   滚动距离由 JS 按实测溢出量写 --marquee-shift */
 .player-title {
   font-size: 15px;
   font-weight: 700;
   color: var(--neon-text);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   letter-spacing: 0.3px;
   text-shadow: 0 0 12px rgba(0,255,200,0.4);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.player-title.marquee {
+  max-width: none;
+  text-overflow: clip;
+  --marquee-shift: -100px; /* JS 覆写为实际溢出量 */
+  animation: title-marquee 12s linear infinite;
+}
+.player-title.marquee:hover { animation-play-state: paused; }
+@keyframes title-marquee {
+  0%, 10% { transform: translateX(0); }
+  90%, 100% { transform: translateX(var(--marquee-shift)); }
+}
+/* 工具组：封面动画 / 歌词 / 队列 / 迷你 / 桌面歌词 / 倍速（一行居中） */
+.psi-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 .player-artist {
   font-size: 12px;
   color: var(--neon-dim);
-  margin-top: 3px;
+  margin-top: 2px;
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   overflow: hidden;
+  max-width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /* 换源徽标：实际取流源与 song.source 不同时显示（如 B站→网易）。
    后端 matchedFrom/matchedSong 数据现成，纯 UI 层补齐 */
