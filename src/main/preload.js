@@ -14,6 +14,7 @@ const SAFE_CHANNELS_SEND = new Set([
   'desktop-lyric-lock', 'desktop-lyric-set-ignore-mouse', 'desktop-lyric-update',
   // 补齐：METHOD_MAP 引用但原先不在白名单的 send-only 通道
   'tray-update-play-state',
+  'set-global-shortcuts',
 ]);
 
 const SAFE_CHANNELS_RECEIVE = new Set([
@@ -31,6 +32,7 @@ const SAFE_CHANNELS_RECEIVE = new Set([
 const SAFE_CHANNELS_INVOKE = new Set([
   'search-music', 'search-album', 'search-singer',
   'get-singer-songs', 'get-singer-albums', 'get-album-songs', 'get-song-by-link',
+  'get-source-health', 'probe-sources',
   'get-home-recommendations', 'get-home-section', 'get-playlist-songs',
   'get-download-url', 'get-download-url-smart', 'add-to-queue', 'cancel-download', 'retry-download',
   'remove-queue-item', 'clear-finished-queue', 'clear-all-queue',
@@ -160,6 +162,9 @@ const METHOD_MAP = {
   syncDesktopLyric: 'desktop-lyric-update',
   closeDesktopLyric: 'desktop-lyric-close',
   trayUpdatePlayState: 'tray-update-play-state',
+  setGlobalShortcuts: 'set-global-shortcuts',
+  getSourceHealth: 'get-source-health',
+  probeSources: 'probe-sources',
 };
 
 // ── 核心 musicAPI（渲染层 → 主进程的 IPC 桥）────────────

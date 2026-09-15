@@ -21,6 +21,7 @@ const ALLOWED_PREF_KEYS = new Set([
   // 播放行为
   'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
+  'playbackRate', 'globalShortcuts',
   // 播放状态持久化
   'recentlyPlayed', 'playStats', 'playProgressMap',
   // EQ

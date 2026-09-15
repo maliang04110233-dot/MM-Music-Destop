@@ -228,5 +228,10 @@
   "toast.linkFailed": "Link error: {msg}",
   "toast.linkUnsupported": "Album/playlist links from this platform are not supported yet",
   "player.desktopLyric": "Desktop Lyrics",
-  "settings.general.desktopLyricHint": "Floating always-on-top window with karaoke lyrics; supports click-through lock, dragging and font size"
+  "settings.general.desktopLyricHint": "Floating always-on-top window with karaoke lyrics; supports click-through lock, dragging and font size",
+  "settings.general.globalShortcuts": "Global media keys (control playback with ⏯ ⏮ ⏭ keys on your keyboard)",
+  "settings.sources.probeTitle": "📡 Source Availability",
+  "settings.sources.probeHint": "Check whether the four music sources are reachable. Failed downloads fall back to other sources automatically; this shows each source's recent success rate (healthy sources are preferred when switching).",
+  "settings.sources.probeBtn": "🔍 Probe Now",
+  "toast.probeDone": "Probe finished: {ok}/{total} sources available"
 }

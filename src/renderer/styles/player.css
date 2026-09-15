@@ -440,6 +440,15 @@
    hover 缩放幅度收小，避免互相贴近时视觉跳动 */
 .ctrl-sm { padding: 7px; }
 .ctrl-sm:hover { transform: scale(1.08); }
+/* 倍速键是文字键（1x/1.25x…），与图标键同高但稍宽，等宽数字避免跳动 */
+.rate-btn {
+  padding: 7px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  letter-spacing: 0.2px;
+}
 
 /* ── 音量控件（悬停弹出 / 点击锁定 / 滚轮调节）────── */
 .pc-volume { position: relative; display: flex; align-items: center; }

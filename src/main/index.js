@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { setCookieStore } = require('../api');
@@ -331,6 +331,19 @@ function updateTrayMenu(playState = { isPlaying: false, title: '', artist: '' })
     },
     { type: 'separator' },
     {
+      label: '🖼 桌面歌词',
+      click: () => {
+        try { ipcWindow.createDesktopLyric(); } catch (e) { logger.warn('[tray] 打开桌面歌词失败:', e.message); }
+      },
+    },
+    {
+      label: '📐 迷你播放器',
+      click: () => {
+        try { ipcWindow.createMiniPlayer(); } catch (e) { logger.warn('[tray] 打开迷你播放器失败:', e.message); }
+      },
+    },
+    { type: 'separator' },
+    {
       label: '📋 显示主窗口',
       click: () => {
         if (mainWindow) {
@@ -353,6 +366,49 @@ function updateTrayMenu(playState = { isPlaying: false, title: '', artist: '' })
 
 // 导出供其他模块调用
 module.exports = { updateTrayMenu };
+
+// ── 全局快捷键（系统媒体键）──────────────────────────
+// 复用托盘的 tray-* 通道：渲染层已有对应监听（togglePlay/prevSong/nextSong），
+// 不新增 IPC。prefs.globalShortcuts 开关（默认开），设置页实时切换。
+function sendToMainWindow(channel) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel);
+  }
+}
+
+function registerGlobalShortcuts() {
+  if (prefs.get('globalShortcuts') === false) return; // 默认开
+  const accels = [
+    ['MediaPlayPause', 'tray-toggle-play'],
+    ['MediaNextTrack', 'tray-next'],
+    ['MediaPreviousTrack', 'tray-prev'],
+    ['MediaStop', 'tray-toggle-play'],
+  ];
+  let registered = 0;
+  for (const [accel, channel] of accels) {
+    try {
+      // MediaStop 也映射到暂停：多数键盘只有这四个键，停止语义≈暂停
+      if (globalShortcut.register(accel, () => sendToMainWindow(channel))) registered++;
+    } catch (e) {
+      logger.warn(`[shortcuts] 注册 ${accel} 失败:`, e.message);
+    }
+  }
+  if (registered > 0) logger.log(`[shortcuts] 全局媒体键已注册 ${registered}/${accels.length}`);
+}
+
+function unregisterGlobalShortcuts() {
+  try { globalShortcut.unregisterAll(); } catch (_e) { /* 退出路径忽略 */ }
+}
+
+function updateGlobalShortcutsEnabled(enabled) {
+  try {
+    globalShortcut.unregisterAll();
+    if (enabled !== false) registerGlobalShortcuts();
+  } catch (e) {
+    logger.warn('[shortcuts] 切换失败:', e.message);
+  }
+}
+
 
 function buildAppMenu() {
   // 自定义菜单，移除所有「开发者工具」相关项（默认菜单的 Ctrl+Shift+I 加速键也无法触发）
@@ -497,12 +553,14 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  registerGlobalShortcuts();
 });
 
 app.on('window-all-closed', () => {
   if (processTimer) { clearTimeout(processTimer); processTimer = null; }
   if (queuePersistTimer) { clearTimeout(queuePersistTimer); queuePersistTimer = null; }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
+  unregisterGlobalShortcuts();
   try { prefs.flush(); } catch (e) { logger.warn('prefs.flush 失败:', e.message); }
   try { history.flush(); } catch (e) { logger.warn('history.flush 失败:', e.message); }
   if (process.platform !== 'darwin') app.quit();
@@ -548,6 +606,12 @@ function registerAllIpcHandlers() {
   // ── 系统托盘 IPC ───────────────────────────────────
   ipcMain.on('tray-update-play-state', (_, playState) => {
     updateTrayMenu(playState);
+  });
+
+  // ── 全局快捷键开关（设置页实时切换）─────────────────
+  ipcMain.on('set-global-shortcuts', (_, enabled) => {
+    updateGlobalShortcutsEnabled(!!enabled);
+    logger.log(`[shortcuts] 全局媒体键: ${enabled ? '已启用' : '已停用'}`);
   });
 
   // ── 版本查询 IPC ───────────────────────────────────

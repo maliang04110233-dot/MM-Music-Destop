@@ -897,6 +897,51 @@ function _persistVolume() {
   }, 600);
 }
 
+// ── 倍速播放 ──────────────────────────────────────────
+// preservesPitch=true 时变速不变调（Chromium 默认支持），关掉会像磁带快进
+const PLAYBACK_RATES = [0.75, 1.0, 1.25, 1.5, 2.0];
+let _playbackRate = 1.0;
+
+function _applyPlaybackRate() {
+  audio.playbackRate = _playbackRate;
+  try { audio.preservesPitch = true; } catch (_e) { /* 旧内核无此属性 */ }
+  const btn = document.getElementById('btnPlaybackRate');
+  if (btn) {
+    btn.textContent = _playbackRate === 1.0 ? '1x' : String(_playbackRate).replace(/\.?0+$/, '') + 'x';
+    btn.title = `倍速：${_playbackRate}x（点击切换）`;
+    btn.setAttribute('aria-label', `播放倍速 ${_playbackRate} 倍，点击切换下一档`);
+  }
+}
+
+export function cyclePlaybackRate() {
+  const idx = PLAYBACK_RATES.indexOf(_playbackRate);
+  _playbackRate = PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
+  _applyPlaybackRate();
+  showToast(`倍速：${_playbackRate}x`, 'info', 1500);
+  try { api.setPref('playbackRate', _playbackRate); } catch (_e) { /* 持久化失败不影响本次 */ }
+}
+
+// 启动恢复上次倍速（同 volume 模式：等 window.api 就绪）
+(function scheduleRateRestore() {
+  const restore = () => {
+    if (typeof window.api !== 'undefined' && typeof window.api.getPref === 'function') {
+      window.api.getPref('playbackRate')
+        .then(v => {
+          if (typeof v === 'number' && !isNaN(v) && v > 0 && v <= 4) {
+            _playbackRate = PLAYBACK_RATES.includes(v) ? v : 1.0;
+            _applyPlaybackRate();
+          }
+        })
+        .catch(() => {});
+    }
+  };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(restore, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', restore, { once: true });
+  }
+})();
+
 // ── 音量弹层交互升级：拖动锁定 + 滚轮调节 ─────────────
 // 旧交互仅 hover：拖动滑条到一半移出弹层直接断（opacity:0 + pointer-events:none
 // 立即生效），且除拖滑条外无快速调节手段。
@@ -1367,6 +1412,7 @@ window.toggleEqBypass = toggleEqBypass;
 window.restoreEqPresetSetting = restoreEqPresetSetting;
 window.setVolume = setVolume;
 window.toggleMute = toggleMute;
+window.cyclePlaybackRate = cyclePlaybackRate;
 window.getRecentlyPlayed = getRecentlyPlayed;
 window.clearRecentlyPlayed = clearRecentlyPlayed;
 window.loadRecentlyPlayed = loadRecentlyPlayed;

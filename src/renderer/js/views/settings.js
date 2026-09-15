@@ -72,6 +72,7 @@ function openSettings() {
     loadGeneralSettings(),
     updateCacheSize(),
     loadDownloadTemplates(),
+    loadSourceHealth(),
   ]);
 }
 
@@ -148,6 +149,63 @@ function updateSidebarPlatformStatus(cookies) {
     labelEl.textContent = hasCookie ? '已登录' : '未登录';
     labelEl.style.color = hasCookie ? 'var(--gold)' : 'var(--text-muted)';
   });
+}
+
+// ── 源可用性探针（P2）─────────────────────────────────
+const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', bilibili: 'B站' };
+
+function renderSourceHealth(health, probes) {
+  const list = document.getElementById('sourceHealthList');
+  if (!list) return;
+  const sources = Object.keys(health || {});
+  if (!sources.length) { list.innerHTML = ''; return; }
+  const probeMap = {};
+  for (const p of probes || []) probeMap[p.source] = p;
+  list.innerHTML = sources.map(s => {
+    const h = health[s];
+    const probe = probeMap[s];
+    let line;
+    if (probe) {
+      line = probe.ok
+        ? '<span style="color:var(--neon-cyan)">✅ 可用</span>'
+        : `<span style="color:#ff7676">✗ ${probe.stage === 'getUrl' ? '取流失败' : '搜索不可达'}</span>`;
+    } else if (h && h.score != null && h.samples > 0) {
+      const pct = Math.round(h.score * 100);
+      const color = pct >= 60 ? 'var(--neon-cyan)' : (pct >= 30 ? 'var(--gold)' : '#ff7676');
+      line = `<span style="color:${color}">近期成功率 ${pct}%（${h.samples} 次）</span>`;
+    } else {
+      line = '<span style="color:var(--text-muted)">暂无数据（下载后自动统计）</span>';
+    }
+    return `<div class="setting-row" style="justify-content:space-between;">
+      <span class="setting-label">${SOURCE_NAMES[s] || s}</span>${line}
+    </div>`;
+  }).join('');
+}
+
+async function loadSourceHealth() {
+  try {
+    if (typeof api.getSourceHealth !== 'function') return;
+    const health = await api.getSourceHealth();
+    renderSourceHealth(health, null);
+  } catch (e) {
+    logger.error('加载源健康度失败:', e);
+  }
+}
+
+async function probeSourcesUI(btn) {
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 探测中…'; }
+  try {
+    if (typeof api.probeSources !== 'function') { showToast('当前版本不支持探测', 'error'); return; }
+    const r = await api.probeSources();
+    renderSourceHealth(r.health, r.probes);
+    const okCount = (r.probes || []).filter(p => p.ok).length;
+    showToast(`探测完成：${okCount}/${r.probes.length} 个源可用`, okCount > 0 ? 'success' : 'warn');
+  } catch (e) {
+    showToast('探测失败: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
 }
 
 // ── Cookie 操作 ───────────────────────────────────────
@@ -326,6 +384,7 @@ const GENERAL_PREFS = {
   autoCover:     { key: 'autoCover',     default: true,          el: 'settingAutoCover' },
   notifications: { key: 'notifications',  default: true,          el: 'settingNotifications' },
   playProgressMemory: { key: 'playProgressMemory', default: true, el: 'settingPlayProgressMemory' },
+  globalShortcuts: { key: 'globalShortcuts', default: true, el: 'settingGlobalShortcuts' },
   theme:         { key: 'theme',         default: 'default',     el: 'settingTheme' },
   lyricFontSize: { key: 'lyricFontSize', default: 18,            el: 'settingLyricFontSize' },
   lyricOffset:   { key: 'lyricOffset',   default: 0,             el: 'settingLyricOffset' },
@@ -387,6 +446,10 @@ function setupGeneralSettingListeners() {
       }
       if (cfg.key === 'theme') {
         applyTheme(val);
+      }
+      // 全局媒体键：prefs 写入外还要实时通知主进程注册/注销
+      if (cfg.key === 'globalShortcuts') {
+        try { if (typeof api.setGlobalShortcuts === 'function') api.setGlobalShortcuts(!!val); } catch (_e) { /* 下次启动仍会按 prefs 生效 */ }
       }
     });
   }
@@ -643,6 +706,8 @@ export {
   exportConfig,
   importConfig,
   loadGeneralSettings,
+  loadSourceHealth,
+  probeSourcesUI,
   applyTheme,
   PLATFORMS,
 }
@@ -664,6 +729,8 @@ window.resetAllSettings = resetAllSettings;
 window.exportConfig = exportConfig;
 window.importConfig = importConfig;
 window.loadGeneralSettings = loadGeneralSettings;
+window.loadSourceHealth = loadSourceHealth;
+window.probeSourcesUI = probeSourcesUI;
 window.loadDownloadTemplates = loadDownloadTemplates;
 window.openDlTemplateEditor = openDlTemplateEditor;
 window.closeDlTemplateEditor = closeDlTemplateEditor;

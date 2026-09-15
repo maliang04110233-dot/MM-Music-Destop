@@ -118,6 +118,47 @@ function register() {
       return { matched: false, error: e.message || e };
     }
   });
+
+  // ── 源可用性探针（P2）─────────────────────────────
+  // 被动健康度快照：getDownloadUrlSmart 各环节记的滑动窗口统计
+  ipcMain.handle('get-source-health', () => {
+    return api.getSourceHealthMap(['netease', 'qq', 'kugou', 'bilibili']);
+  });
+
+  // 主动探测：各源搜一首公共曲并尝试取流。搜索通=源可达；取流通=源健康。
+  // 探测结果记入 sourceHealth 滑动窗口（与真实下载共用同一分数）。
+  ipcMain.handle('probe-sources', async () => {
+    const PROBE_SOURCES = ['netease', 'qq', 'kugou', 'bilibili'];
+    const KEYWORD = '周杰伦 晴天';
+    const withTimeout = (p) => Promise.race([
+      p,
+      new Promise(r => setTimeout(() => r({ error: 'timeout' }), 8000)),
+    ]);
+    const probes = [];
+    for (const src of PROBE_SOURCES) {
+      let ok = false;
+      let stage = 'search';
+      let error = null;
+      try {
+        const r = await withTimeout(api.searchMusic(KEYWORD, src, 1));
+        const songs = (r && r.songs) || [];
+        if (songs.length > 0) {
+          stage = 'getUrl';
+          const u = await withTimeout(api.getDownloadUrl(songs[0].id, src, 'standard'));
+          ok = !!(u && u.url);
+          if (!ok) error = (u && (u.error || u.code)) || 'no-url';
+        } else {
+          error = (r && r.error) || 'empty-result';
+        }
+      } catch (e) {
+        error = e.message || 'probe-error';
+      }
+      // 搜索通但取流失败：可达但不健康（VIP/登录墙），记 fail 供换源排序参考
+      api.recordProbeResult(src, ok);
+      probes.push({ source: src, ok, stage, error, latency: null });
+    }
+    return { probes, health: api.getSourceHealthMap(PROBE_SOURCES) };
+  });
 }
 
 module.exports = { register };

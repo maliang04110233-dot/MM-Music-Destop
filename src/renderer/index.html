@@ -519,6 +519,7 @@
           <button class="ctrl-btn ctrl-sm" id="btnDesktopLyric" title="桌面歌词" aria-label="桌面歌词" onclick="api.openDesktopLyric()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="11" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
           </button>
+          <button class="ctrl-btn ctrl-sm rate-btn" id="btnPlaybackRate" title="倍速：1x（点击切换）" aria-label="播放倍速，点击切换下一档" onclick="cyclePlaybackRate()">1x</button>
         </div>
       </div>
 
@@ -751,6 +752,15 @@
               </details>
             </div>
           </div>
+
+          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.sources.probeTitle">📡 源可用性</div>
+          <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+            <div class="settings-hint-box" data-i18n="settings.sources.probeHint">
+              检测四个音源当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。
+            </div>
+            <div id="sourceHealthList" style="width:100%;display:flex;flex-direction:column;gap:6px;"></div>
+            <button class="setting-btn" id="btnProbeSources" onclick="probeSourcesUI(this)" data-i18n="settings.sources.probeBtn">🔍 立即探测</button>
+          </div>
         </div>
 
         <!-- 通用页 -->
@@ -812,6 +822,13 @@
             <label class="setting-label">
               <input type="checkbox" id="settingPlayProgressMemory" checked>
               记忆播放进度（关闭后下次从断点继续）
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <label class="setting-label">
+              <input type="checkbox" id="settingGlobalShortcuts" checked>
+              <span data-i18n="settings.general.globalShortcuts">全局媒体键（键盘上的 ⏯ ⏮ ⏭ 键控制播放）</span>
             </label>
           </div>
 

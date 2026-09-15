@@ -214,4 +214,4 @@ function register() {
   });
 }
 
-module.exports = { register, syncMiniPlayer };
+module.exports = { register, syncMiniPlayer, createMiniPlayer, createDesktopLyric };

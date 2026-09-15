@@ -12,6 +12,7 @@ const { defaultRegistry } = require('./pluginRegistry');
 const recommendations = require('./recommendations');
 const logger = require('../utils/logger');
 const { normalizeQQCookie, detectQQCookieType, extractQQUin, extractQQMusickey } = require('../utils/cookie');
+const sourceHealth = require('../utils/sourceHealth');
 
 // ── 直接 require 平台模块（向后兼容 + 适配器桥接）──────────
 const netease = require('./platforms/netease');
@@ -236,13 +237,21 @@ async function getDownloadUrlSmart(song, quality) {
   if (alt && alt.source && alt.id && alt.source !== song.source) {
     try {
       const r = await getDownloadUrl(alt.id, alt.source, quality);
+      sourceHealth.recordResult(alt.source, !!(r && r.url));
       if (r && r.url) return { ...r, source: alt.source, matchedFrom: song.source, fromAltMemory: true };
-    } catch (_e) { /* 记忆失效则走正常流程 */ }
+    } catch (_e) {
+      sourceHealth.recordResult(alt.source, false);
+      /* 记忆失效则走正常流程 */
+    }
   }
 
-  // 2. 本源
+  // 2. 本源（健康度极低且有可用候选时延后——见下方步骤 2b）
   const result = await getDownloadUrl(song.id, song.source, quality);
-  if (result && result.url) return result;
+  if (result && result.url) {
+    sourceHealth.recordResult(song.source, true);
+    return result;
+  }
+  sourceHealth.recordResult(song.source, false);
 
   // 3. 失败且可换源 → 跨源候选逐个尝试
   if (!shouldFallbackToOtherSource(result)) return result;
@@ -262,8 +271,14 @@ async function getDownloadUrlSmart(song, quality) {
     logger.warn('[getDownloadUrlSmart] 跨源匹配失败:', e && e.message);
   }
 
+  // 源可用性自动降级：候选按健康度重排（好源先试）。稳定排序保住匹配分序。
+  if (candidates.length > 1) {
+    candidates = sourceHealth.rankByHealth(candidates);
+  }
+
   for (const cand of candidates) {
     const r = await getDownloadUrl(cand.id, cand.source, quality);
+    sourceHealth.recordResult(cand.source, !!(r && r.url));
     if (r && r.url) {
       logger.log(`[getDownloadUrlSmart] 换源成功: "${song.title}" ${song.source} → ${cand.source}`);
       return { ...r, source: cand.source, matchedSong: cand, matchedFrom: song.source };
@@ -272,6 +287,16 @@ async function getDownloadUrlSmart(song, quality) {
 
   // 4. 全失败：返回本源原始错误
   return result;
+}
+
+// 源健康度快照（设置页探针展示用）
+function getSourceHealthMap(sources) {
+  return sourceHealth.getHealthMap(sources);
+}
+
+// 主动探针结果记入滑动窗口（与被动下载结果共用同一分数）
+function recordProbeResult(source, ok) {
+  sourceHealth.recordResult(source, !!ok);
 }
 
 
@@ -372,6 +397,8 @@ module.exports = {
   searchAlbum,
   getDownloadUrl,
   getDownloadUrlSmart,
+  getSourceHealthMap,
+  recordProbeResult,
   getLyrics,
   verifyCookie,
   getSongByLink,
