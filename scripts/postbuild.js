@@ -48,13 +48,16 @@ for (const { from, to } of dirs) {
   }
 }
 
-// Copy mini-player.html (Vite 不处理主进程动态 loadFile 的页面)
-const miniPlayerSrc = path.join(src, 'renderer', 'mini-player.html');
-const miniPlayerDst = path.join(dist, 'renderer', 'mini-player.html');
-if (fs.existsSync(miniPlayerSrc)) {
-  fs.mkdirSync(path.dirname(miniPlayerDst), { recursive: true });
-  fs.copyFileSync(miniPlayerSrc, miniPlayerDst);
-  console.log(`  copied: src/renderer/mini-player.html -> dist/renderer/mini-player.html`);
+// Copy mini-player.html / desktop-lyric.html (Vite 不处理主进程动态 loadFile 的页面)
+const standalonePages = ['mini-player.html', 'desktop-lyric.html'];
+for (const page of standalonePages) {
+  const from = path.join(src, 'renderer', page);
+  const to = path.join(dist, 'renderer', page);
+  if (fs.existsSync(from)) {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+    console.log(`  copied: src/renderer/${page} -> dist/renderer/${page}`);
+  }
 }
 
 console.log('[postbuild] done');

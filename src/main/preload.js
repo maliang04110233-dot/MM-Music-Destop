@@ -10,6 +10,8 @@ const SAFE_CHANNELS_SEND = new Set([
   'window-minimize', 'window-maximize', 'window-close',
   'mini-next', 'mini-prev', 'mini-toggle-play', 'mini-close', 'mini-player-update',
   'open-mini-player',
+  'open-desktop-lyric', 'desktop-lyric-close',
+  'desktop-lyric-lock', 'desktop-lyric-set-ignore-mouse', 'desktop-lyric-update',
   // 补齐：METHOD_MAP 引用但原先不在白名单的 send-only 通道
   'tray-update-play-state',
 ]);
@@ -19,8 +21,9 @@ const SAFE_CHANNELS_RECEIVE = new Set([
   'play-queue-restored', 'update-available',
   'update-not-available', 'update-download-progress', 'update-downloaded', 'update-error',
   'local-lrc-fetched', 'library-scan-progress', 'sync-mini-player',
-  'focus-search', 'sleep-timer',
+  'focus-search', 'sleep-timer', 'sync-desktop-lyric',
   'mini-player-update',
+  'desktop-lyric-data',
   'tray-toggle-play', 'tray-next', 'tray-prev',
   'mini-next', 'mini-prev', 'mini-toggle-play',
 ]);
@@ -153,6 +156,9 @@ const METHOD_MAP = {
   // mini
   openMiniPlayer: 'open-mini-player',
   syncMiniPlayer: 'mini-player-update',
+  openDesktopLyric: 'open-desktop-lyric',
+  syncDesktopLyric: 'desktop-lyric-update',
+  closeDesktopLyric: 'desktop-lyric-close',
   trayUpdatePlayState: 'tray-update-play-state',
 };
 
@@ -183,6 +189,7 @@ const _musicApiBase = {
   onPlayQueueRestored(cb) { ipcRenderer.on('play-queue-restored', (_, d) => cb(d)); },
   onLocalLrcFetched(cb) { ipcRenderer.on('local-lrc-fetched', (_, d) => cb(d)); },
   onSyncMiniPlayer(cb) { ipcRenderer.on('sync-mini-player', () => cb()); },
+  onSyncDesktopLyric(cb) { ipcRenderer.on('sync-desktop-lyric', () => cb()); },
   onMiniNext(cb) { ipcRenderer.on('mini-next', (_, d) => cb(d)); },
   onMiniPrev(cb) { ipcRenderer.on('mini-prev', (_, d) => cb(d)); },
   onMiniTogglePlay(cb) { ipcRenderer.on('mini-toggle-play', (_, d) => cb(d)); },
@@ -222,9 +229,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 });
 
 contextBridge.exposeInMainWorld('miniAPI', {
-  send(channel) {
+  send(channel, ...args) {
     if (SAFE_CHANNELS_SEND.has(channel)) {
-      ipcRenderer.send(channel);
+      ipcRenderer.send(channel, ...args);
     }
   },
   on(channel, callback) {

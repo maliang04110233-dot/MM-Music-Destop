@@ -1,9 +1,11 @@
 /**
- * 窗口控制 / 文件系统 / 迷你播放器 IPC
+ * 窗口控制 / 文件系统 / 迷你播放器 / 桌面歌词 IPC
  *
  * 注册：window-minimize / window-maximize / window-close / select-dir /
  *      get-default-dir / open-folder / open-external /
- *      open-mini-player / mini-toggle-play / mini-next / mini-prev / mini-close
+ *      open-mini-player / mini-toggle-play / mini-next / mini-prev / mini-close /
+ *      open-desktop-lyric / desktop-lyric-close / desktop-lyric-lock /
+ *      desktop-lyric-update / desktop-lyric-sync
  */
 
 const { ipcMain, BrowserWindow, dialog, shell, app } = require('electron');
@@ -12,6 +14,46 @@ const { getMainWindow } = require('../context');
 const playCache = require('../playCache');
 
 let miniPlayerWin = null;
+let desktopLyricWin = null;
+
+// ── 桌面歌词窗口 ──────────────────────────────────────────
+function createDesktopLyric() {
+  if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
+    desktopLyricWin.focus();
+    return;
+  }
+  desktopLyricWin = new BrowserWindow({
+    width: 760, height: 120,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    transparent: true,
+    // 点击穿透：正文区域 setIgnoreMouseEvents(true)，控制条区域在渲染层
+    // 用 mouseenter/leave 切回 false（锁定的拖动条始终可点）
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '../../preload/preload.js'),
+    },
+  });
+  desktopLyricWin.loadFile(path.join(__dirname, '../../renderer/desktop-lyric.html'));
+  desktopLyricWin.webContents.on('did-finish-load', () => {
+    // 通知主窗口推送当前播放状态（含 parsedLyrics）到歌词窗口
+    const main = getMainWindow();
+    if (main && !main.isDestroyed()) {
+      main.webContents.send('sync-desktop-lyric');
+    }
+  });
+  desktopLyricWin.on('closed', () => { desktopLyricWin = null; });
+}
+
+/** 向桌面歌词窗口推送状态（主窗口渲染层经 desktop-lyric-update 转发） */
+function syncDesktopLyric(data) {
+  if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
+    desktopLyricWin.webContents.send('desktop-lyric-data', data);
+  }
+}
 
 function createMiniPlayer() {
   if (miniPlayerWin && !miniPlayerWin.isDestroyed()) {
@@ -31,7 +73,9 @@ function createMiniPlayer() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload.js'),
+      // dist 布局：本文件在 dist/main/ipc/（比主进程入口深一层），
+      // preload 实际在 dist/preload/preload.js → ../../preload/preload.js
+      preload: path.join(__dirname, '../../preload/preload.js'),
     },
   });
   miniPlayerWin.loadFile(path.join(__dirname, '../../renderer/mini-player.html'));
@@ -88,6 +132,36 @@ function register() {
   ipcMain.on('mini-close', () => {
     if (miniPlayerWin && !miniPlayerWin.isDestroyed()) {
       miniPlayerWin.close();
+    }
+  });
+
+  // ── 桌面歌词 ────────────────────────────────────────
+  ipcMain.on('open-desktop-lyric', () => createDesktopLyric());
+
+  // 主窗口渲染层推送状态到歌词窗口（歌词/进度/播放态）
+  ipcMain.on('desktop-lyric-update', (_, data) => syncDesktopLyric(data));
+
+  ipcMain.on('desktop-lyric-close', () => {
+    if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
+      desktopLyricWin.close();
+    }
+  });
+
+  // 锁定切换：锁定=拖动条常驻可拖，解锁=正文穿透鼠标、悬停控制条才恢复点击
+  ipcMain.on('desktop-lyric-lock', (_, locked) => {
+    if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
+      if (locked === false) {
+        desktopLyricWin.setIgnoreMouseEvents(true, { forward: true });
+      } else {
+        desktopLyricWin.setIgnoreMouseEvents(false);
+      }
+    }
+  });
+
+  // 点击穿透切换（渲染层 mouseenter/leave 控制条时调用）
+  ipcMain.on('desktop-lyric-set-ignore-mouse', (_, ignore) => {
+    if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
+      desktopLyricWin.setIgnoreMouseEvents(ignore, { forward: true });
     }
   });
 

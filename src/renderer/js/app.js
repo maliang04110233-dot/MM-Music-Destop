@@ -244,6 +244,7 @@ async function init() {
       _audio.addEventListener('timeupdate', () => {
         updateProgress();
         syncToMiniPlayer();
+        syncToDesktopLyric();
       });
       _audio.addEventListener('ended', onAudioEnded);
       // 音源加载/解码出错（URL 失效、代理文件损坏）：toast + 跳下一曲，避免静默卡死
@@ -332,6 +333,15 @@ async function init() {
     }
   }
 
+  // ── 桌面歌词 IPC 监听（歌词窗口启动时来要一次全量状态）──
+  if (typeof api.onSyncDesktopLyric === 'function') {
+    api.onSyncDesktopLyric(() => {
+      // 强制重推整份歌词（换歌标记重置）
+      _dlLastLyricSongId = null;
+      syncToDesktopLyric();
+    });
+  }
+
   // ── 系统托盘 IPC 监听 ──────────────────────────────
   if (typeof api.onTrayTogglePlay === 'function') {
     api.onTrayTogglePlay(() => { if (typeof togglePlay === 'function') togglePlay(); });
@@ -392,6 +402,28 @@ async function init() {
       lyric: currentLyric,
       time: timeStr,
     });
+  }
+
+  // ── 播放状态同步到桌面歌词窗口 ────────────────────────
+  // 歌词整份只在换歌时推一次（避免每帧序列化整份 parsedLyrics），
+  // currentTime 每帧推；桌面窗口自行定位当前行+逐字高亮
+  let _dlLastLyricSongId = null;
+  function syncToDesktopLyric() {
+    if (typeof api.syncDesktopLyric !== 'function' || !_audio) return;
+    const song = getState('currentPlaying') || (getState('playQueue') || [])[getState('playIdx')] || null;
+    const payload = { currentTime: _audio.currentTime };
+    const songKey = song ? String(song.id) + ':' + String(song.source || '') : '';
+    if (songKey !== _dlLastLyricSongId) {
+      _dlLastLyricSongId = songKey;
+      const parsed = getState('parsedLyrics') || [];
+      // 只送渲染所需字段（wordTimes 用于逐字高亮）
+      payload.lyrics = parsed.map(l => ({
+        t: l.t, text: l.text, subText: l.subText || '',
+        words: l.words || [], wordTimes: l.wordTimes || [],
+      }));
+      payload.title = song ? song.title : '';
+    }
+    api.syncDesktopLyric(payload);
   }
 
   // 在 play/pause/timeupdate 时同步（已在上面合并）

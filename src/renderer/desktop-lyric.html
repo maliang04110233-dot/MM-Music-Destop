@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>桌面歌词</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+      font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+    body { display: flex; flex-direction: column; }
+
+    /* 歌词主区：拖动区（未锁定时）+ 穿透（锁定后正文不响应鼠标） */
+    .lyric-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      padding: 0 20px;
+      -webkit-app-region: drag; /* 允许拖动窗口 */
+    }
+    .lyric-line {
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4);
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity 0.3s, transform 0.3s;
+      text-align: center;
+    }
+    .lyric-line.prev { opacity: 0.45; font-size: 22px; font-weight: 500; }
+    .lyric-line.next { opacity: 0.45; font-size: 22px; font-weight: 500; }
+    .lyric-line.empty::before { content: '♪ 暂无歌词 ♪'; font-size: 18px; font-weight: 400; opacity: 0.6; }
+    /* 逐字卡拉 OK 高亮 */
+    .lyric-line .w { color: rgba(255,255,255,0.5); transition: color 0.25s; }
+    .lyric-line .w.lit { color: #00ffc8; text-shadow: 0 1px 6px rgba(0,255,200,0.5); }
+    .lyric-sub {
+      font-size: 16px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.55);
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 悬停控制条（锁定时隐藏拖动提示，控制条始终可点） */
+    .control-bar {
+      display: none;
+      justify-content: flex-end;
+      gap: 6px;
+      padding: 4px 8px;
+      -webkit-app-region: no-drag;
+    }
+    body:hover .control-bar { display: flex; }
+    .ctl-btn {
+      min-width: 26px; height: 26px;
+      padding: 0 7px;
+      border: none; border-radius: 4px;
+      background: rgba(20,20,35,0.85);
+      color: #cdd3ff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .ctl-btn:hover { background: rgba(45,45,80,0.95); color: #fff; }
+    .ctl-btn.active { color: #00ffc8; }
+  </style>
+</head>
+<body>
+  <div class="lyric-stage" id="lyricStage">
+    <div class="lyric-line prev" id="lyricPrev"></div>
+    <div class="lyric-line" id="lyricCur"></div>
+    <div class="lyric-line next" id="lyricNext"></div>
+    <div class="lyric-sub" id="lyricSub"></div>
+  </div>
+  <div class="control-bar" id="controlBar">
+    <button class="ctl-btn" id="btnLock" title="锁定歌词（锁定后正文鼠标穿透，仅控制条可点）">🔓</button>
+    <button class="ctl-btn" id="btnFontDown" title="缩小字号">A-</button>
+    <button class="ctl-btn" id="btnFontUp" title="放大字号">A+</button>
+    <button class="ctl-btn" id="btnClose" title="关闭桌面歌词">✕</button>
+  </div>
+
+  <script>
+    // ── 状态 ─────────────────────────────────────────────
+    let lyrics = [];        // [{t, text, subText, words:[], wordTimes:[]}]
+    let currentTime = 0;
+    let curIdx = -1;       // 当前行索引
+    let locked = false;     // 锁定 = 正文穿透
+    let fontSize = 28;     // 主行字号（持久化由主窗口 prefs 代理，本地兜底 localStorage 不可用时用内存）
+    try { fontSize = +localStorage.getItem('dlFont') || 28; } catch (e) { /* transparent 窗口有时禁存储 */ }
+
+    const elPrev = document.getElementById('lyricPrev');
+    const elCur  = document.getElementById('lyricCur');
+    const elNext = document.getElementById('lyricNext');
+    const elSub  = document.getElementById('lyricSub');
+
+    function applyFontSize() {
+      elCur.style.fontSize = fontSize + 'px';
+      elPrev.style.fontSize = Math.max(14, Math.round(fontSize * 0.78)) + 'px';
+      elNext.style.fontSize = Math.max(14, Math.round(fontSize * 0.78)) + 'px';
+      elSub.style.fontSize = Math.max(12, Math.round(fontSize * 0.55)) + 'px';
+      try { localStorage.setItem('dlFont', String(fontSize)); } catch (e) { /* ignore */ }
+    }
+
+    // ── 渲染 ─────────────────────────────────────────────
+    function renderLines() {
+      if (!lyrics.length) {
+        elCur.classList.add('empty');
+        elCur.textContent = '';
+        elPrev.textContent = '';
+        elNext.textContent = '';
+        elSub.textContent = '';
+        elSub.style.display = 'none';
+        return;
+      }
+      elCur.classList.remove('empty');
+      elSub.style.display = '';
+
+      const p = lyrics[curIdx - 1];
+      const c = lyrics[curIdx] || lyrics[0];
+      const n = lyrics[curIdx + 1];
+
+      elPrev.textContent = p ? p.text : '';
+      elNext.textContent = n ? n.text : '';
+      elSub.textContent = c && c.subText ? c.subText : '';
+
+      // 当前行：逐字 span（卡拉 OK）
+      if (c && c.words && c.words.length) {
+        elCur.innerHTML = c.words.map((w, j) =>
+          `<span class="w" data-j="${j}">${w === ' ' ? '&nbsp;' : w}</span>`
+        ).join('');
+      } else {
+        elCur.textContent = c ? c.text : '';
+      }
+      highlightWords();
+    }
+
+    // 按 currentTime 点亮已唱过的字
+    function highlightWords() {
+      const c = lyrics[curIdx];
+      if (!c) return;
+      const spans = elCur.querySelectorAll('.w');
+      for (let j = 0; j < spans.length; j++) {
+        const wt = c.wordTimes && c.wordTimes[j];
+        if (wt !== undefined && currentTime + 1e-6 >= wt) spans[j].classList.add('lit');
+        else spans[j].classList.remove('lit');
+      }
+    }
+
+    // 定位当前行（二分查找第一个 t > currentTime 的行）
+    function locate() {
+      if (!lyrics.length) { if (curIdx !== -1) { curIdx = -1; renderLines(); } return; }
+      let lo = 0, hi = lyrics.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (lyrics[mid].t <= currentTime) lo = mid + 1;
+        else hi = mid;
+      }
+      const idx = lo - 1;
+      if (idx !== curIdx) {
+        curIdx = idx;
+        renderLines();
+      } else {
+        highlightWords();
+      }
+    }
+
+    // ── 数据接收 ─────────────────────────────────────────
+    window.miniAPI.on('desktop-lyric-data', (data) => {
+      if (!data) return;
+      if (data.lyrics) {
+        // 整份歌词（换歌时推送；含 wordTimes 供逐字高亮）
+        lyrics = Array.isArray(data.lyrics) ? data.lyrics : [];
+        curIdx = -2; // 强制重渲染
+      }
+      if (typeof data.currentTime === 'number') currentTime = data.currentTime;
+      if (typeof data.fontSize === 'number' && data.fontSize > 0 && data.fontSize !== fontSize) {
+        fontSize = data.fontSize;
+        applyFontSize();
+      }
+      locate();
+    });
+
+    // ── 控制条 ───────────────────────────────────────────
+    function setLocked(v) {
+      locked = !!v;
+      document.getElementById('btnLock').textContent = locked ? '🔒' : '🔓';
+      document.getElementById('btnLock').classList.toggle('active', locked);
+      // 锁定：整窗穿透（控制条靠 mouseenter 恢复）；解锁：恢复点击
+      window.miniAPI.send('desktop-lyric-lock', locked);
+    }
+
+    document.getElementById('btnLock').addEventListener('click', () => setLocked(!locked));
+    document.getElementById('btnClose').addEventListener('click', () => window.miniAPI.send('desktop-lyric-close'));
+    document.getElementById('btnFontUp').addEventListener('click', () => { fontSize = Math.min(52, fontSize + 2); applyFontSize(); });
+    document.getElementById('btnFontDown').addEventListener('click', () => { fontSize = Math.max(16, fontSize - 2); applyFontSize(); });
+
+    // 穿透模式：正文区域忽略鼠标（hover 控制条时恢复点击）
+    // body:hover .control-bar 显示；但锁定后窗口 ignoreMouseEvents(true) 会导致
+    // body 永远不 hover —— 用 forward:true 让事件继续转发进来，mouseenter 仍能触发
+    document.getElementById('controlBar').addEventListener('mouseenter', () => {
+      window.miniAPI.send('desktop-lyric-set-ignore-mouse', false);
+    });
+    document.getElementById('controlBar').addEventListener('mouseleave', () => {
+      if (locked) window.miniAPI.send('desktop-lyric-set-ignore-mouse', true);
+    });
+
+    applyFontSize();
+    renderLines();
+  </script>
+</body>
+</html>

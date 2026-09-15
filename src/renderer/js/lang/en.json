@@ -226,5 +226,7 @@
   "toast.linkShort": "Short link detected. Open it in a browser first, then copy the full URL",
   "toast.linkRecognized": "🔗 Link recognized ({source}): {title}",
   "toast.linkFailed": "Link error: {msg}",
-  "toast.linkUnsupported": "Album/playlist links from this platform are not supported yet"
+  "toast.linkUnsupported": "Album/playlist links from this platform are not supported yet",
+  "player.desktopLyric": "Desktop Lyrics",
+  "settings.general.desktopLyricHint": "Floating always-on-top window with karaoke lyrics; supports click-through lock, dragging and font size"
 }

@@ -226,5 +226,7 @@
   "toast.linkShort": "检测到短链，请先在浏览器打开后复制完整链接",
   "toast.linkRecognized": "🔗 已识别 {source}链接：{title}",
   "toast.linkFailed": "链接识别：{msg}",
-  "toast.linkUnsupported": "暂不支持该平台的专辑/歌单链接"
+  "toast.linkUnsupported": "暂不支持该平台的专辑/歌单链接",
+  "player.desktopLyric": "桌面歌词",
+  "settings.general.desktopLyricHint": "在屏幕上方的独立置顶窗口显示逐字歌词，支持锁定（鼠标穿透）、拖动、字号缩放"
 }
