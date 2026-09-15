@@ -134,7 +134,18 @@ function renderQueue(queue) {
 
   if (!filtered.length) {
     const emptyMsg = _dlFilter === 'all' ? '暂无下载任务' : _dlFilter === 'active' ? '暂无正在下载的任务' : _dlFilter === 'done' ? '暂无已完成的任务' : '暂无失败的任务';
-    el.innerHTML = `<div class="queue-empty">${emptyMsg}</div>`;
+    // 全部 tab 空态给引导（去搜索/看历史）；筛选 tab 空态保持一句话
+    el.innerHTML = _dlFilter === 'all' && !queue.length
+      ? `<div class="queue-empty queue-empty-guide">
+          <div class="queue-empty-icon">📥</div>
+          <div class="queue-empty-text">${emptyMsg}</div>
+          <div class="queue-empty-hint">搜索喜欢的歌，点 ⬇ 加入下载队列</div>
+          <div class="queue-empty-actions">
+            <button class="setting-btn" onclick="switchTab('search')">🔍 去搜索</button>
+            <button class="setting-btn" onclick="switchDlSubTab('history')">📜 下载历史</button>
+          </div>
+        </div>`
+      : `<div class="queue-empty">${emptyMsg}</div>`;
     return;
   }
 

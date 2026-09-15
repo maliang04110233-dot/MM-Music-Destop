@@ -515,6 +515,11 @@ async function init() {
   // 加载首页推荐（失败不阻断主流程）
   loadHomeRecommendations().catch(e => logger.warn('首页推荐加载失败:', e.message));
 
+  // 首页统计概览（本地曲库/已下载/累计收听/最常播放）
+  if (typeof window.loadHomeStats === 'function') {
+    window.loadHomeStats();
+  }
+
   // 启动时从 prefs 恢复最近播放记录（此前无人调用，刷新后清零）
   if (typeof window.loadRecentlyPlayed === 'function') {
     window.loadRecentlyPlayed()

@@ -264,7 +264,7 @@ function clearLoadingPlaceholders() {
     'qqTopList', 'qqNewSongsList', 'qqRadiosGrid', 'qqHotSingersGrid', 'biliRankingList'];
   for (const id of ids) {
     const el = document.getElementById(id);
-    if (el && el.querySelector('.loading')) {
+    if (el && (el.querySelector('.loading') || el.querySelector('.skel-row') || el.querySelector('.skel-card'))) {
       el.innerHTML = `<div class="rec-error" onclick="window._forceHomeRefresh=true;loadHomeRecommendations()" style="color:var(--text-muted);font-size:12px;padding:14px;text-align:center;cursor:pointer;border:1px dashed var(--border);border-radius:8px;">⚠️ 加载失败，点击重试</div>`;
     }
   }
@@ -397,11 +397,20 @@ function switchPlatTab(tab, btn) {
 }
 
 function switchNeteaseSub(type, btn) {
-  document.querySelectorAll('.rec-subtab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#neteaseSubTabs .rec-subtab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   const typeLower = type.toLowerCase();
   ['neteaseTopsPanel', 'neteaseHotPanel', 'neteaseNewPanel', 'neteaseOriginalPanel', 'neteasePlaylistPanel'].forEach(id => {
     document.getElementById(id).style.display = id.toLowerCase().includes(typeLower) ? 'block' : 'none';
+  });
+}
+
+// QQ 面板子 tab：九个分区收纳为一行切换（原平铺 9 屏太长）
+function switchQQSub(key, btn) {
+  document.querySelectorAll('#qqSubTabs .rec-subtab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#platQQPanel [id^="qqSec-"]').forEach(el => {
+    el.style.display = el.id === 'qqSec-' + key ? 'block' : 'none';
   });
 }
 
@@ -419,6 +428,58 @@ function homeHeroSearch(keyword) {
   quickSearch(kw);
 }
 
+// ── 统计概览卡片 ──────────────────────────────────────
+// 本地曲库数 / 已下载数 / 累计收听时长 / 最常播放
+async function loadHomeStats() {
+  try {
+    const _api = _getApi();
+    if (!_api) return;
+    // 并行拉三块数据，各自容错（缺哪块哪块留 —）
+    const [lib, hist, stats] = await Promise.allSettled([
+      _api.loadLibraryIndex ? _api.loadLibraryIndex() : Promise.resolve(null),
+      _api.getHistoryStats ? _api.getHistoryStats() : Promise.resolve(null),
+      Promise.resolve(typeof getPlayStats === 'function' ? getPlayStats() : null),
+    ]);
+
+    // loadLibraryIndex 返回 { songs, dirPath, lastScan }
+    const libSongs = lib.status === 'fulfilled' && lib.value
+      ? (Array.isArray(lib.value) ? lib.value : (lib.value.songs || []))
+      : [];
+    const elLib = document.getElementById('statLibCount');
+    if (elLib) elLib.textContent = String(libSongs.length);
+
+    const doneCount = hist.status === 'fulfilled' && hist.value ? hist.value.done : null;
+    const elDone = document.getElementById('statDoneCount');
+    if (elDone) elDone.textContent = doneCount == null ? '—' : String(doneCount);
+
+    const elTime = document.getElementById('statPlayTime');
+    if (elTime) {
+      const totalSec = stats ? (stats.totalPlayTime || 0) : 0;
+      elTime.textContent = totalSec >= 3600
+        ? (totalSec / 3600).toFixed(1) + ' 小时'
+        : Math.round(totalSec / 60) + ' 分钟';
+    }
+
+    const elMost = document.getElementById('statMostPlayed');
+    if (elMost) {
+      let most = null;
+      if (stats && stats.playCount) {
+        const entries = Object.entries(stats.playCount).sort((a, b) => b[1] - a[1]);
+        if (entries.length) most = entries[0];
+      }
+      if (most) {
+        const [title] = most[0].split('|||');
+        elMost.textContent = title.slice(0, 12);
+        elMost.title = `${title}（${most[1]} 次）`;
+      } else {
+        elMost.textContent = '—';
+      }
+    }
+  } catch (e) {
+    logger.warn('[loadHomeStats] error:', e);
+  }
+}
+
 // ── 最近播放渲染 ──────────────────────────────────────
 function renderRecentlyPlayed() {
   const section = document.getElementById('recentlyPlayedSection');
@@ -432,12 +493,22 @@ function renderRecentlyPlayed() {
   }
 
   section.style.display = 'block';
+  // 标题行加「播放全部」：整单最近播放进队列从第一首播
+  const titleEl = section.querySelector('.hot-section-title');
+  if (titleEl && !titleEl.querySelector('.section-playall-btn')) {
+    const btn = document.createElement('button');
+    btn.className = 'section-playall-btn';
+    btn.textContent = '▶ 播放全部';
+    btn.onclick = () => playAllRecent();
+    titleEl.appendChild(btn);
+  }
   list.innerHTML = recent.slice(0, 10).map((s, i) => `
-    <div class="recent-item" onclick="playRecentSong(${i})">
+    <div class="recent-item" onclick="playRecentSong(${i})" title="${esc(s.title)} - ${esc(s.artist)}">
       <div class="recent-cover">
         ${s.cover
           ? `<img src="${escAttr(s.cover)}" alt="" onerror="this.parentElement.innerHTML='🎵'">`
           : '🎵'}
+        <div class="recent-play-overlay">▶</div>
       </div>
       <div class="recent-info">
         <div class="recent-title">${esc(s.title)}</div>
@@ -463,6 +534,24 @@ async function playRecentSong(idx) {
   }
 }
 
+// 最近播放整单入队（从第一首开始顺序播放）
+async function playAllRecent() {
+  try {
+    const recent = typeof getRecentlyPlayed === 'function' ? getRecentlyPlayed() : [];
+    if (!recent.length) return;
+    const songs = [...recent].reverse().slice(0, 50); // 最近播放是新的在前，队列按旧→新排
+    setState('songs', songs);
+    setState('playQueue', songs);
+    setState('playIdx', 0);
+    setState('currentPlaying', songs[0]);
+    await loadAndPlay(songs[0]);
+    showToast(`▶ 正在播放最近播放（共 ${songs.length} 首）`, 'success', 2500);
+  } catch (e) {
+    logger.warn('[playAllRecent] error:', e);
+    showToast('播放失败：' + (e.message || e), 'error', 3000);
+  }
+}
+
 // ── ES Module 导出 ──────────────────────────────────────
 export {
   homeRecommendations,
@@ -475,8 +564,11 @@ export {
   addRecommendDownload,
   switchPlatTab,
   switchNeteaseSub,
+  switchQQSub,
   quickSearch,
   homeHeroSearch,
+  loadHomeStats,
+  playAllRecent,
   markHomeSectionError,
   clearLoadingPlaceholders,
   updateAllPlaylistsGrid,
@@ -495,8 +587,11 @@ window.playRecommendSong = playRecommendSong;
 window.addRecommendDownload = addRecommendDownload;
 window.switchPlatTab = switchPlatTab;
 window.switchNeteaseSub = switchNeteaseSub;
+window.switchQQSub = switchQQSub;
 window.quickSearch = quickSearch;
 window.homeHeroSearch = homeHeroSearch;
+window.loadHomeStats = loadHomeStats;
+window.playAllRecent = playAllRecent;
 window.markHomeSectionError = markHomeSectionError;
 window.clearLoadingPlaceholders = clearLoadingPlaceholders;
 window.updateAllPlaylistsGrid = updateAllPlaylistsGrid;

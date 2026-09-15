@@ -178,6 +178,7 @@
 /* 网易云子标签 */
 .rec-subtabs {
   display: flex; gap: 4px; margin-bottom: 12px;
+  flex-wrap: wrap; /* QQ 面板 9 个子 tab 需换行 */
 }
 .rec-subtab {
   padding: 4px 10px; border-radius: 6px; border: 1px solid var(--neon-blue-dim);
@@ -188,6 +189,10 @@
 .rec-subtab.active {
   background: #e84d5b; border-color: #e84d5b;
   color: white;
+}
+/* QQ 面板子 tab：QQ 品牌绿（区别网易云红） */
+#qqSubTabs .rec-subtab.active {
+  background: #31c27c; border-color: #31c27c;
 }
 
 /* 平台内容区 */
@@ -663,6 +668,66 @@
 }
 
 /* ══════════════════════════════════════════════════════════
+   首页统计概览卡片
+   ══════════════════════════════════════════════════════════ */
+.home-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  flex-shrink: 0;
+}
+.stat-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 10px 12px;
+  background: var(--bg-card); border: 1px solid var(--neon-blue-dim);
+  border-radius: 12px; cursor: pointer;
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(108,99,255,.12);
+}
+.stat-icon { font-size: 18px; line-height: 1; }
+.stat-num {
+  font-size: 17px; font-weight: 700; color: var(--neon-text);
+  font-variant-numeric: tabular-nums;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stat-label { font-size: 11px; color: var(--neon-dim); }
+
+/* ══════════════════════════════════════════════════════════
+   推荐区骨架屏（替代转圈 spinner，减少加载跳变）
+   ══════════════════════════════════════════════════════════ */
+.skel-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px;
+}
+.skel-avatar {
+  width: 30px; height: 30px; border-radius: 6px; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-deep) 25%, var(--bg-hover) 50%, var(--bg-deep) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s infinite linear;
+}
+.skel-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.skel-line {
+  height: 10px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-deep) 25%, var(--bg-hover) 50%, var(--bg-deep) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s infinite linear;
+}
+.skel-line.w60 { width: 60%; }
+.skel-line.w40 { width: 40%; height: 8px; }
+.skel-card {
+  aspect-ratio: 1; border-radius: 10px;
+  background: linear-gradient(90deg, var(--bg-deep) 25%, var(--bg-hover) 50%, var(--bg-deep) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s infinite linear;
+}
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ══════════════════════════════════════════════════════════
    最近播放
    ══════════════════════════════════════════════════════════ */
 .section-clear-btn {
@@ -672,6 +737,24 @@
   transition: all .2s;
 }
 .section-clear-btn:hover { border-color: var(--red); color: var(--red); }
+.section-playall-btn {
+  font-size: 11px; padding: 2px 10px; border-radius: 6px;
+  border: 1px solid rgba(108,99,255,.4); background: rgba(108,99,255,.08);
+  color: var(--accent2); cursor: pointer; margin-left: 6px;
+  transition: all .2s;
+}
+.section-playall-btn:hover {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.recent-cover { position: relative; }
+.recent-play-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #fff;
+  background: rgba(0,0,0,.45); border-radius: 6px;
+  opacity: 0; transition: opacity .15s;
+}
+.recent-item:hover .recent-play-overlay { opacity: 1; }
 
 .recent-list {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
