@@ -921,12 +921,10 @@ async function playSong(idx) {
 }
 
 // ── 来源切换 ─────────────────────────────────────────
-function switchSource(src, btn) {
+// 平台筛选已改为下拉框：选中态由 <select> 自身反映，这里只同步 state 后重搜
+// （仅 HTML 内联 onclick 调用，经下方 window 桥接暴露，无模块导入方）
+function switchSource(src) {
   setState('currentSource', src);
-  // btn 缺省时按 data-source 找对应 tab，保证程序化调用（无事件对象）也能切换高亮
-  const tab = btn || document.querySelector(`.search-source-tabs .tab[data-src="${src}"]`);
-  document.querySelectorAll('.search-source-tabs .tab').forEach(t => t.classList.remove('active'));
-  if (tab) tab.classList.add('active');
   if (getState('currentKeyword')) doSearch(1);
 }
 
@@ -943,7 +941,6 @@ window.renderAlbumList = renderAlbumList;
 // ── ES Module 导出 ──────────────────────────────────────
 export {
   renderPagination,
-  switchSource,
   addDownload,
   showSearchHistory,
   hideSearchHistory,

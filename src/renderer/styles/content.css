@@ -2,9 +2,6 @@
 .search-bar {
   display: flex; gap: 10px; align-items: center;
 }
-.search-source-tabs {
-  display: flex; gap: 4px; flex-shrink: 0;
-}
 .tab {
   padding: 7px 13px; border-radius: 8px; border: 1px solid var(--neon-blue-dim);
   background: var(--bg-card); color: var(--neon-dim); cursor: pointer;
@@ -49,6 +46,9 @@
   padding: 8px 12px; border-radius: 8px; border: 1px solid var(--neon-blue-dim);
   background: var(--bg-input); color: var(--neon-dim); font-size: 12.5px;
   cursor: pointer; outline: none; flex-shrink: 0;
+}
+.source-select {
+  color: var(--neon-text); font-weight: 500; min-width: 96px;
 }
 
 /* ── 搜索结果 ────────────────────────────────────────── */
@@ -404,6 +404,8 @@
 /* 酷狗主色也是蓝，与 B站天蓝(#38bdf8)/酷我蓝(#60a5fa) 同屏时需可区分，取青绿 */
 .badge-kugou { background: rgba(16,185,129,.14); color: #34d399; border: 1px solid rgba(16,185,129,.22); }
 .badge-kuwo { background: rgba(46,127,255,.14); color: #60a5fa; border: 1px solid rgba(46,127,255,.22); }
+/* 咪咕：已有红/黄/天蓝/青绿/蓝五色，取紫以保持同屏可区分 */
+.badge-migu { background: rgba(167,139,250,.14); color: #a78bfa; border: 1px solid rgba(167,139,250,.24); }
 
 .song-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .action-btn {

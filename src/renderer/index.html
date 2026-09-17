@@ -160,14 +160,15 @@
 
           <!-- 搜索栏 -->
           <div class="search-bar" style="position:relative;">
-            <div class="search-source-tabs">
-              <button class="tab active" data-src="all" onclick="switchSource('all',this)" data-i18n="search.all">全部</button>
-              <button class="tab" data-src="netease" onclick="switchSource('netease',this)" data-i18n="home.neteaseTab">网易云</button>
-              <button class="tab" data-src="qq" onclick="switchSource('qq',this)" data-i18n="home.qqTab">QQ音乐</button>
-              <button class="tab" data-src="kugou" onclick="switchSource('kugou',this)" data-i18n="search.kugou">酷狗</button>
-              <button class="tab" data-src="kuwo" onclick="switchSource('kuwo',this)" data-i18n="search.kuwo">酷我</button>
-              <button class="tab" data-src="bilibili" onclick="switchSource('bilibili',this)" data-i18n="home.biliTab">B站</button>
-            </div>
+            <select class="quality-select source-select" id="sourceSelect" onchange="switchSource(this.value)">
+              <option value="all" data-i18n="search.all">全部</option>
+              <option value="netease" data-i18n="home.neteaseTab">网易云</option>
+              <option value="qq" data-i18n="home.qqTab">QQ音乐</option>
+              <option value="kugou" data-i18n="search.kugou">酷狗</option>
+              <option value="kuwo" data-i18n="search.kuwo">酷我</option>
+              <option value="migu" data-i18n="search.migu">咪咕</option>
+              <option value="bilibili" data-i18n="home.biliTab">B站</option>
+            </select>
             <div class="search-type-tabs">
                           <button class="tab active" data-type="song" onclick="switchSearchType('song',this)" data-i18n="search.single">🎵 单曲</button>
                           <button class="tab" data-type="album" onclick="switchSearchType('album',this)" data-i18n="search.album">💿 专辑</button>
