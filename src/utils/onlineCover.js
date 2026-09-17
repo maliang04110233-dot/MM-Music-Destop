@@ -60,12 +60,12 @@ async function fetchCoverFromQQ(title, artist = '') {
   if (!title) return null;
   const keyword = `${title} ${artist || ''}`.trim();
 
-  // 延迟 require，避免循环依赖
-  const qq = require('../api/platforms/qq');
+  // 延迟 require + 经 gateway 调用，避免循环依赖且不直连平台模块
+  const { searchViaGateway } = require('../api/gatewayAccess');
 
   let songs;
   try {
-    songs = await qq.qqSearch(keyword, 1);
+    songs = await searchViaGateway('qq', keyword, 1);
   } catch (e) {
     logger.warn('[onlineCover] QQ 搜索失败:', e.message);
     return null;
@@ -111,11 +111,11 @@ async function fetchCoverFromKugou(title, artist = '') {
   if (!title) return null;
   const keyword = `${title} ${artist || ''}`.trim();
 
-  const kugou = require('../api/platforms/kugou');
+  const { searchViaGateway } = require('../api/gatewayAccess');
 
   let songs;
   try {
-    songs = await kugou.kugouSearch(keyword, 1);
+    songs = await searchViaGateway('kugou', keyword, 1);
   } catch (e) {
     logger.warn('[onlineCover] 酷狗搜索失败:', e.message);
     return null;

@@ -1,89 +1,47 @@
 /**
- * 音乐 API 聚合层（v2 — 插件架构）
+ * 音乐 API 聚合层（v3 — 插件架构）
  *
  * 架构说明：
- *   - 平台模块通过适配器注册到 PluginRegistry
+ *   - **平台 manifest 是唯一事实来源**：pluginRegistry 自动发现 platforms/ 目录，
+ *     探针 / 换源候选 / CORS 白名单 / 链接识别 / 聚合条数 / 渲染层下拉
+ *     全部由 registry 派生，本文件不再持有任何平台清单
  *   - 所有路由函数（searchMusic / getDownloadUrl / getLyrics 等）统一走插件系统
- *   - 老式导出（qqSearch / neteaseGetUrl 等）保留向后兼容
- *   - 新平台只需在 platforms/ 加一个文件 + 在 _ADAPTERS 注册适配器
+ *   - 新平台 = 在 platforms/ 新建 1 个文件，本文件无需改动
+ *
+ * 阶段 3 已移除：8 个原始平台模块再导出 + qqSearch/qqGetUrl/qqVerifyCookie 兼容别名。
+ *   依据是全仓调用方普查（src/ test/ scripts/ .preview/ 零命中）。
+ *   要取平台实现请用 registry.get(id) / registry.getCapabilities(id)，
+ *   不要再从本模块 import 平台模块 —— 那会让"平台清单"重新长出第二份。
  */
 
-const { defaultRegistry } = require('./pluginRegistry');
+const { defaultRegistry, loadPlatformPlugins } = require('./pluginRegistry');
+const { createPlatformGateway } = require('./gateway');
 const recommendations = require('./recommendations');
 const logger = require('../utils/logger');
 const { normalizeQQCookie, detectQQCookieType, extractQQUin, extractQQMusickey } = require('../utils/cookie');
 const sourceHealth = require('../utils/sourceHealth');
 
-// ── 直接 require 平台模块（向后兼容 + 适配器桥接）──────────
-const netease = require('./platforms/netease');
-const qq = require('./platforms/qq');
-const bilibili = require('./platforms/bilibili');
-const kugou = require('./platforms/kugou');
-const kuwo = require('./platforms/kuwo');
-
-// ── 平台适配器定义 ────────────────────────────────────────
-// 每个适配器把老式函数名映射到标准化插件接口
-const _ADAPTERS = [
-  {
-    id: 'netease', name: '网易云音乐', icon: '🎵',
-    search: (keyword, page, cookie) => netease.neteaseSearch(keyword, page, cookie),
-    getUrl: (id, quality, cookie) => netease.neteaseGetUrl(id, quality, cookie),
-    getLyrics: (id) => netease.neteaseGetLyrics(id),
-    verifyCookie: (cookie) => netease.neteaseVerifyCookie(cookie),
-    searchAlbum: (keyword, page) => netease.neteaseSearchAlbum(keyword, page),
-    getAlbumSongs: (albumId, page) => netease.neteaseGetAlbumSongs(albumId, page),
-    searchSinger: (keyword, page) => netease.neteaseSearchSinger(keyword, page),
-    getSingerSongs: (mid, page) => netease.neteaseGetSingerSongs(mid, page),
-    getSingerAlbums: (mid, page) => netease.neteaseGetSingerAlbums(mid, page),
-  },
-  {
-    id: 'qq', name: 'QQ音乐', icon: '🎶',
-    search: (keyword, page, cookie) => qq.qqSearch(keyword, page, cookie),
-    getUrl: (id, quality, cookie) => qq.qqGetUrl(id, quality, cookie),
-    getLyrics: (id) => qq.qqGetLyrics(id),
-    verifyCookie: (cookie) => qq.qqVerifyCookie(cookie),
-    searchAlbum: (keyword, page) => qq.qqSearchAlbum(keyword, page),
-    getAlbumSongs: (albumId, page) => qq.qqGetAlbumSongs(albumId, page),
-    searchSinger: (keyword, page) => qq.qqSearchSinger(keyword, page),
-    getSingerSongs: (mid, page) => qq.qqGetSingerSongs(mid, page),
-    getSingerAlbums: (mid, page) => qq.qqGetSingerAlbums(mid, page),
-  },
-  {
-    id: 'bilibili', name: 'B站', icon: '📺',
-    search: (keyword, page, cookie) => bilibili.bilibiliSearch(keyword, page, cookie),
-    getUrl: (id, quality, cookie) => bilibili.bilibiliGetUrl(id, quality, cookie),
-    verifyCookie: (cookie) => bilibili.bilibiliVerifyCookie(cookie),
-  },
-  {
-    id: 'kugou', name: '酷狗音乐', icon: '🎸',
-    search: (keyword, page, _cookie) => kugou.kugouSearch(keyword, page),
-    getUrl: (id, quality) => kugou.kugouGetUrl(id, quality),
-    getLyrics: (id) => kugou.kugouGetLyrics(id),
-    searchAlbum: (keyword, page) => kugou.kugouSearchAlbum(keyword, page),
-    getAlbumSongs: (albumId, page) => kugou.kugouGetAlbumSongs(albumId, page),
-    searchSinger: (keyword, page) => kugou.kugouSearchSinger(keyword, page),
-    getSingerSongs: (mid, page) => kugou.kugouGetSingerSongs(mid, page),
-    getSingerAlbums: (mid, page) => kugou.kugouGetSingerAlbums(mid, page),
-  },
-  {
-    // 酷我：仅搜索 / 取流 / 歌词三项能力（无专辑、歌手、榜单接口）。
-    // 取流策略见 platforms/kuwo.js——无损走中转、失败自动降级官方 128k。
-    id: 'kuwo', name: '酷我音乐', icon: '🎧',
-    search: (keyword, page, _cookie) => kuwo.kuwoSearch(keyword, page),
-    getUrl: (id, quality) => kuwo.kuwoGetUrl(id, quality),
-    getLyrics: (id) => kuwo.kuwoGetLyrics(id),
-  },
-];
-
-// ── 注册插件 ──────────────────────────────────────────────
+// ── 注册平台插件（v3：registry 自动发现 platforms/ 目录）──────
+// 平台顺序与各派生清单（探针 / 换源候选 / CORS 白名单 / 链接模式 /
+// 聚合条数）全部由各平台 manifest 声明并派生，不再在此手写适配器。
+// 新平台 = 在 platforms/ 新建 1 个文件。
 const _registry = defaultRegistry;
-for (const adapter of _ADAPTERS) {
-  _registry.register(adapter);
-}
-logger.log(`[API] 插件注册完成，共 ${_registry.size} 个平台: ${_registry.getIds().join(', ')}`);
+loadPlatformPlugins(_registry);
+logger.log(`[API] 平台加载完成，共 ${_registry.size} 个: ${_registry.getIds().join(', ')}`);
 
 // ── Cookie 存储 ───────────────────────────────────────────
 let cookieStore = null;
+
+// ── 平台网关（v3 阶段 2：平台调用的唯一出口）─────────────────
+// 所有对平台的调用都应经 gateway，而不是 registry.get(id).method()。
+// gateway 负责：能力检查、cookie 注入、统一 safeRun、空值退化约定。
+const gateway = createPlatformGateway({
+  registry: _registry,
+  getCookie: (platform) => getCookie(platform),
+});
+// 推荐域同样注入 gateway，消灭它原先的平台直连 + 手写分派
+recommendations.setGateway(gateway);
+
 function setCookieStore(store) {
   cookieStore = store;
   if (store) {
@@ -117,28 +75,34 @@ async function searchMusic(keyword, source, page = 1) {
     return { songs: [], source: source || 'all', error: '搜索关键词不能为空' };
   }
   const errors = [];
-  const safeRun = async (label, fn) => {
-    try { return await fn(); }
-    catch (e) { errors.push(`${label}: ${e.message || e}`); return []; }
-  };
 
   // 单平台搜索
   if (source !== 'all') {
-    const plugin = _registry.get(source);
-    if (!plugin) return { songs: [], source, error: `未知平台: ${source}` };
-    const songs = await safeRun(plugin.name, () => plugin.search(keyword, page, getCookie(source)));
-    return { songs, source, error: errors[0] || null };
+    if (!_registry.has(source)) return { songs: [], source, error: `未知平台: ${source}` };
+    try {
+      const songs = await gateway.search(source, keyword, page);
+      return { songs, source, error: null };
+    } catch (e) {
+      return { songs: [], source, error: `${source}: ${e.message || e}` };
+    }
   }
 
-  // all: 并行搜索所有平台
+  // all: 并行搜索所有平台，按 manifest 的 policies.aggregateLimit 截断
   const allPlugins = _registry.getAll();
-  const results = await Promise.allSettled(
-    allPlugins.map(p => safeRun(p.name, () => p.search(keyword, 1, getCookie(p.id))))
-  );
+  const results = await gateway.fanOut(allPlugins.map(p => p.id), async (id) => {
+    try {
+      return await gateway.search(id, keyword, 1);
+    } catch (e) {
+      errors.push(`${id}: ${e.message || e}`);
+      return [];
+    }
+  });
+  // 聚合条数由 manifest 的 policies.aggregateLimit 显式声明。
+  // 原先是按数组下标硬编码 10/10/5 —— 在中间插入新平台会静默改变
+  // 后面所有平台的聚合条数，且没有任何测试盯着。
   const songs = results.flatMap((r, i) => {
-    if (r.status !== 'fulfilled') return [];
-    const limit = i === 0 ? 10 : i === 1 ? 10 : 5;
-    return r.value.slice(0, limit);
+    if (!r.ok) return [];
+    return r.value.slice(0, allPlugins[i]._policies.aggregateLimit);
   });
   return { songs, source: 'all', error: errors.length ? errors.join(' / ') : null };
 }
@@ -148,33 +112,24 @@ async function searchAlbum(keyword, source = 'qq', page = 1) {
   if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
     return { albums: [], total: 0 };
   }
-  const safeRun = async (label, fn) => {
-    try { return await fn(); }
-    catch (e) { logger.warn(`[${label}] 专辑搜索失败:`, e.message || e); return { albums: [], total: 0 }; }
-  };
 
   if (source !== 'all') {
-    const plugin = _registry.get(source);
-    if (!plugin || !plugin.searchAlbum) return { albums: [], total: 0 };
-    return await safeRun(plugin.name, () => plugin.searchAlbum(keyword, page));
+    return await gateway.searchAlbum(source, keyword, page);
   }
 
-  // all: 并行搜索所有支持专辑的平台
-  const allPlugins = _registry.getAll().filter(p => p.searchAlbum);
-  const results = await Promise.allSettled(
-    allPlugins.map(p => safeRun(p.name, () => p.searchAlbum(keyword, page)))
-  );
+  // all: 并行搜索所有支持专辑的平台（能力由 registry 推导）
+  const ids = gateway.platformsWith('album');
+  const results = await gateway.fanOut(ids, (id) => gateway.searchAlbum(id, keyword, page));
   const allAlbums = [];
   const seen = new Set();
-  results.forEach(r => {
-    if (r.status === 'fulfilled' && r.value && r.value.albums) {
-      r.value.albums.forEach(a => {
-        if (a.mid && seen.has(a.mid)) return;
-        if (a.mid) seen.add(a.mid);
-        allAlbums.push(a);
-      });
+  for (const r of results) {
+    if (!r.ok || !r.value || !Array.isArray(r.value.albums)) continue;
+    for (const a of r.value.albums) {
+      if (a.mid && seen.has(a.mid)) continue;
+      if (a.mid) seen.add(a.mid);
+      allAlbums.push(a);
     }
-  });
+  }
   allAlbums.sort((a, b) => {
     if (!a.publishTime && !b.publishTime) return 0;
     if (!a.publishTime) return 1;
@@ -186,17 +141,7 @@ async function searchAlbum(keyword, source = 'qq', page = 1) {
 
 // ─── 下载 URL 聚合（插件架构版）────────────────────────────
 async function getDownloadUrl(id, source, quality) {
-  const safeRun = async (label, fn) => {
-    try { return await fn(); }
-    catch (e) {
-      logger.warn(`${label}获取下载URL失败:`, e.message || e);
-      return { error: e.message || e };
-    }
-  };
-
-  const plugin = _registry.get(source);
-  if (!plugin) return { error: '未知数据源: ' + source };
-  return await safeRun(plugin.name, () => plugin.getUrl(id, quality, getCookie(source)));
+  return gateway.getUrl(source, id, quality);
 }
 
 // ── 智能取流（换源机制）───────────────────────────────────
@@ -266,11 +211,7 @@ async function getDownloadUrlSmart(song, quality) {
   if (!shouldFallbackToOtherSource(result)) return result;
 
   const deps = {
-    searchFn: (platformId, keyword) => {
-      const plugin = _registry.get(platformId);
-      if (!plugin) return [];
-      return plugin.search(keyword, 1, getCookie(platformId));
-    },
+    searchFn: (platformId, keyword) => gateway.search(platformId, keyword, 1),
     hasCookie: (platformId) => !!getCookie(platformId),
   };
   let candidates = [];
@@ -311,35 +252,30 @@ function recordProbeResult(source, ok) {
 
 // ── 歌词聚合（插件架构版）─────────────────────────────────
 async function getLyrics(id, source, title, artist) {
-  let lrc = '';
-
   // 优先按来源获取
-  const plugin = _registry.get(source);
-  if (plugin && plugin.getLyrics) {
-    try { lrc = await plugin.getLyrics(id); } catch (e) { /* ignore */ }
-  }
+  const primary = await gateway.getLyrics(source, id);
+  if (primary.lrc) return primary;
 
-  // fallback 1：用 title/artist 去网易云搜
-  if (!lrc && title) {
-    const neteasePlugin = _registry.get('netease');
-    if (neteasePlugin) {
-      try {
-        const results = await neteasePlugin.search(`${title} ${artist}`, 1, getCookie('netease'));
-        if (results.length > 0) {
-          lrc = await neteasePlugin.getLyrics(results[0].id);
-        }
-      } catch (e) { /* ignore */ }
+  // fallback 1：用 title/artist 去网易云搜（netease 是实现该兜底的首选源）
+  if (title) {
+    const results = await gateway.search('netease', `${title} ${artist}`, 1);
+    if (results.length > 0) {
+      const r = await gateway.getLyrics('netease', results[0].id);
+      if (r.lrc) return r;
     }
   }
 
-  // fallback 2：用 title/artist 去酷狗搜
-  if (!lrc && title) {
-    try {
-      lrc = await kugou.kugouGetLyricsByTitle(title, artist);
-    } catch (e) { /* ignore */ }
+  // fallback 2：交给实现了 getLyricsByTitle 的平台按"歌名+歌手"兜底
+  // （原先直连 kugou 的私有函数 ⇒ 绕过插件抽象，新平台无法参与这条 fallback）
+  // 平台集合由 registry 的能力推导（capabilities.lyricsByTitle）决定。
+  if (title) {
+    for (const platformId of gateway.platformsWith('lyricsByTitle')) {
+      const lrc = await gateway.getLyricsByTitle(platformId, title, artist);
+      if (lrc) return { lrc };
+    }
   }
 
-  return { lrc };
+  return { lrc: '' };
 }
 
 // ─── 粘贴链接智能识别（cobalt 式「贴链接即得歌」）──────────
@@ -362,15 +298,9 @@ async function getSongByLink(text) {
 
   // 单曲：按平台拉详情
   if (link.type === 'song') {
-    let song = null;
-    try {
-      if (link.platform === 'netease') song = await netease.neteaseGetSongDetail(link.id);
-      else if (link.platform === 'qq') song = await qq.qqGetSongDetail(link.id);
-      else if (link.platform === 'bilibili') song = await bilibili.bilibiliGetSongDetail(link.id, getCookie('bilibili'));
-      else if (link.platform === 'kugou') song = await kugou.kugouGetSongDetail(link.id);
-    } catch (e) {
-      logger.warn('[getSongByLink] 拉详情失败:', e.message || e);
-    }
+    // 平台是否支持由 manifest 的 getSongDetail 方法存在性决定（capabilities.linkDetail）；
+    // 原先这里是四路 if-else 硬编码，加平台必须回来加分支。
+    const song = await gateway.getSongDetail(link.platform, link.id);
     if (!song) return { matched: true, link, error: '未能获取歌曲信息（链接可能已失效或需要登录）' };
     return { matched: true, link, song };
   }
@@ -381,14 +311,7 @@ async function getSongByLink(text) {
 
 // ─── Cookie 验证聚合（插件架构版）──────────────────────────
 async function verifyCookie(platform, cookie) {
-  const plugin = _registry.get(platform);
-  if (!plugin || !plugin.verifyCookie) return { valid: false };
-  try {
-    return await plugin.verifyCookie(cookie);
-  } catch (e) {
-    logger.warn(`[${platform}] Cookie 验证异常:`, e.message || e);
-    return { valid: false, reason: '验证异常: ' + (e.message || e) };
-  }
+  return gateway.verifyCookie(platform, cookie);
 }
 
 // ─── 首页推荐 / 歌单 ───────────────────────────────────
@@ -425,23 +348,15 @@ module.exports = {
   searchSinger,
   getSingerSongs,
   getSingerAlbums,
-  // 原始平台模块引用（向后兼容）
-  netease,
-  qq,
-  bilibili,
-  kugou,
-  kuwo,
   // 转发 utils/cookie
   detectQQCookieType,
   normalizeQQCookie,
   extractQQUin,
   extractQQMusickey,
-  // 兼容老调用方
-  qqSearch: qq.qqSearch,
-  qqGetUrl: qq.qqGetUrl,
-  qqVerifyCookie: qq.qqVerifyCookie,
   // 插件注册中心（供外部检查）
   registry: _registry,
+  // 平台网关（平台调用的推荐入口；registry 用于查询事实，gateway 用于调用）
+  gateway,
   // 统一错误码
   AppError: require('../shared/errors').AppError,
 };
