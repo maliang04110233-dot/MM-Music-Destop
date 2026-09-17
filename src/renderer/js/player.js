@@ -6,6 +6,15 @@
  */
 
 import { logger } from './logger.js';
+import {
+  addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
+  restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
+  getPlayStats, getMostPlayed, loadPlayStats, resetPlayStats, generatePlayReport,
+} from './player/stats.js';
+import {
+  parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
+  applyLyricFontSize, applyLyricOffset,
+} from './player/lyrics.js';
 
 const audio = document.getElementById('audioPlayer');
 const RING_CIRCUMFERENCE = 552.9; // 2 * PI * 88
@@ -13,28 +22,6 @@ const RING_CIRCUMFERENCE = 552.9; // 2 * PI * 88
 // ── 状态 ─────────────────────────────────────────────
 let audioCtx = null;
 
-// ── 歌词设置（同步缓存，避免 timeupdate 热路径异步） ────
-let _lyricFontSize = 18;
-let _lyricOffset = 0;
-
-function _loadLyricSettings() {
-  api.getPref('lyricFontSize').then(v => { _lyricFontSize = v != null ? +v : 18; });
-  api.getPref('lyricOffset').then(v => { _lyricOffset = v != null ? +v : 0; });
-}
-// 页面加载时读取一次
-setTimeout(_loadLyricSettings, 0);
-
-function applyLyricFontSize(size) {
-  _lyricFontSize = +size || 18;
-  const lyricsArea = document.getElementById('lyricsArea');
-  if (lyricsArea) lyricsArea.style.fontSize = _lyricFontSize + 'px';
-}
-
-function applyLyricOffset(ms) {
-  _lyricOffset = +ms || 0;
-}
-window.applyLyricFontSize = applyLyricFontSize;
-window.applyLyricOffset = applyLyricOffset;
 
 // ── EQ 5 段均衡器 ────────────────────────────────────
 const EQ_BANDS = [
@@ -200,7 +187,7 @@ export function updatePlayerCard(song) {
   // 不修改进度条、频谱等播放状态
 }
 
-const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', bilibili: 'B站' };
+const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', kuwo: '酷我', bilibili: 'B站' };
 /** 换源徽标：实际取流源(song._altSource.source)与原源不同时显示，
     让"换源成功"从一次性 toast 变为持续可见状态 */
 function _updateSrcBadge(song) {
@@ -216,254 +203,6 @@ function _updateSrcBadge(song) {
   }
 }
 
-// ── 播放 ─────────────────────────────────────────────
-// 最近播放记录（内存缓存，最多 50 首）
-const _recentlyPlayed = [];
-const MAX_RECENT = 50;
-
-function addToRecentlyPlayed(song) {
-  if (!song || !song.title) return;
-  // 去重：移除已存在的同歌曲
-  const idx = _recentlyPlayed.findIndex(s =>
-    s.title === song.title && s.artist === song.artist && s.source === song.source
-  );
-  if (idx >= 0) _recentlyPlayed.splice(idx, 1);
-  // 添加到最前面
-  _recentlyPlayed.unshift({
-    title: song.title,
-    artist: song.artist || '未知艺术家',
-    source: song.source || '',
-    cover: song.cover || '',
-    duration: song.duration || 0,
-    playedAt: Date.now(),
-  });
-  // 限制数量
-  if (_recentlyPlayed.length > MAX_RECENT) _recentlyPlayed.length = MAX_RECENT;
-  // 持久化
-  persistRecentlyPlayed();
-}
-
-export function getRecentlyPlayed() {
-  return _recentlyPlayed;
-}
-
-async function persistRecentlyPlayed() {
-  try {
-    await api.setPref('recentlyPlayed', JSON.stringify(_recentlyPlayed));
-  } catch (_e) { /* 静默 */ }
-}
-
-export async function loadRecentlyPlayed() {
-  try {
-    const raw = await api.getPref('recentlyPlayed');
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        _recentlyPlayed.length = 0;
-        _recentlyPlayed.push(...arr.slice(0, MAX_RECENT));
-      }
-    }
-  } catch (_e) { /* 静默 */ }
-}
-
-export function clearRecentlyPlayed() {
-  _recentlyPlayed.length = 0;
-  persistRecentlyPlayed();
-  showToast('最近播放已清空', 'info');
-}
-
-// ══════════════════════════════════════════════════════════
-// 播放统计
-// ══════════════════════════════════════════════════════════
-
-const _playStats = {
-  totalPlayTime: 0,      // 总播放时长（秒）
-  totalSongs: 0,         // 播放过多少首不同歌曲
-  playCount: {},         // { 'title|||artist': count }
-  lastPlayed: null,      // 最后播放的歌曲
-  sessionStart: Date.now(),
-};
-
-// 追踪当前播放开始时间
-let _currentPlayStartTime = null;
-
-function updatePlayStatsOnStart() {
-  _currentPlayStartTime = Date.now();
-}
-
-function updatePlayStatsOnStop() {
-  if (_currentPlayStartTime) {
-    const elapsed = Math.floor((Date.now() - _currentPlayStartTime) / 1000);
-    _playStats.totalPlayTime += elapsed;
-    _currentPlayStartTime = null;
-    persistPlayStats();
-  }
-}
-
-function recordPlay(song) {
-  if (!song || !song.title) return;
-  const key = `${song.title}|||${song.artist || ''}`;
-  _playStats.playCount[key] = (_playStats.playCount[key] || 0) + 1;
-  _playStats.lastPlayed = { title: song.title, artist: song.artist, time: Date.now() };
-  // 统计不同歌曲数
-  _playStats.totalSongs = Object.keys(_playStats.playCount).length;
-  persistPlayStats();
-}
-
-export function getPlayStats() {
-  // 更新当前播放时长
-  if (_currentPlayStartTime) {
-    const elapsed = Math.floor((Date.now() - _currentPlayStartTime) / 1000);
-    return { ..._playStats, totalPlayTime: _playStats.totalPlayTime + elapsed };
-  }
-  return _playStats;
-}
-
-export function getMostPlayed(limit = 10) {
-  const entries = Object.entries(_playStats.playCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit);
-  return entries.map(([key, count]) => {
-    const [title, artist] = key.split('|||');
-    return { title, artist, count };
-  });
-}
-
-function formatPlayTime(seconds) {
-  if (!seconds) return '0分钟';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}小时${m}分钟`;
-  return `${m}分钟`;
-}
-
-async function persistPlayStats() {
-  try {
-    await api.setPref('playStats', JSON.stringify(_playStats));
-  } catch (_e) { /* 静默 */ }
-}
-
-export async function loadPlayStats() {
-  try {
-    const raw = await api.getPref('playStats');
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (data && typeof data === 'object') {
-        Object.assign(_playStats, data);
-      }
-    }
-  } catch (_e) { /* 静默 */ }
-}
-
-export function resetPlayStats() {
-  _playStats.totalPlayTime = 0;
-  _playStats.totalSongs = 0;
-  _playStats.playCount = {};
-  _playStats.lastPlayed = null;
-  _currentPlayStartTime = null;
-  persistPlayStats();
-  showToast('播放统计已重置', 'info');
-}
-
-// ══════════════════════════════════════════════════════════
-// 听歌报告
-// ══════════════════════════════════════════════════════════
-
-export function generatePlayReport() {
-  const stats = getPlayStats();
-  const mostPlayed = getMostPlayed(5);
-
-  // 最爱歌手
-  const artistCounts = {};
-  for (const [key, count] of Object.entries(stats.playCount)) {
-    const artist = key.split('|||')[1] || '未知';
-    artistCounts[artist] = (artistCounts[artist] || 0) + count;
-  }
-  const topArtists = Object.entries(artistCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-
-  const html = `
-    <div class="report-grid">
-      <div class="report-card">
-        <div class="report-icon">⏱️</div>
-        <div class="report-value">${formatPlayTime(stats.totalPlayTime)}</div>
-        <div class="report-label">总播放时长</div>
-      </div>
-      <div class="report-card">
-        <div class="report-icon">🎵</div>
-        <div class="report-value">${stats.totalSongs}</div>
-        <div class="report-label">播放歌曲数</div>
-      </div>
-      <div class="report-card">
-        <div class="report-icon">🎤</div>
-        <div class="report-value">${Object.keys(artistCounts).length}</div>
-        <div class="report-label">收听歌手数</div>
-      </div>
-    </div>
-
-    ${mostPlayed.length ? `
-    <div class="report-section">
-      <div class="report-section-title">🏆 最爱歌曲 TOP 5</div>
-      <div class="report-list">
-        ${mostPlayed.map((s, i) => `
-          <div class="report-item">
-            <span class="report-rank">${i + 1}</span>
-            <span class="report-name">${esc(s.title)}</span>
-            <span class="report-count">${s.count} 次</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-    ` : ''}
-
-    ${topArtists.length ? `
-    <div class="report-section">
-      <div class="report-section-title">🎤 最爱歌手 TOP 3</div>
-      <div class="report-list">
-        ${topArtists.map(([artist, count], i) => `
-          <div class="report-item">
-            <span class="report-rank">${i + 1}</span>
-            <span class="report-name">${esc(artist)}</span>
-            <span class="report-count">${count} 次</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-    ` : ''}
-
-    ${stats.lastPlayed ? `
-    <div class="report-section">
-      <div class="report-section-title">📀 最后播放</div>
-      <div class="report-last">
-        ${esc(stats.lastPlayed.title)} - ${esc(stats.lastPlayed.artist || '')}
-      </div>
-    </div>
-    ` : ''}
-  `;
-
-  showReportModal(html);
-}
-
-function showReportModal(html) {
-  let overlay = document.getElementById('reportModal');
-  if (overlay) overlay.remove();
-
-  overlay = document.createElement('div');
-  overlay.id = 'reportModal';
-  overlay.className = 'stats-overlay';
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  overlay.innerHTML = `
-    <div class="stats-panel report-panel">
-      <div class="stats-header">
-        <span>📊 听歌报告</span>
-        <button onclick="document.getElementById('reportModal').remove()">✕</button>
-      </div>
-      <div class="stats-body">${html}</div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-}
 
 // ── 播放进度记忆 ─────────────────────────────────────
 const _playProgressKey = (song) => song.filePath || `${song.source}:${song.id}`;
@@ -1125,7 +864,7 @@ export function onAudioEnded() {
   if (loopMode === 2) {
     // 修复：单曲循环时也要记录播放时长，避免统计丢失
     updatePlayStatsOnStop();
-    _currentPlayStartTime = Date.now(); // 重置计时起点
+    restartPlayTimer(); // 重置计时起点
     audio.currentTime = 0;
     audio.play().then(() => {}).catch(() => {});
     return;
@@ -1134,266 +873,24 @@ export function onAudioEnded() {
   nextSong();
 }
 
-// ── 歌词系统（逐字高亮）──────────────────────────────
-export function parseLrc(lrc) {
-  if (!lrc) { showNoLyrics(); return; }
-  const parsedLyrics = [];
-  let hasLangTags = false;
-
-  // 第一遍：解析所有行，检测 [lang:xx] 标签
-  const rawEntries = [];
-  lrc.split('\n').forEach(line => {
-    const langTagMatch = line.match(/^\[lang:(\w+)\]/);
-    if (langTagMatch) {
-      hasLangTags = true;
-      // 提取 [lang:xx] 后面的时间戳和文本
-      const rest = line.slice(langTagMatch[0].length);
-      const m = rest.match(/\[(\d+):(\d+\.?\d*)\](.*)/);
-      if (m) {
-        rawEntries.push({
-          lang: langTagMatch[1],
-          t: parseInt(m[1]) * 60 + parseFloat(m[2]),
-          text: m[3].trim()
-        });
-      }
-    } else {
-      const m = line.match(/\[(\d+):(\d+\.?\d*)\](.*)/);
-      if (m) {
-        rawEntries.push({
-          lang: null,
-          t: parseInt(m[1]) * 60 + parseFloat(m[2]),
-          text: m[3].trim()
-        });
-      }
-    }
-  });
-
-  if (hasLangTags) {
-    // 双语模式：按时间戳分组，合并主语言和副语言
-    const byTime = new Map(); // key = time, value = {main: text, sub: text}
-    rawEntries.forEach(e => {
-      const key = e.t.toFixed(3);
-      if (!byTime.has(key)) {
-        byTime.set(key, { t: e.t, text: '', subText: '' });
-      }
-      const entry = byTime.get(key);
-      // 第一个出现的语言为主语言，第二个为副语言
-      if (!entry.text) {
-        entry.text = e.text;
-      } else if (!entry.subText) {
-        entry.subText = e.text;
-      }
-    });
-    // 转为数组并排序
-    for (const entry of byTime.values()) {
-      parsedLyrics.push(entry);
-    }
-  } else {
-    // 单语模式：保持原有行为
-    rawEntries.forEach(e => {
-      parsedLyrics.push({ t: e.t, text: e.text, subText: '' });
-    });
-  }
-
-  parsedLyrics.sort((a, b) => a.t - b.t);
-
-  const lyricsArea = document.getElementById('lyricsArea');
-  if (!parsedLyrics.length) { showStaticLyrics(lrc); return; }
-
-  // 为每行计算逐字时间戳（仅基于主语言文本）
-  for (let i = 0; i < parsedLyrics.length; i++) {
-    const cur = parsedLyrics[i];
-    const next = parsedLyrics[i + 1];
-    const lineDuration = next ? (next.t - cur.t) : 3; // 默认 3 秒
-    // 按字符拆分（CJK 每字一个 span，英文按空格分词）
-    cur.words = splitToWords(cur.text);
-    const wordDuration = lineDuration / Math.max(cur.words.length, 1);
-    cur.wordTimes = cur.words.map((_, j) => cur.t + j * wordDuration);
-  }
-
-  const hasBilingual = parsedLyrics.some(l => l.subText);
-
-  if (lyricsArea) {
-    // 手动隐藏时内容照常解析（恢复时立即可用），只是不显示
-    lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : 'block';
-    lyricsArea.classList.remove('static-mode');
-    lyricsArea.innerHTML = parsedLyrics.map((l, i) => {
-    const wordSpans = l.words.map((w, j) =>
-      `<span class="lyric-word" data-t="${l.wordTimes[j].toFixed(2)}">${esc(w)}</span>`
-    ).join('');
-    const subHtml = l.subText
-      ? `<div class="lyric-sub-text">${esc(l.subText)}</div>`
-      : '';
-    return `<div class="lyric-line${hasBilingual ? ' bilingual' : ''}" id="lyric-${i}">${wordSpans || '&nbsp;'}${subHtml}</div>`;
-  }).join('');
-  // 应用歌词字体大小
-  if (lyricsArea) lyricsArea.style.fontSize = _lyricFontSize + 'px';
-  }
-  setState('parsedLyrics', parsedLyrics);
-  // 重置歌词 DOM 缓存
-  _cachedLyricEls = null;
-  _cachedLyricCount = 0;
-  _prevLyricIdx = -1;
-}
-
-/** 将歌词文本拆分为单词/字符数组（CJK 逐字，英文按空格） */
-function splitToWords(text) {
-  if (!text) return [];
-  const words = [];
-  let buf = '';
-  for (const ch of text) {
-    if (ch >= '\u4e00' && ch <= '\u9fff' || ch >= '\u3400' && ch <= '\u4dbf') {
-      // CJK 字符：每个字单独
-      if (buf) { words.push(buf); buf = ''; }
-      words.push(ch);
-    } else if (ch === ' ') {
-      if (buf) { words.push(buf); buf = ''; }
-      words.push(' ');
-    } else {
-      buf += ch;
-    }
-  }
-  if (buf) words.push(buf);
-  return words;
-}
-
-export function showStaticLyrics(text) {
-  const lyricsArea = document.getElementById('lyricsArea');
-  if (!text || !text.trim()) { showNoLyrics(); return; }
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length || !lyricsArea) { showNoLyrics(); return; }
-  lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : 'block';
-  lyricsArea.classList.add('static-mode');
-  lyricsArea.innerHTML = lines.map(l => `<div class="lyric-line static">${esc(l)}</div>`).join('');
-  lyricsArea.style.fontSize = _lyricFontSize + 'px';
-  lyricsArea.scrollTop = 0;
-  setState('parsedLyrics', []);
-}
-
-export function showNoLyrics() {
-  const lyricsArea = document.getElementById('lyricsArea');
-  if (!lyricsArea) return;
-  // 用户手动隐藏歌词时保持隐藏（只切按钮态，不弹"暂无歌词"占位）
-  if (_lyricsHiddenByUser) { lyricsArea.style.display = 'none'; return; }
-  lyricsArea.style.display = 'flex';
-  lyricsArea.classList.add('static-mode');
-  lyricsArea.innerHTML = '<div class="lyric-line static" style="text-align:center;opacity:0.45">暂无歌词</div>';
-  setState('parsedLyrics', []);
-}
-
-// ── 歌词区手动开关（用户控制"全有或全无"的弹出） ──────────
-// 默认跟随后端自动行为（有词显示/无词占位/切歌清空）；
-// 用户点按钮后进入手动模式：隐藏时任何歌词加载都不再弹出，
-// 再点恢复自动。偏好持久化到 prefs.lyricsVisible。
-let _lyricsHiddenByUser = false;
-export function toggleLyricsArea() {
-  _lyricsHiddenByUser = !_lyricsHiddenByUser;
-  const lyricsArea = document.getElementById('lyricsArea');
-  const btn = document.getElementById('btnLyricsToggle');
-  if (lyricsArea) {
-    lyricsArea.style.display = _lyricsHiddenByUser ? 'none' : '';
-    // 恢复时若当前无词，重新展示占位（保持"暂无歌词"的语义可见）
-    if (!_lyricsHiddenByUser && !(getState('parsedLyrics') || []).length) showNoLyrics();
-  }
-  if (btn) {
-    btn.classList.toggle('active', !_lyricsHiddenByUser);
-    btn.setAttribute('aria-pressed', String(!_lyricsHiddenByUser));
-  }
-  try { if (typeof api !== 'undefined' && api.setPref) api.setPref('lyricsVisible', !_lyricsHiddenByUser); } catch (_e) { /* 持久化失败不影响本次切换 */ }
-}
-window.toggleLyricsArea = toggleLyricsArea;
-
-// 启动时恢复用户歌词显隐偏好（默认显示），并同步按钮初始态
-(function restoreLyricsPref() {
-  const restore = () => {
-    const btn = document.getElementById('btnLyricsToggle');
-    try {
-      if (typeof window.api !== 'undefined' && window.api.getPref) {
-        window.api.getPref('lyricsVisible').then(v => {
-          if (v === false) {
-            _lyricsHiddenByUser = false; toggleLyricsArea(); // 切一次 → 隐藏
-          } else {
-            // 默认/记忆为显示：按钮态设为"开"（歌词区本身由加载流程控制显隐）
-            if (btn) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); }
-          }
-        }).catch(() => { if (btn) { btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true'); } });
-      } else if (btn) {
-        btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
-      }
-    } catch (_e) { /* ignore */ }
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', restore, { once: true });
-  } else {
-    setTimeout(restore, 0);
-  }
-})();
-
-// 缓存歌词 DOM 元素，避免每次 timeupdate 重复查询
-let _cachedLyricEls = null;
-let _cachedLyricCount = 0;
-let _prevLyricIdx = -1;
-
-export function updateLyric(t) {
-  const parsedLyrics = getState('parsedLyrics');
-  if (!parsedLyrics || !parsedLyrics.length) return;
-  // 应用歌词时间偏移（offset 单位 ms，t 单位 s）
-  const adjustedT = t + _lyricOffset / 1000;
-  let idx = parsedLyrics.findIndex(l => l.t > adjustedT) - 1;
-  if (idx < 0) idx = 0;
-
-  // 只在歌词行变化时更新 DOM
-  if (idx === _prevLyricIdx) return;
-  const prevIdx = _prevLyricIdx;
-  _prevLyricIdx = idx;
-
-  // 首次或歌词变化时缓存 DOM
-  if (!_cachedLyricEls || _cachedLyricCount !== parsedLyrics.length) {
-    _cachedLyricEls = document.querySelectorAll('.lyric-line');
-    _cachedLyricCount = parsedLyrics.length;
-  }
-  const els = _cachedLyricEls;
-
-  // 防御性检查：确保 DOM 元素存在
-  if (!els || els.length === 0) return;
-
-  // 只更新上一行和当前行，跳过不变的行
-  if (prevIdx >= 0 && prevIdx < els.length && els[prevIdx]) {
-    els[prevIdx].classList.remove('active');
-    els[prevIdx].querySelectorAll('.lyric-word').forEach(w => w.classList.remove('word-active'));
-  }
-  if (idx >= 0 && idx < els.length && els[idx]) {
-    const el = els[idx];
-    el.classList.add('active');
-    // 居中滚动：本 Chromium 下 CSS scroll-behavior:smooth 会让 scrollIntoView 立即滚
-    // 却又静默丢帧（表现为 scrollTop 恒 0、当前行永远停在列表底部之外），故手动计算居中位置
-    const la = document.getElementById('lyricsArea');
-    if (la) {
-      const target = el.offsetTop - (la.clientHeight - el.offsetHeight) / 2;
-      la.scrollTop = Math.max(0, Math.min(target, la.scrollHeight - la.clientHeight));
-    }
-    // 逐字高亮
-    const words = el.querySelectorAll('.lyric-word');
-    words.forEach(w => {
-      const wt = parseFloat(w.dataset.t);
-      const nextLine = parsedLyrics[idx + 1];
-      const lineEnd = nextLine ? nextLine.t : parsedLyrics[idx].t + 3;
-      w.classList.toggle('word-active', adjustedT >= wt && adjustedT < lineEnd);
-    });
-  }
-}
 
 // esc() 和 fmtTime() 已由 utils.js 全局导出，此处不再重复定义
 
+// ── 子模块转出（保持 player.js 公开 API 与拆分前一致）──
+// 统计簇 → player/stats.js；歌词簇 → player/lyrics.js
+export {
+  getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
+  getPlayStats, getMostPlayed, loadPlayStats, resetPlayStats, generatePlayReport,
+  parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
+};
+
 // ── ES Module 导出（其余函数已在定义处 export） ─────
-// 已通过 export 前缀导出的函数：
+// 本文件仍自持：EQ、播放控制、进度/音量、封面动画、播放卡片
 //   applyEqPreset, toggleEqBypass, setEqBand, resetEq, saveEqSettings,
-//   updatePlayerCard, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
-//   getPlayStats, getMostPlayed, resetPlayStats, generatePlayReport, loadPlayStats,
-//   loadAndPlay, nextSong, prevSong, togglePlay, toggleShuffle, toggleLoop,
-//   cyclePlayMode, updatePlayModeButton, setCoverAnimation, cycleCoverAnimation,
-//   setVolume, toggleMute, updateProgress, seekAudio, onAudioEnded,
-//   parseLrc, showStaticLyrics, showNoLyrics, updateLyric
+//   updatePlayerCard, loadAndPlay, nextSong, prevSong, togglePlay,
+//   toggleShuffle, toggleLoop, cyclePlayMode, updatePlayModeButton,
+//   setCoverAnimation, cycleCoverAnimation, setVolume, toggleMute,
+//   updateProgress, seekAudio, onAudioEnded
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 // 进度条拖动/悬停预览/键盘微调 + 音量拖动锁定/滚轮调节。
@@ -1419,6 +916,9 @@ window.parseLrc = parseLrc;
 window.showStaticLyrics = showStaticLyrics;
 window.showNoLyrics = showNoLyrics;
 window.updateLyric = updateLyric;
+window.toggleLyricsArea = toggleLyricsArea;
+window.applyLyricFontSize = applyLyricFontSize;
+window.applyLyricOffset = applyLyricOffset;
 window.setCoverAnimation = setCoverAnimation;
 window.cycleCoverAnimation = cycleCoverAnimation;
 window.updatePlayerCard = updatePlayerCard;

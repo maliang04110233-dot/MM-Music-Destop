@@ -152,7 +152,7 @@ function updateSidebarPlatformStatus(cookies) {
 }
 
 // ── 源可用性探针（P2）─────────────────────────────────
-const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', bilibili: 'B站' };
+const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', kuwo: '酷我', bilibili: 'B站' };
 
 function renderSourceHealth(health, probes) {
   const list = document.getElementById('sourceHealthList');
@@ -161,23 +161,42 @@ function renderSourceHealth(health, probes) {
   if (!sources.length) { list.innerHTML = ''; return; }
   const probeMap = {};
   for (const p of probes || []) probeMap[p.source] = p;
+
+  // 改为「名称 + 进度条 + 数值」三列：原先只有一行文字，中间空 300px，
+  // 41% 和 98% 扫视起来毫无差别。三档语义用 class 承载（token 上色，跨主题协调），
+  // 不再硬编码 #ff7676 这类色值。
   list.innerHTML = sources.map(s => {
     const h = health[s];
     const probe = probeMap[s];
-    let line;
+    const name = SOURCE_NAMES[s] || s;
+
+    // 一次性探测结果优先于历史成功率
     if (probe) {
-      line = probe.ok
-        ? '<span style="color:var(--neon-cyan)">✅ 可用</span>'
-        : `<span style="color:#ff7676">✗ ${probe.stage === 'getUrl' ? '取流失败' : '搜索不可达'}</span>`;
-    } else if (h && h.score != null && h.samples > 0) {
-      const pct = Math.round(h.score * 100);
-      const color = pct >= 60 ? 'var(--neon-cyan)' : (pct >= 30 ? 'var(--gold)' : '#ff7676');
-      line = `<span style="color:${color}">近期成功率 ${pct}%（${h.samples} 次）</span>`;
-    } else {
-      line = '<span style="color:var(--text-muted)">暂无数据（下载后自动统计）</span>';
+      const ok = !!probe.ok;
+      const text = ok ? '可用' : (probe.stage === 'getUrl' ? '取流失败' : '搜索不可达');
+      const tone = ok ? 'is-ok' : 'is-bad';
+      return `<div class="source-health-row">
+        <span class="source-health-name">${name}</span>
+        <span class="source-health-bar"><i class="${tone}" style="width:100%"></i></span>
+        <span class="source-health-val ${tone}">${text}</span>
+      </div>`;
     }
-    return `<div class="setting-row" style="justify-content:space-between;">
-      <span class="setting-label">${SOURCE_NAMES[s] || s}</span>${line}
+
+    if (h && h.score != null && h.samples > 0) {
+      const pct = Math.round(h.score * 100);
+      // ≥60 健康 / ≥30 警告 / 否则不可用
+      const tone = pct >= 60 ? 'is-ok' : (pct >= 30 ? 'is-warn' : 'is-bad');
+      return `<div class="source-health-row">
+        <span class="source-health-name">${name}</span>
+        <span class="source-health-bar"><i class="${tone}" style="width:${pct}%"></i></span>
+        <span class="source-health-val ${tone}">${pct}%<em>${h.samples} 次</em></span>
+      </div>`;
+    }
+
+    return `<div class="source-health-row is-empty">
+      <span class="source-health-name">${name}</span>
+      <span class="source-health-bar"><i></i></span>
+      <span class="source-health-val">暂无数据</span>
     </div>`;
   }).join('');
 }
@@ -404,6 +423,8 @@ async function loadGeneralSettings() {
         el.value = String(v);
       }
     });
+    // 色卡高亮不会随 select 的程序化赋值自动更新（不触发 change），加载完主动刷一次
+    syncThemeCards();
   } catch (e) {
     logger.error(`[loadGeneralSettings] error:`, e);
   }
@@ -431,6 +452,33 @@ function applyTheme(theme) {
   } else {
     document.documentElement.setAttribute('data-theme', t);
   }
+}
+
+// ── 主题色卡（外观页）──────────────────────────────────
+// 色卡只负责「显示 + 点击」，真正的值仍由隐藏的 <select id="settingTheme"> 承载。
+// 这样 GENERAL_PREFS / loadGeneralSettings / setupGeneralSettingListeners
+// 这条既有读写链路一行都不用改 —— 点击时写入 select 并派发 change 即可复用。
+const THEME_CARDS = ['auto', 'default', 'light', 'cyber', 'aurora', 'sunset', 'forest'];
+
+function syncThemeCards(value) {
+  const sel = document.getElementById('settingTheme');
+  const cur = value != null ? String(value) : (sel ? sel.value : 'default');
+  document.querySelectorAll('.theme-card').forEach(card => {
+    const on = card.dataset.themeValue === cur;
+    card.classList.toggle('active', on);
+    card.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+function selectTheme(value) {
+  if (!THEME_CARDS.includes(value)) return;
+  const sel = document.getElementById('settingTheme');
+  if (sel) {
+    sel.value = value;
+    // 触发 change：写 prefs + applyTheme 都由既有监听器完成
+    sel.dispatchEvent(new Event('change'));
+  }
+  syncThemeCards(value);
 }
 
 function setupGeneralSettingListeners() {
@@ -717,6 +765,7 @@ window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.closeSettingsOnBg = closeSettingsOnBg;
 window.switchSettingsTab = switchSettingsTab;
+window.selectTheme = selectTheme;
 window.loadCookieStatus = loadCookieStatus;
 window.saveCookie = saveCookie;
 window.clearCookie = clearCookie;

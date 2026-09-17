@@ -138,82 +138,88 @@
 .tip-title { font-size: 12.5px; font-weight: 600; color: var(--neon-text); }
 .tip-desc { font-size: 11.5px; color: var(--neon-dim); line-height: 1.5; }
 
-/* 平台推荐区域 */
-.recommend-section {
-  width: 100%; margin-top: 8px; flex-shrink: 0;
+/* ══ 首页平台聚合导航（吸顶锚点条） ═══════════════════ */
+.home-anchors {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 8px 2px; margin: 0 -2px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--neon-blue-dim);
 }
-.recommend-tabs {
-  display: flex; gap: 4px; margin-bottom: 12px;
+.anchor-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 13px; border-radius: 999px;
+  border: 1px solid var(--neon-blue-dim); background: var(--bg-card);
+  color: var(--neon-dim); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all .15s; user-select: none;
 }
-.rec-tab {
-  padding: 5px 12px; border-radius: 7px; border: 1px solid var(--neon-blue-dim);
-  background: var(--bg-card); color: var(--neon-dim); cursor: pointer;
-  font-size: 12px; font-weight: 500; transition: all .15s;
+.anchor-chip:hover { border-color: var(--accent); color: var(--neon-text); }
+.anchor-chip.active {
+  background: var(--accent); border-color: var(--accent); color: #fff;
 }
-.rec-tab:hover { border-color: var(--accent); color: var(--neon-text); }
-.rec-tab.active {
-  background: var(--accent); border-color: var(--accent);
-  color: white;
+.plat-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
 }
+.plat-dot.wy { background: #e84d5b; }
+.plat-dot.qq { background: #31c27c; }
+.plat-dot.bi { background: #fb7299; }
 
-/* 平台切换标签 */
-.platform-tabs {
-  display: flex; gap: 4px; margin-bottom: 12px;
+/* ══ 平台分区块（三平台纵向聚合长页） ═════════════════ */
+.home-blocks { display: flex; flex-direction: column; gap: 14px; }
+.plat-block {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--neon-blue-dim);
+  border-radius: 14px;
+  /* 锚点跳转时给吸顶导航条留出高度 */
+  scroll-margin-top: 48px;
 }
-.plat-tab {
-  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--neon-blue-dim);
-  background: var(--bg-card); color: var(--neon-dim); cursor: pointer;
-  font-size: 12.5px; font-weight: 500; transition: all .15s;
+.plat-block-head {
+  display: flex; align-items: center; gap: 8px;
 }
-.plat-tab:hover { border-color: var(--accent); color: var(--neon-text); }
-.plat-tab.active {
-  background: var(--accent); border-color: var(--accent);
-  color: white;
+.plat-block-name {
+  font-size: 13.5px; font-weight: 600; color: var(--neon-text);
 }
-.plat-tab .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
-.plat-tab .dot.wy { background: #e84d5b; }
-.plat-tab .dot.qq { background: #31c27c; }
-.plat-tab .dot.bi { background: #fb7299; }
-
-/* 网易云子标签 */
-.rec-subtabs {
-  display: flex; gap: 4px; margin-bottom: 12px;
-  flex-wrap: wrap; /* QQ 面板 9 个子 tab 需换行 */
+.plat-block-state {
+  font-size: 10.5px; color: var(--neon-dim);
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--neon-blue-dim);
+  font-variant-numeric: tabular-nums;
 }
-.rec-subtab {
-  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--neon-blue-dim);
-  background: var(--bg-card); color: var(--neon-dim); cursor: pointer;
+.plat-block-state.is-error {
+  color: var(--red); border-color: var(--red); cursor: pointer;
+}
+.plat-chips {
+  display: flex; gap: 4px; flex-wrap: wrap;
+}
+.plat-chip {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--neon-blue-dim); background: var(--bg-deep);
+  color: var(--neon-dim); cursor: pointer;
   font-size: 11.5px; font-weight: 500; transition: all .15s;
+  white-space: nowrap;
 }
-.rec-subtab:hover { border-color: var(--accent); color: var(--neon-text); }
-.rec-subtab.active {
-  background: #e84d5b; border-color: #e84d5b;
-  color: white;
-}
-/* QQ 面板子 tab：QQ 品牌绿（区别网易云红） */
-#qqSubTabs .rec-subtab.active {
-  background: #31c27c; border-color: #31c27c;
-}
+.plat-chip:hover { border-color: var(--accent); color: var(--neon-text); }
+.plat-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* 平台内容区 */
-.plat-panel {
-  display: flex; flex-direction: column; gap: 16px;
+/* 分区内容容器：list / grid 两态 + 空态 */
+.home-sec { width: 100%; }
+.home-sec[hidden] { display: none !important; }
+.home-sec--list { display: flex; flex-direction: column; gap: 2px; }
+.home-sec--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px;
 }
-.plat-panel.hidden { display: none; }
+.home-sec-msg {
+  padding: 16px; text-align: center;
+  font-size: 12px; color: var(--neon-dim);
+}
+.home-sec-msg.is-error { cursor: pointer; color: var(--red); }
 
-/* 榜单区块 */
-.rank-block {
-  display: flex; flex-direction: column; gap: 6px;
-}
-.rank-block-title {
-  font-size: 13px; font-weight: 600; color: var(--neon-text);
-  display: flex; align-items: center; gap: 6px;
-}
-
-/* 排行榜歌曲列表（紧凑） */
-.top-songs-list {
-  display: flex; flex-direction: column; gap: 2px;
-}
+/* 排行榜歌曲行（首页榜单 + 歌单详情共用） */
 .top-song-row {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 10px; border-radius: 8px;
@@ -244,12 +250,20 @@
 .top-song-row:hover .top-song-action { opacity: 1; }
 .top-song-action:hover { background: var(--accent); color: white; }
 
-/* 歌单网格 */
-.playlist-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
+/* 榜单折叠/展开按钮 */
+.list-fold-btn {
+  margin-top: 4px; padding: 7px 10px; border-radius: 8px;
+  text-align: center; font-size: 11.5px; cursor: pointer;
+  color: var(--neon-dim); background: var(--bg-card);
+  border: 1px dashed var(--neon-blue-dim);
+  transition: all .15s; user-select: none;
 }
+.list-fold-btn:hover {
+  color: var(--accent2); border-color: var(--accent);
+  background: rgba(108,99,255,.06);
+}
+
+/* 歌单卡（网格容器见 .home-sec--grid） */
 .playlist-card {
   cursor: pointer; transition: transform .15s;
   display: flex; flex-direction: column; gap: 6px;
@@ -262,7 +276,19 @@
 }
 .playlist-cover {
   width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; transition: opacity .3s;
 }
+.playlist-cover.loaded { opacity: 1; }
+/* 歌单卡 hover 浏览遮罩 */
+.playlist-hover-play {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); color: #fff;
+  font-size: 13px; font-weight: 600; letter-spacing: .5px;
+  opacity: 0; transition: opacity .15s;
+  backdrop-filter: blur(1px);
+}
+.playlist-card:hover .playlist-hover-play { opacity: 1; }
 .playlist-cover-ph {
   width: 100%; height: 100%; display: flex;
   align-items: center; justify-content: center;
@@ -375,6 +401,9 @@
 .badge-netease { background: rgba(230,50,50,.15); color: #f87171; border: 1px solid rgba(230,50,50,.2); }
 .badge-qq { background: rgba(255,204,0,.12); color: #fbbf24; border: 1px solid rgba(255,204,0,.2); }
 .badge-bilibili { background: rgba(0,180,230,.12); color: #38bdf8; border: 1px solid rgba(0,180,230,.2); }
+/* 酷狗主色也是蓝，与 B站天蓝(#38bdf8)/酷我蓝(#60a5fa) 同屏时需可区分，取青绿 */
+.badge-kugou { background: rgba(16,185,129,.14); color: #34d399; border: 1px solid rgba(16,185,129,.22); }
+.badge-kuwo { background: rgba(46,127,255,.14); color: #60a5fa; border: 1px solid rgba(46,127,255,.22); }
 
 .song-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .action-btn {
@@ -777,7 +806,8 @@
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; font-size: 16px;
 }
-.recent-cover img { width: 100%; height: 100%; object-fit: cover; }
+.recent-cover img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .3s; }
+.recent-cover img.loaded { opacity: 1; }
 .recent-info { flex: 1; min-width: 0; }
 .recent-title {
   font-size: 13px; color: var(--neon-text); font-weight: 500;

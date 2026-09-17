@@ -267,11 +267,20 @@
   gap: 4px;
   width: 100%;
   flex-shrink: 0;
+  margin-top: 8px; /* 封面盘与歌名间留出呼吸感（用户反馈歌名太靠上） */
 }
 .player-title-line {
   width: 100%;
   min-width: 0;
   overflow: hidden;
+  /* 歌名居中：与下方 .player-artist 的 justify-content:center 对齐。
+     #playerTitle 是 inline-block，父级 text-align 决定它在行内的落点 */
+  text-align: center;
+}
+/* 跑马灯态必须回到左对齐：超宽标题要从容器左缘开始滚，
+   居中会让标题首端落在容器外被裁掉，且滚动距离与 JS 算的溢出量对不上 */
+.player-title-line:has(.player-title.marquee) {
+  text-align: left;
 }
 /* 超长标题跑马灯：放得下静止居中；放不下匀速滚动（首尾停顿）。
    滚动距离由 JS 按实测溢出量写 --marquee-shift */
@@ -280,6 +289,10 @@
   font-weight: 700;
   color: var(--neon-text);
   white-space: nowrap;
+  /* 自身内容保持左对齐：放得下时 inline-block 宽度=内容宽度，此条无影响；
+     被 max-width 截断时，若继承父级 center 会两端都裁、只剩中间一截，
+     左对齐才能让 text-overflow:ellipsis 正常出现在末尾 */
+  text-align: left;
   letter-spacing: 0.3px;
   text-shadow: 0 0 12px rgba(0,255,200,0.4);
   display: inline-block;

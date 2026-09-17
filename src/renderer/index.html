@@ -114,18 +114,7 @@
             onkeydown="if(event.key==='Enter')homeHeroSearch(this.value)">
           <button class="home-search-btn" onclick="homeHeroSearch(document.getElementById('homeSearchInput').value)">🔍 搜索</button>
         </div>
-        <div class="home-hero-tags">
-          <span class="hot-tag trending" onclick="quickSearch('周杰伦')">周杰伦</span>
-          <span class="hot-tag trending" onclick="quickSearch('林俊杰')">林俊杰</span>
-          <span class="hot-tag trending" onclick="quickSearch('五月天')">五月天</span>
-          <span class="hot-tag trending" onclick="quickSearch('Taylor Swift')">Taylor Swift</span>
-          <span class="hot-tag" onclick="quickSearch('轻音乐')">轻音乐</span>
-          <span class="hot-tag" onclick="quickSearch('钢琴曲')">钢琴曲</span>
-          <span class="hot-tag" onclick="quickSearch('LoFi Hip Hop')">LoFi Hip Hop</span>
-          <span class="hot-tag" onclick="quickSearch('OST 原声带')">OST 原声带</span>
-          <span class="hot-tag" onclick="quickSearch('粤语经典')">粤语经典</span>
-          <span class="hot-tag" onclick="quickSearch('日语动漫')">日语动漫</span>
-        </div>
+        <div class="home-hero-tags" id="homeHeroTags"></div>
       </div>
 
       <!-- 统计概览卡片 -->
@@ -158,103 +147,12 @@
         <div class="recent-list" id="recentlyPlayedList"></div>
       </div>
 
-      <!-- 平台推荐 -->
-      <div class="recommend-section">
-        <div class="hot-section-title" data-i18n="home.platformRec">🎵 平台推荐</div>
+      <!-- 平台聚合导航：锚点跳转；三平台内容同时存在，不再 tab 互斥 -->
+      <div class="home-anchors" id="homeAnchors"></div>
 
-        <!-- 平台切换标签 -->
-        <div class="platform-tabs">
-          <button class="plat-tab active" data-plat="netease" onclick="switchPlatTab('netease',this)"><span class="dot wy"></span>网易云</button>
-          <button class="plat-tab" data-plat="qq" onclick="switchPlatTab('qq',this)"><span class="dot qq"></span>QQ音乐</button>
-          <button class="plat-tab" data-plat="bilibili" onclick="switchPlatTab('bilibili',this)"><span class="dot bi"></span>B站</button>
-        </div>
+      <!-- 平台分区：由 home.js 的 HOME_PLATFORMS 注册表渲染 -->
+      <div class="home-blocks" id="homeBlocks"></div>
 
-
-
-        <!-- 网易云面板 -->
-        <div class="plat-panel" id="platNeteasePanel">
-          <div class="rec-subtabs" id="neteaseSubTabs">
-            <button class="rec-subtab active" data-type="tops" onclick="switchNeteaseSub('tops',this)" data-i18n="home.subtab.tops">飙升榜</button>
-            <button class="rec-subtab" data-type="hot" onclick="switchNeteaseSub('hot',this)" data-i18n="home.subtab.hot">热歌榜</button>
-            <button class="rec-subtab" data-type="new" onclick="switchNeteaseSub('new',this)" data-i18n="home.subtab.new">新歌榜</button>
-            <button class="rec-subtab" data-type="original" onclick="switchNeteaseSub('original',this)" data-i18n="home.subtab.original">原创榜</button>
-            <button class="rec-subtab" data-type="playlists" onclick="switchNeteaseSub('playlists',this)" data-i18n="home.subtab.playlists">推荐歌单</button>
-          </div>
-          <div id="neteaseTopsPanel">
-            <div class="top-songs-list" id="neteaseTopsList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="neteaseHotPanel" style="display:none;">
-            <div class="top-songs-list" id="neteaseHotList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="neteaseNewPanel" style="display:none;">
-            <div class="top-songs-list" id="neteaseNewList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="neteaseOriginalPanel" style="display:none;">
-            <div class="top-songs-list" id="neteaseOriginalList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="neteasePlaylistPanel" style="display:none;">
-            <div class="playlist-grid" id="neteasePlaylistGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-        </div>
-
-        <!-- QQ音乐面板 -->
-        <div class="plat-panel hidden" id="platQQPanel">
-          <div class="rec-subtabs" id="qqSubTabs">
-          <button class="rec-subtab active" data-qq="recommend" onclick="switchQQSub('recommend',this)">📀 个性化推荐</button>
-          <button class="rec-subtab" data-qq="official" onclick="switchQQSub('official',this)">🎵 官方歌单</button>
-          <button class="rec-subtab" data-qq="classic" onclick="switchQQSub('classic',this)">💿 经典歌单</button>
-          <button class="rec-subtab" data-qq="love" onclick="switchQQSub('love',this)">💕 情歌歌单</button>
-          <button class="rec-subtab" data-qq="ktv" onclick="switchQQSub('ktv',this)">🎤 KTV热歌</button>
-          <button class="rec-subtab" data-qq="top" onclick="switchQQSub('top',this)">🔥 热歌榜</button>
-          <button class="rec-subtab" data-qq="new" onclick="switchQQSub('new',this)">🆕 内地新歌</button>
-          <button class="rec-subtab" data-qq="radio" onclick="switchQQSub('radio',this)">📻 热门电台</button>
-          <button class="rec-subtab" data-qq="singers" onclick="switchQQSub('singers',this)">热门歌手</button>
-          </div>
-          <div id="qqSec-recommend" style="display:block;">
-            <div class="rank-block-title">📀 个性化推荐</div>
-            <div class="playlist-grid" id="qqRecommendGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-official" style="display:none;">
-            <div class="rank-block-title">🎵 官方歌单</div>
-            <div class="playlist-grid" id="qqOfficialGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-classic" style="display:none;">
-            <div class="rank-block-title">💿 经典歌单</div>
-            <div class="playlist-grid" id="qqClassicGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-love" style="display:none;">
-            <div class="rank-block-title">💕 情歌歌单</div>
-            <div class="playlist-grid" id="qqLoveGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-ktv" style="display:none;">
-            <div class="rank-block-title">🎤 KTV热歌</div>
-            <div class="playlist-grid" id="qqKTVGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-top" style="display:none;">
-            <div class="rank-block-title">🔥 热歌榜</div>
-            <div class="top-songs-list" id="qqTopList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="qqSec-new" style="display:none;">
-            <div class="rank-block-title">🆕 内地新歌</div>
-            <div class="top-songs-list" id="qqNewSongsList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-          </div>
-          <div id="qqSec-radio" style="display:none;">
-            <div class="rank-block-title">📻 热门电台</div>
-            <div class="playlist-grid" id="qqRadiosGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-          <div id="qqSec-singers" style="display:none;">
-            <div class="rank-block-title">热门歌手</div>
-            <div class="playlist-grid" id="qqHotSingersGrid"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>
-          </div>
-        </div>
-
-        
-        <div class="plat-panel hidden" id="platBiliPanel">
-          <div class="rank-block-title">📺 B站 · 音乐区热门排行</div>
-          <div class="top-songs-list" id="biliRankingList"><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div><div class="skel-row"><div class="skel-avatar"></div><div class="skel-lines"><div class="skel-line w60"></div><div class="skel-line w40"></div></div></div></div>
-        </div>
-
-      </div>
     </div>
 
     <!-- 搜索页面 -->
@@ -267,6 +165,7 @@
               <button class="tab" data-src="netease" onclick="switchSource('netease',this)" data-i18n="home.neteaseTab">网易云</button>
               <button class="tab" data-src="qq" onclick="switchSource('qq',this)" data-i18n="home.qqTab">QQ音乐</button>
               <button class="tab" data-src="kugou" onclick="switchSource('kugou',this)" data-i18n="search.kugou">酷狗</button>
+              <button class="tab" data-src="kuwo" onclick="switchSource('kuwo',this)" data-i18n="search.kuwo">酷我</button>
               <button class="tab" data-src="bilibili" onclick="switchSource('bilibili',this)" data-i18n="home.biliTab">B站</button>
             </div>
             <div class="search-type-tabs">
@@ -275,7 +174,7 @@
                           <button class="tab" data-type="singer" onclick="switchSearchType('singer',this)" data-i18n="search.singer">🎤 歌手</button>
                         </div>
                         <div class="search-input-wrap">
-              <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑..."
+              <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴网易云/QQ/B站/酷狗链接）"
                 onkeydown="if(event.key==='Enter')doSearch()" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
               <button class="search-btn" onclick="doSearch()">🔍</button>
             </div>
@@ -685,51 +584,61 @@
   <div class="settings-panel" id="settingsPanel">
     <div class="settings-header">
       <span class="settings-title" data-i18n="settings.title">⚙️ 设置</span>
-      <button class="settings-close" onclick="closeSettings()">✕</button>
+      <button class="settings-close" onclick="closeSettings()" aria-label="关闭">✕</button>
     </div>
 
     <div class="settings-body">
-      <!-- 左侧导航 -->
+      <!-- 左侧导航：分组，账号独立，偏好三项，高级/关于垫底 -->
       <nav class="settings-nav">
         <button class="settings-nav-item active" data-tab="accounts" onclick="switchSettingsTab('accounts', this)">
-          <span class="nav-emoji">🔐</span><span data-i18n="settings.accounts">账号</span>
+          <span class="nav-icon" aria-hidden="true">◈</span><span data-i18n="settings.accounts">账号</span>
         </button>
-        <button class="settings-nav-item" data-tab="general" onclick="switchSettingsTab('general', this)">
-          <span class="nav-emoji">⚙️</span><span data-i18n="settings.general">通用</span>
+
+        <div class="settings-nav-label" data-i18n="settings.group.preferences">偏好</div>
+
+        <button class="settings-nav-item" data-tab="download" onclick="switchSettingsTab('download', this)">
+          <span class="nav-icon" aria-hidden="true">↓</span><span data-i18n="settings.download">下载</span>
+        </button>
+        <button class="settings-nav-item" data-tab="appearance" onclick="switchSettingsTab('appearance', this)">
+          <span class="nav-icon" aria-hidden="true">◐</span><span data-i18n="settings.appearance">外观</span>
+        </button>
+        <button class="settings-nav-item" data-tab="playback" onclick="switchSettingsTab('playback', this)">
+          <span class="nav-icon" aria-hidden="true">▷</span><span data-i18n="settings.playback">播放</span>
+        </button>
+
+        <button class="settings-nav-item" data-tab="advanced" onclick="switchSettingsTab('advanced', this)">
+          <span class="nav-icon" aria-hidden="true">⚙</span><span data-i18n="settings.advanced">高级</span>
         </button>
         <button class="settings-nav-item" data-tab="about" onclick="switchSettingsTab('about', this)">
-          <span class="nav-emoji">ℹ️</span><span data-i18n="settings.about">关于</span>
+          <span class="nav-icon" aria-hidden="true">ⓘ</span><span data-i18n="settings.about">关于</span>
         </button>
       </nav>
 
       <div class="settings-content">
-        <!-- 账号页 -->
+
+        <!-- ══ 账号 ══════════════════════════════════════ -->
         <div class="settings-page" id="settingsPageAccounts">
-          <div class="settings-section-title">🍪 平台账号（解锁 VIP / 高品质下载）</div>
+          <div class="settings-section-title" data-i18n="settings.accounts.sectionTitle">平台账号（解锁 VIP / 高品质下载）</div>
           <div class="accounts-grid">
             <!-- 网易云 -->
             <div class="account-card" data-platform="netease">
               <div class="account-head">
-                <span class="account-icon">🎵</span>
+                <span class="account-icon" aria-hidden="true">🎵</span>
                 <div class="account-info">
                   <div class="account-name">网易云音乐</div>
                   <div class="account-status" id="neteaseStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
                 </div>
                 <span class="account-dot" id="neteaseDot"></span>
               </div>
-              <button class="account-primary-btn" id="neteaseLoginBtn" onclick="openLoginWindowUI('netease', this)" data-i18n="settings.accounts.oneClickLogin">
-                🔑 一键登录
-              </button>
+              <button class="account-primary-btn" id="neteaseLoginBtn" onclick="openLoginWindowUI('netease', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
               <details class="account-advanced">
-                <summary>高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" style="margin:8px 0">
-                  在浏览器登录后 → F12 → Network → 复制请求头 <code>Cookie:</code> 字段
-                </div>
+                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
+                <div class="settings-hint-box" data-i18n="settings.accounts.neteaseHint">在浏览器登录后 → F12 → Network → 复制请求头 <code>Cookie:</code> 字段</div>
                 <textarea class="cookie-textarea" id="neteaseCookie" placeholder="MUSIC_U=xxxx; __csrf=xxxx; ..."></textarea>
                 <div class="cookie-actions">
                   <button class="cookie-btn-save" onclick="saveCookie('netease')" data-i18n="settings.accounts.save">保存</button>
                   <button class="cookie-btn-verify" onclick="verifyCookieUI('netease')" data-i18n="settings.accounts.verify">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('netease')" data-i18n="settings.accounts.analyze">🔍 分析</button>
+                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('netease')" data-i18n="settings.accounts.analyze">分析</button>
                   <button class="cookie-btn-clear" onclick="clearCookie('netease')" data-i18n="settings.accounts.clear">清除</button>
                 </div>
                 <div class="cookie-verify-result" id="neteaseVerifyResult"></div>
@@ -740,26 +649,22 @@
             <!-- QQ -->
             <div class="account-card" data-platform="qq">
               <div class="account-head">
-                <span class="account-icon">🎶</span>
+                <span class="account-icon" aria-hidden="true">🎶</span>
                 <div class="account-info">
                   <div class="account-name">QQ 音乐</div>
                   <div class="account-status" id="qqStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
                 </div>
                 <span class="account-dot" id="qqDot"></span>
               </div>
-              <button class="account-primary-btn" id="qqLoginBtn" onclick="openLoginWindowUI('qq', this)" data-i18n="settings.accounts.oneClickLogin">
-                🔑 一键登录
-              </button>
+              <button class="account-primary-btn" id="qqLoginBtn" onclick="openLoginWindowUI('qq', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
               <details class="account-advanced">
-                <summary>高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" style="margin:8px 0">
-                  需含 <code>uin=</code> 字段，否则无法识别
-                </div>
+                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
+                <div class="settings-hint-box" data-i18n="settings.accounts.qqHint">需含 <code>uin=</code> 字段，否则无法识别</div>
                 <textarea class="cookie-textarea" id="qqCookie" placeholder="uin=xxxx; qm_keyst=xxxx; ..."></textarea>
                 <div class="cookie-actions">
                   <button class="cookie-btn-save" onclick="saveCookie('qq')" data-i18n="settings.accounts.save">保存</button>
                   <button class="cookie-btn-verify" onclick="verifyCookieUI('qq')" data-i18n="settings.accounts.verify">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('qq')" data-i18n="settings.accounts.analyze">🔍 分析</button>
+                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('qq')" data-i18n="settings.accounts.analyze">分析</button>
                   <button class="cookie-btn-clear" onclick="clearCookie('qq')" data-i18n="settings.accounts.clear">清除</button>
                 </div>
                 <div class="cookie-verify-result" id="qqVerifyResult"></div>
@@ -770,27 +675,23 @@
             <!-- B 站 -->
             <div class="account-card" data-platform="bilibili">
               <div class="account-head">
-                <span class="account-icon">📺</span>
+                <span class="account-icon" aria-hidden="true">📺</span>
                 <div class="account-info">
                   <div class="account-name">哔哩哔哩</div>
-                  <div class="account-status" id="bilibiliStatusText">未登录</div>
+                  <div class="account-status" id="bilibiliStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
                 </div>
                 <span class="account-dot" id="bilibiliDot"></span>
               </div>
-              <button class="account-primary-btn" id="bilibiliLoginBtn" onclick="openLoginWindowUI('bilibili', this)">
-                🔑 一键登录
-              </button>
+              <button class="account-primary-btn" id="bilibiliLoginBtn" onclick="openLoginWindowUI('bilibili', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
               <details class="account-advanced">
-                <summary>高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" style="margin:8px 0">
-                  需含 <code>SESSDATA=</code> 字段
-                </div>
+                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
+                <div class="settings-hint-box" data-i18n="settings.accounts.bilibiliHint">需含 <code>SESSDATA=</code> 字段</div>
                 <textarea class="cookie-textarea" id="bilibiliCookie" placeholder="SESSDATA=xxxx; bili_jct=xxxx; ..."></textarea>
                 <div class="cookie-actions">
-                  <button class="cookie-btn-save" onclick="saveCookie('bilibili')">保存</button>
-                  <button class="cookie-btn-verify" onclick="verifyCookieUI('bilibili')">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('bilibili')">🔍 分析</button>
-                  <button class="cookie-btn-clear" onclick="clearCookie('bilibili')">清除</button>
+                  <button class="cookie-btn-save" onclick="saveCookie('bilibili')" data-i18n="settings.accounts.save">保存</button>
+                  <button class="cookie-btn-verify" onclick="verifyCookieUI('bilibili')" data-i18n="settings.accounts.verify">验证</button>
+                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('bilibili')" data-i18n="settings.accounts.analyze">分析</button>
+                  <button class="cookie-btn-clear" onclick="clearCookie('bilibili')" data-i18n="settings.accounts.clear">清除</button>
                 </div>
                 <div class="cookie-verify-result" id="bilibiliVerifyResult"></div>
                 <div class="cookie-analyze" id="bilibiliAnalyze"></div>
@@ -798,103 +699,114 @@
             </div>
           </div>
 
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.sources.probeTitle">📡 源可用性</div>
-          <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
-            <div class="settings-hint-box" data-i18n="settings.sources.probeHint">
-              检测四个音源当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。
-            </div>
-            <div id="sourceHealthList" style="width:100%;display:flex;flex-direction:column;gap:6px;"></div>
-            <button class="setting-btn" id="btnProbeSources" onclick="probeSourcesUI(this)" data-i18n="settings.sources.probeBtn">🔍 立即探测</button>
+          <div class="settings-section-title" data-i18n="settings.sources.probeTitle">源可用性</div>
+          <div class="settings-card">
+            <p class="settings-note" data-i18n="settings.sources.probeHint">检测各音源当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。</p>
+            <div id="sourceHealthList" class="source-health-list"></div>
+            <button class="setting-btn" id="btnProbeSources" onclick="probeSourcesUI(this)" data-i18n="settings.sources.probeBtn">立即探测</button>
           </div>
         </div>
 
-        <!-- 通用页 -->
-        <div class="settings-page hidden" id="settingsPageGeneral">
-          <div class="settings-section-title" data-i18n="settings.general.downloadTitle">⚙️ 下载设置</div>
-
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.defaultQuality">默认音质</label>
-            <select class="setting-select" id="settingQuality">
-              <option value="standard" data-i18n="search.quality.standard">标准 128k</option>
-              <option value="hq" data-i18n="search.quality.hq">高品质 320k</option>
-              <option value="lossless" data-i18n="search.quality.lossless">无损 FLAC</option>
-            </select>
-            <span class="setting-hint" data-i18n="settings.general.qualityHint">搜索和下载时的默认音质</span>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.concurrency">最大并发下载数</label>
-            <input class="setting-input" id="settingConcurrency" type="number" min="1" max="10" value="3">
-            <span class="setting-hint" data-i18n="settings.general.concurrencyHint">同时下载的任务数量（1~10）</span>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.speedLimit">下载限速 (KB/s)</label>
-            <input class="setting-input" id="settingSpeedLimit" type="number" min="0" max="10240" value="0" placeholder="0=不限速">
-            <span class="setting-hint" data-i18n="settings.general.speedLimitHint">每任务下载速度上限，0 表示不限速</span>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.filenameTmpl">文件名模板</label>
-            <input class="setting-input" id="settingFilenameTmpl" value="{artist} - {title}">
-            <span class="setting-hint">支持 {artist} {title} {album} {source}</span>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.metadataTitle">🎵 元数据</div>
-
-          <div class="setting-row">
-            <label class="setting-label">
-              <input type="checkbox" id="settingAutoLyric" checked>
-              自动下载并嵌入歌词
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label">
-              <input type="checkbox" id="settingAutoCover" checked>
-              自动下载并嵌入封面
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label">
-              <input type="checkbox" id="settingNotifications" checked>
-              下载完成时显示通知
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label">
-              <input type="checkbox" id="settingPlayProgressMemory" checked>
-              记忆播放进度（关闭后下次从断点继续）
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <label class="setting-label">
-              <input type="checkbox" id="settingGlobalShortcuts" checked>
-              <span data-i18n="settings.general.globalShortcuts">全局媒体键（键盘上的 ⏯ ⏮ ⏭ 键控制播放）</span>
-            </label>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.dlPathTemplateTitle">📂 下载路径模板</div>
-
-          <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
-            <div style="display:flex;gap:6px;align-items:center;width:100%;">
-              <button class="setting-btn" onclick="openDlTemplateEditor(null)" style="flex:1;" data-i18n="settings.general.newTemplate">➕ 新建模板</button>
-              <button class="setting-btn" onclick="loadDownloadTemplates()" style="flex:1;" data-i18n="settings.general.refresh">🔄 刷新</button>
+        <!-- ══ 下载 ══════════════════════════════════════ -->
+        <div class="settings-page hidden" id="settingsPageDownload">
+          <div class="settings-section-title" data-i18n="settings.general.downloadTitle">下载</div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.defaultQuality">默认音质</label>
+              <select class="setting-select" id="settingQuality">
+                <option value="standard" data-i18n="search.quality.standard">标准 128k</option>
+                <option value="hq" data-i18n="search.quality.hq">高品质 320k</option>
+                <option value="lossless" data-i18n="search.quality.lossless">无损 FLAC</option>
+              </select>
+              <span class="setting-hint" data-i18n="settings.general.qualityHint">搜索和下载时的默认音质</span>
             </div>
-            <div id="dlTemplateList" style="width:100%;display:flex;flex-direction:column;gap:4px;"></div>
+
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.concurrency">最大并发下载数</label>
+              <input class="setting-input setting-input--num" id="settingConcurrency" type="number" min="1" max="10" value="3">
+              <span class="setting-hint" data-i18n="settings.general.concurrencyHint">同时下载的任务数量（1~10）</span>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.speedLimit">下载限速 (KB/s)</label>
+              <input class="setting-input setting-input--num" id="settingSpeedLimit" type="number" min="0" max="10240" value="0" placeholder="0=不限速">
+              <span class="setting-hint" data-i18n="settings.general.speedLimitHint">每任务下载速度上限，0 表示不限速</span>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.filenameTmpl">文件名模板</label>
+              <input class="setting-input setting-input--wide" id="settingFilenameTmpl" value="{artist} - {title}">
+              <span class="setting-hint" data-i18n="settings.general.filenameTmplHint">支持 {artist} {title} {album} {source}</span>
+            </div>
           </div>
 
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.appearanceTitle">🎨 外观</div>
+          <div class="settings-section-title" data-i18n="settings.general.dlPathTemplateTitle">下载路径模板</div>
+          <div class="settings-card">
+            <div class="setting-actions">
+              <button class="setting-btn" onclick="openDlTemplateEditor(null)" data-i18n="settings.general.newTemplate">新建模板</button>
+              <button class="setting-btn" onclick="loadDownloadTemplates()" data-i18n="settings.general.refresh">刷新</button>
+            </div>
+            <div id="dlTemplateList" class="dl-template-list"></div>
+          </div>
 
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.theme">主题</label>
-            <select class="setting-select" id="settingTheme">
-              <option value="auto" data-i18n="settings.general.theme.auto">🖥️ 跟随系统</option>
+          <div class="settings-section-title" data-i18n="settings.general.metadataTitle">元数据</div>
+          <div class="settings-card">
+            <div class="setting-checks">
+              <label class="setting-check"><input type="checkbox" id="settingAutoLyric" checked><span data-i18n="settings.general.autoLyric">自动下载并嵌入歌词</span></label>
+              <label class="setting-check"><input type="checkbox" id="settingAutoCover" checked><span data-i18n="settings.general.autoCover">自动下载并嵌入封面</span></label>
+              <label class="setting-check"><input type="checkbox" id="settingNotifications" checked><span data-i18n="settings.general.notifications">下载完成时显示通知</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ 外观 ══════════════════════════════════════ -->
+        <div class="settings-page hidden" id="settingsPageAppearance">
+          <div class="settings-section-title" data-i18n="settings.general.theme">主题</div>
+          <div class="settings-card">
+            <!-- 色卡网格：点击写入隐藏的 #settingTheme 并派发 change，
+                 复用 setupGeneralSettingListeners 的既有读写链路 -->
+            <div class="theme-grid">
+              <button type="button" class="theme-card" data-theme-value="auto" onclick="selectTheme('auto')" style="--sw-bg:#2a2a35;--sw-card:#4a4a58;--sw-accent:#9aa0b5">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.auto">跟随系统</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="default" onclick="selectTheme('default')" style="--sw-bg:#07090f;--sw-card:#0d1120;--sw-accent:#00ffc8">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.default">默认暗色</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="light" onclick="selectTheme('light')" style="--sw-bg:#f0f2f5;--sw-card:#ffffff;--sw-accent:#0891b2">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.light">浅色</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="cyber" onclick="selectTheme('cyber')" style="--sw-bg:#0a0a0f;--sw-card:#12121a;--sw-accent:#00ffff">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.cyber">Cyber 赛博</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="aurora" onclick="selectTheme('aurora')" style="--sw-bg:#0d1b2a;--sw-card:#1b263b;--sw-accent:#00d4aa">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.aurora">Aurora 极光</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="sunset" onclick="selectTheme('sunset')" style="--sw-bg:#1a0a0a;--sw-card:#2a1515;--sw-accent:#ff6b6b">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.sunset">Sunset 日落</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" class="theme-card" data-theme-value="forest" onclick="selectTheme('forest')" style="--sw-bg:#0a1a0a;--sw-card:#152515;--sw-accent:#32cd32">
+                <span class="theme-swatch" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="theme-name" data-i18n="settings.general.theme.forest">Forest 森林</span>
+                <span class="theme-check" aria-hidden="true">✓</span>
+              </button>
+            </div>
+            <!-- 真实承载主题值的元素：色卡只负责显示，读写仍走这里，故 GENERAL_PREFS 无需改动 -->
+            <select id="settingTheme" class="visually-hidden" tabindex="-1" aria-hidden="true">
+              <option value="auto" data-i18n="settings.general.theme.auto">跟随系统</option>
               <option value="default" data-i18n="settings.general.theme.default">默认暗色</option>
-              <option value="light" data-i18n="settings.general.theme.light">☀️ 浅色</option>
+              <option value="light" data-i18n="settings.general.theme.light">浅色</option>
               <option value="cyber" data-i18n="settings.general.theme.cyber">Cyber 赛博</option>
               <option value="aurora" data-i18n="settings.general.theme.aurora">Aurora 极光</option>
               <option value="sunset" data-i18n="settings.general.theme.sunset">Sunset 日落</option>
@@ -902,58 +814,67 @@
             </select>
           </div>
 
-          <div class="setting-row">
-            <label class="setting-label">🌐 语言</label>
-            <select class="setting-select" id="settingLanguage" onchange="window.i18n && window.i18n.loadLanguage(this.value); window.i18n && window.i18n.applyTranslations();">
-              <option value="zh">中文</option>
-              <option value="en">English</option>
-            </select>
+          <div class="settings-section-title" data-i18n="settings.general.languageTitle">语言</div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.language">界面语言</label>
+              <select class="setting-select" id="settingLanguage" onchange="window.i18n &amp;&amp; window.i18n.loadLanguage(this.value); window.i18n &amp;&amp; window.i18n.applyTranslations();">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+              <span class="setting-hint" data-i18n="settings.general.languageHint">切换后界面文案立即生效</span>
+            </div>
           </div>
+        </div>
 
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.playerTitle">🎵 播放器</div>
+        <!-- ══ 播放 ══════════════════════════════════════ -->
+        <div class="settings-page hidden" id="settingsPagePlayback">
+          <div class="settings-section-title" data-i18n="settings.general.lyricSectionTitle">歌词显示</div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.lyricFontSize">歌词字体大小</label>
+              <div class="setting-slider">
+                <input type="range" id="settingLyricFontSize" min="12" max="32" value="18" step="1"
+                  oninput="document.getElementById('lyricFontSizeValue').textContent = this.value + 'px'; applyLyricFontSize(+this.value)"
+                  onchange="applyLyricFontSize(+this.value)">
+                <span class="setting-slider-val" id="lyricFontSizeValue">18px</span>
+              </div>
+              <span class="setting-hint" data-i18n="settings.general.lyricFontSizeHint">仅影响歌词面板的显示字号</span>
+            </div>
 
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.lyricFontSize">歌词字体大小</label>
-            <div style="display:flex;align-items:center;gap:8px;flex:1;">
-              <input type="range" id="settingLyricFontSize" min="12" max="32" value="18" step="1"
-                style="flex:1;accent-color:var(--neon-cyan);"
-                oninput="document.getElementById('lyricFontSizeValue').textContent = this.value + 'px'; applyLyricFontSize(+this.value)"
-                onchange="applyLyricFontSize(+this.value)">
-              <span id="lyricFontSizeValue" style="width:42px;font-size:12px;color:var(--text-dim);text-align:right;">18px</span>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.lyricOffset">歌词时间偏移</label>
+              <div class="setting-slider">
+                <input type="range" id="settingLyricOffset" min="-2000" max="2000" value="0" step="50"
+                  oninput="document.getElementById('lyricOffsetValue').textContent = this.value + 'ms'; applyLyricOffset(+this.value)"
+                  onchange="applyLyricOffset(+this.value)">
+                <span class="setting-slider-val" id="lyricOffsetValue">0ms</span>
+              </div>
+              <span class="setting-hint" data-i18n="settings.general.lyricOffsetHint">歌词比声音快时填正值</span>
             </div>
           </div>
 
-          <div class="setting-row">
-            <label class="setting-label" data-i18n="settings.general.lyricOffset">歌词时间偏移</label>
-            <div style="display:flex;align-items:center;gap:8px;flex:1;">
-              <input type="range" id="settingLyricOffset" min="-2000" max="2000" value="0" step="50"
-                style="flex:1;accent-color:var(--neon-cyan);"
-                oninput="document.getElementById('lyricOffsetValue').textContent = this.value + 'ms'; applyLyricOffset(+this.value)"
-                onchange="applyLyricOffset(+this.value)">
-              <span id="lyricOffsetValue" style="width:50px;font-size:12px;color:var(--text-dim);text-align:right;">0ms</span>
-            </div>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.eqTitle">🎚️ 均衡器 EQ</div>
-
-          <div id="eqPanel" style="display:flex;flex-direction:column;gap:8px;padding:8px 0;">
-            <!-- EQ 预设按钮行 -->
-            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
-              <button class="eq-preset-btn eq-preset-active" data-eq-preset="flat" onclick="applyEqPreset('flat')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🔄 默认</button>
-              <button class="eq-preset-btn" data-eq-preset="pop" onclick="applyEqPreset('pop')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🔥 流行</button>
-              <button class="eq-preset-btn" data-eq-preset="rock" onclick="applyEqPreset('rock')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🎸 摇滚</button>
-              <button class="eq-preset-btn" data-eq-preset="classic" onclick="applyEqPreset('classic')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🎻 古典</button>
-              <button class="eq-preset-btn" data-eq-preset="vocal" onclick="applyEqPreset('vocal')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🎤 人声</button>
-              <button class="eq-preset-btn" data-eq-preset="dance" onclick="applyEqPreset('dance')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">💃 舞曲</button>
-              <button class="eq-preset-btn" data-eq-preset="jazz" onclick="applyEqPreset('jazz')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🎷 爵士</button>
-              <button class="eq-preset-btn" data-eq-preset="bass" onclick="applyEqPreset('bass')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer;">🔊 重低音</button>
-            </div>
-            <!-- 5 段 EQ 滑块 -->
-            <div id="eqSliderContainer"></div>
-            <!-- 操作行 -->
-            <div style="display:flex;justify-content:space-between;margin-top:4px;">
-              <button id="eqBypassBtn" class="setting-btn" onclick="toggleEqBypass()" style="font-size:12px;padding:4px 12px;">🎚️ EQ开启</button>
-              <button class="setting-btn" onclick="resetEq()" style="font-size:12px;padding:4px 12px;">重置 EQ</button>
+          <div class="settings-section-title" data-i18n="settings.general.eqTitle">均衡器 EQ</div>
+          <div class="settings-card">
+            <!-- ⚠️ EQ 当前未接入音频链路：滑块能拖、预设会高亮、偏好会存盘，但对声音零影响。
+                 如实标注，避免用户以为它在工作。详见 .backup 与项目记忆。 -->
+            <div class="settings-warn" data-i18n="settings.general.eqNotEffective">此版本 EQ 尚未接入音频链路，调整不影响实际声音（仅保存偏好）</div>
+            <div id="eqPanel">
+              <div class="eq-presets">
+                <button class="eq-preset-btn eq-preset-active" data-eq-preset="flat" onclick="applyEqPreset('flat')">默认</button>
+                <button class="eq-preset-btn" data-eq-preset="pop" onclick="applyEqPreset('pop')">流行</button>
+                <button class="eq-preset-btn" data-eq-preset="rock" onclick="applyEqPreset('rock')">摇滚</button>
+                <button class="eq-preset-btn" data-eq-preset="classic" onclick="applyEqPreset('classic')">古典</button>
+                <button class="eq-preset-btn" data-eq-preset="vocal" onclick="applyEqPreset('vocal')">人声</button>
+                <button class="eq-preset-btn" data-eq-preset="dance" onclick="applyEqPreset('dance')">舞曲</button>
+                <button class="eq-preset-btn" data-eq-preset="jazz" onclick="applyEqPreset('jazz')">爵士</button>
+                <button class="eq-preset-btn" data-eq-preset="bass" onclick="applyEqPreset('bass')">重低音</button>
+              </div>
+              <div id="eqSliderContainer" class="eq-bands"></div>
+              <div class="eq-actions">
+                <button id="eqBypassBtn" class="setting-btn" onclick="toggleEqBypass()">EQ 开启</button>
+                <button class="setting-btn" onclick="resetEq()">重置 EQ</button>
+              </div>
             </div>
           </div>
           <script>
@@ -969,111 +890,109 @@
             ];
             bands.forEach((b, i) => {
               const row = document.createElement('div');
-              row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+              row.className = 'eq-band';
               row.innerHTML = `
-                <span style="width:48px;font-size:11px;color:var(--text-dim);text-align:right;">${b.freq}</span>
-                <input type="range" id="eq_${i}" min="-12" max="12" value="0" step="1"
-                  style="flex:1;accent-color:var(--neon-cyan);"
+                <span class="eq-band-freq">${b.freq}</span>
+                <input type="range" id="eq_${i}" class="eq-band-slider" min="-12" max="12" value="0" step="1"
                   oninput="setEqBand(${i}, +this.value); document.getElementById('eq_val_${i}').textContent = this.value + 'dB';"
                   onchange="saveEqSettings()">
-                <span id="eq_val_${i}" style="width:42px;font-size:11px;color:var(--text-dim);">0dB</span>
+                <span class="eq-band-val" id="eq_val_${i}">0dB</span>
               `;
               container.appendChild(row);
             });
           })();
           </script>
 
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.cacheTitle">🗑️ 缓存管理</div>
-
-          <div class="setting-row">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <button class="setting-btn" onclick="clearPlayCache()" data-i18n="settings.general.clearCache">🧹 清理播放缓存</button>
-              <span id="cacheSizeLabel" style="font-size:12px;color:var(--text-muted)"></span>
+          <div class="settings-section-title" data-i18n="settings.general.playbackBehaviorTitle">播放行为</div>
+          <div class="settings-card">
+            <div class="setting-checks">
+              <label class="setting-check"><input type="checkbox" id="settingPlayProgressMemory" checked><span data-i18n="settings.general.playProgressMemory">记忆播放进度</span></label>
+              <label class="setting-check"><input type="checkbox" id="settingGlobalShortcuts" checked><span data-i18n="settings.general.globalShortcuts">全局媒体键</span></label>
             </div>
-            <span class="setting-hint" data-i18n="settings.general.cacheHint">清除试听产生的临时文件，不会影响已下载的音乐</span>
+            <span class="setting-hint setting-hint--block" data-i18n="settings.general.playbackBehaviorHint">记忆播放进度：下次从断点继续；全局媒体键：用键盘上的 ⏯ ⏮ ⏭ 控制播放</span>
           </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.statsTitle">📊 播放统计</div>
-
-          <div class="setting-row">
-            <div style="display:flex;align-items:center;gap:12px;">
-              <button class="setting-btn" onclick="generatePlayReport()" data-i18n="settings.general.viewReport">📊 查看听歌报告</button>
-              <button class="setting-btn" onclick="resetPlayStats()" style="border-color:var(--red);color:var(--red);" data-i18n="settings.general.resetStats">🗑 重置统计</button>
-            </div>
-            <span class="setting-hint" data-i18n="settings.general.statsHint">查看播放统计和听歌报告</span>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.resetTitle">🔄 重置设置</div>
-          <div class="setting-row">
-            <button class="setting-btn" onclick="resetAllSettings()" style="border-color:var(--red);color:var(--red);" data-i18n="settings.general.resetAll">
-              ⚠️ 恢复所有默认设置
-            </button>
-            <span class="setting-hint" data-i18n="settings.general.resetHint">将所有设置恢复为出厂默认值（不会删除已下载的音乐和 Cookie）</span>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.general.backupTitle">☁️ 备份与恢复</div>
-          <div class="setting-row">
-            <button class="setting-btn" onclick="exportConfig()" style="text-align:left;">
-              📤 导出配置
-            </button>
-            <span class="setting-hint" data-i18n="settings.general.backupExportHint">导出偏好设置、播放历史、下载记录、下载模板到 JSON 文件</span>
-          </div>
-          <div class="setting-row">
-            <button class="setting-btn" onclick="importConfig()" style="text-align:left;">
-              📥 导入配置
-            </button>
-            <span class="setting-hint" data-i18n="settings.general.backupImportHint">从 JSON 备份文件恢复偏好设置和历史记录（需重启生效）</span>
-          </div>
-
         </div>
 
-        <!-- 关于页 -->
+        <!-- ══ 高级 ══════════════════════════════════════ -->
+        <div class="settings-page hidden" id="settingsPageAdvanced">
+          <div class="settings-section-title" data-i18n="settings.general.cacheTitle">缓存管理</div>
+          <div class="settings-card">
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" onclick="clearPlayCache()" data-i18n="settings.general.clearCache">清理播放缓存</button>
+              <span class="setting-inline-status" id="cacheSizeLabel"></span>
+              <span class="setting-hint" data-i18n="settings.general.cacheHint">清除试听产生的临时文件，不会影响已下载的音乐</span>
+            </div>
+          </div>
+
+          <div class="settings-section-title" data-i18n="settings.general.statsTitle">播放统计</div>
+          <div class="settings-card">
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" onclick="generatePlayReport()" data-i18n="settings.general.viewReport">查看听歌报告</button>
+              <button class="setting-btn setting-btn--danger" onclick="resetPlayStats()" data-i18n="settings.general.resetStats">重置统计</button>
+              <span class="setting-hint" data-i18n="settings.general.statsHint">查看播放统计和听歌报告</span>
+            </div>
+          </div>
+
+          <div class="settings-section-title" data-i18n="settings.general.backupTitle">备份与恢复</div>
+          <div class="settings-card">
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" onclick="exportConfig()" data-i18n="settings.general.exportConfig">导出配置</button>
+              <span class="setting-hint" data-i18n="settings.general.backupExportHint">导出偏好设置、播放历史、下载记录、下载模板到 JSON 文件</span>
+            </div>
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" onclick="importConfig()" data-i18n="settings.general.importConfig">导入配置</button>
+              <span class="setting-hint" data-i18n="settings.general.backupImportHint">从 JSON 备份文件恢复偏好设置和历史记录（需重启生效）</span>
+            </div>
+          </div>
+
+          <div class="settings-section-title" data-i18n="settings.general.resetTitle">重置设置</div>
+          <div class="settings-card settings-card--danger">
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn setting-btn--danger" onclick="resetAllSettings()" data-i18n="settings.general.resetAll">恢复所有默认设置</button>
+              <span class="setting-hint" data-i18n="settings.general.resetHint">将所有设置恢复为出厂默认值（不会删除已下载的音乐和 Cookie）</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ 关于 ══════════════════════════════════════ -->
         <div class="settings-page hidden" id="settingsPageAbout">
-          <div class="settings-section-title" data-i18n="settings.about.title">ℹ️ 关于 MusicDL</div>
-          <div class="settings-hint-box" style="line-height:2;">
-            <strong data-i18n="app.title">MusicDL</strong> · <span id="appVersion">v1.0.0</span><br>
-            <span id="appCommit" style="color:var(--text-dim,rgba(255,255,255,0.4));font-size:12px;"></span><br>
-            多平台音乐下载桌面应用 · Electron 28<br>
-            支持：网易云音乐 · QQ音乐 · 哔哩哔哩 · 酷狗音乐<br>
-            本项目仅供学习研究使用，请遵守各平台服务条款。
+          <div class="settings-section-title" data-i18n="settings.about.title">关于 MusicDL</div>
+          <div class="settings-card">
+            <div class="about-head">
+              <div class="about-name"><strong data-i18n="app.title">MusicDL</strong><span class="about-version" id="appVersion">v1.0.0</span></div>
+              <div class="about-commit" id="appCommit"></div>
+              <div class="about-desc" data-i18n="settings.about.desc">多平台音乐下载桌面应用 · Electron 28</div>
+              <div class="about-desc" data-i18n="settings.about.support">支持：网易云音乐 · QQ音乐 · 哔哩哔哩 · 酷狗音乐 · 酷我音乐</div>
+              <div class="about-disclaimer" data-i18n="settings.about.disclaimer">本项目仅供学习研究使用，请遵守各平台服务条款。</div>
+            </div>
+            <button id="checkUpdateBtn" class="setting-btn setting-btn--wide" onclick="window.checkForUpdate()" data-i18n="settings.about.checkUpdate">检查更新</button>
           </div>
 
-          <div style="margin-top:12px;">
-            <button id="checkUpdateBtn" class="setting-btn" onclick="window.checkForUpdate()" style="text-align:left;width:100%;">
-              🔄 检查更新 <span style="color:var(--text-dim,rgba(255,255,255,0.4));font-size:11px;">(自动检查)</span>
-            </button>
+          <div class="settings-section-title" data-i18n="settings.about.linksTitle">快捷链接</div>
+          <div class="settings-card">
+            <div class="link-grid">
+              <button class="setting-btn" onclick="api.openExternal('https://github.com')" data-i18n="settings.about.github">GitHub 仓库</button>
+              <button class="setting-btn" onclick="api.openExternal('https://music.163.com')">网易云音乐</button>
+              <button class="setting-btn" onclick="api.openExternal('https://y.qq.com')">QQ 音乐</button>
+              <button class="setting-btn" onclick="api.openExternal('https://www.bilibili.com')">哔哩哔哩</button>
+            </div>
           </div>
 
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.about.linksTitle">🔗 快捷链接</div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <button class="setting-btn" onclick="api.openExternal('https://github.com')" style="text-align:left;" data-i18n="settings.about.github">
-              📦 GitHub 仓库
-            </button>
-            <button class="setting-btn" onclick="api.openExternal('https://music.163.com')" style="text-align:left;">
-              🎵 网易云音乐
-            </button>
-            <button class="setting-btn" onclick="api.openExternal('https://y.qq.com')" style="text-align:left;">
-              🎶 QQ 音乐
-            </button>
-            <button class="setting-btn" onclick="api.openExternal('https://www.bilibili.com')" style="text-align:left;">
-              📺 哔哩哔哩
-            </button>
-          </div>
-
-          <div class="settings-section-title" style="margin-top:20px" data-i18n="settings.about.shortcutsTitle">⌨️ 快捷键</div>
-          <div class="settings-hint-box" style="font-size:12px;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">Space</kbd> 播放/暂停</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">←</kbd><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">→</kbd> 快进/快退 5s</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">↑</kbd><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">↓</kbd> 音量 +/- 5%</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">N</kbd> 下一首</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">P</kbd> 上一首</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">S</kbd> 随机播放</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">L</kbd> 循环模式</span>
-              <span><kbd style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">Ctrl+F</kbd> 搜索</span>
+          <div class="settings-section-title" data-i18n="settings.about.shortcutsTitle">快捷键</div>
+          <div class="settings-card">
+            <div class="shortcut-grid">
+              <span><kbd>Space</kbd> 播放/暂停</span>
+              <span><kbd>←</kbd><kbd>→</kbd> 快进/快退 5s</span>
+              <span><kbd>↑</kbd><kbd>↓</kbd> 音量 +/- 5%</span>
+              <span><kbd>N</kbd> 下一首</span>
+              <span><kbd>P</kbd> 上一首</span>
+              <span><kbd>S</kbd> 随机播放</span>
+              <span><kbd>L</kbd> 循环模式</span>
+              <span><kbd>Ctrl+F</kbd> 搜索</span>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   </div>

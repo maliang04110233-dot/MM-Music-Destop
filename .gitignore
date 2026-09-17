@@ -36,3 +36,7 @@ build-log-full.txt
 # 本机临时路径命名的历史误提交目录（防再犯）
 Users*AppData*
 C:*Users*
+
+# 本地验证台与重构前备份（不入仓库）
+.preview/
+.backup/

@@ -1,173 +1,424 @@
 /**
- * MusicDL 首页推荐视图
+ * MusicDL 首页
+ *
+ * 架构（重构后）：
+ *   1. 分区注册表 HOME_PLATFORMS 是唯一数据源，驱动 DOM 生成、锚点导航、懒加载
+ *   2. 三平台纵向堆叠成「聚合长页」——打开首页即能看到各平台内容，
+ *      不再靠 tab 互斥切换；顶部锚点条平滑滚动定位
+ *   3. 平台块进入视口才加载（IntersectionObserver），每块独立成功/失败/重试
+ *   4. 单一状态源 homeState：window / global state 共享同一对象引用，
+ *      永不整体替换（旧实现有模块变量 + state + window 三份副本，会漂移）
+ *
+ * 对外契约（不得改动）：
+ *   window.loadHomeRecommendations()  —— app.js init / router 调用，幂等
+ *   window.loadHomeStats()            —— app.js init 调用
+ *   window.renderRecentlyPlayed()     —— app.js init / router 调用
  */
 
 import { logger } from '../logger.js';
 
-let homeRecommendations = {
-  netease: { tops: [], hot: [], newSongs: [], original: [], playlists: [] },
-  qq: { recommend: [], official: [], classic: [], love: [], ktv: [], topList: [], newSongs: [], radios: [], hotSingers: [] },
-  bilibili: { ranking: [] },
-  _loaded: false,
-  _loading: false,
-};
-try { setState('homeRecommendations', homeRecommendations); } catch(_e) { /* ignore */ }
+// ── 分区注册表 ────────────────────────────────────────────
+// 新增一个区块 = 这里加一行；DOM、锚点、懒加载、状态统计自动跟上
+const HOME_PLATFORMS = [
+  {
+    plat: 'netease', label: '网易云', i18n: 'home.neteaseTab', dot: 'wy',
+    sections: [
+      { sec: 'netease.tops',      title: '飙升榜',   i18n: 'home.subtab.tops',      kind: 'list' },
+      { sec: 'netease.hot',       title: '热歌榜',   i18n: 'home.subtab.hot',       kind: 'list' },
+      { sec: 'netease.new',       title: '新歌榜',   i18n: 'home.subtab.new',       kind: 'list' },
+      { sec: 'netease.original',  title: '原创榜',   i18n: 'home.subtab.original',  kind: 'list' },
+      { sec: 'netease.playlists', title: '推荐歌单', i18n: 'home.subtab.playlists', kind: 'grid' },
+    ],
+  },
+  {
+    plat: 'qq', label: 'QQ音乐', i18n: 'home.qqTab', dot: 'qq',
+    sections: [
+      { sec: 'qq.recommend', title: '个性化推荐', kind: 'grid' },
+      { sec: 'qq.official',  title: '官方歌单',   kind: 'grid' },
+      { sec: 'qq.classic',   title: '经典歌单',   kind: 'grid' },
+      { sec: 'qq.love',      title: '情歌歌单',   kind: 'grid' },
+      { sec: 'qq.ktv',       title: 'KTV热歌',    kind: 'grid' },
+      { sec: 'qq.top',       title: '热歌榜',     kind: 'list' },
+      { sec: 'qq.new',       title: '内地新歌',   kind: 'list' },
+      { sec: 'qq.radio',     title: '热门电台',   kind: 'grid' },
+      { sec: 'qq.singers',   title: '热门歌手',   kind: 'grid' },
+    ],
+  },
+  {
+    plat: 'bilibili', label: 'B站', i18n: 'home.biliTab', dot: 'bi',
+    sections: [
+      { sec: 'bilibili.ranking', title: '音乐区热门排行', kind: 'list', showSource: true },
+    ],
+  },
+];
 
-// home.js 不直接 import api，通过 window.api 访问（由 app.js 在 init 前赋值）
+/** 榜单默认只渲染前 N 行，超出给「展开全部」 */
+const LIST_FOLD = 20;
+/** 单分区请求超时（毫秒） */
+const SECTION_TIMEOUT = 10000;
+
+const HERO_TAGS = [
+  { text: '周杰伦', hot: true },
+  { text: '林俊杰', hot: true },
+  { text: '五月天', hot: true },
+  { text: 'Taylor Swift', hot: true },
+  { text: '轻音乐' },
+  { text: '钢琴曲' },
+  { text: 'LoFi Hip Hop' },
+  { text: 'OST 原声带' },
+  { text: '粤语经典' },
+  { text: '日语动漫' },
+];
+
+// ── 单一状态源 ────────────────────────────────────────────
+// plat[plat] = { status, sections: { sec: data[] }, ok, fail }
+const homeState = { plat: {}, _booted: false };
+try { setState('homeRecommendations', homeState); } catch (_e) { /* ignore */ }
+window.homeRecommendations = homeState;
+
+let _shellRendered = false;
+let _observer = null;
+/** 已展开的榜单 sec 集合（切分区后保持展开状态） */
+const _expanded = new Set();
+
+// ── 小工具 ────────────────────────────────────────────────
 function _getApi() { return window.api || (typeof api !== 'undefined' ? api : null); }
 
-// ── DOM 缓存 ──────────────────────────────────────────
-const _homeDom = {};
-const HOME_ELEMENT_IDS = [
-  'allTopsList', 'allBiliList', 'allPlaylistsGrid',
-  'neteaseTopsList', 'neteaseHotList', 'neteaseNewList', 'neteaseOriginalList', 'neteasePlaylistGrid',
-  'qqRecommendGrid', 'qqOfficialGrid', 'qqClassicGrid', 'qqLoveGrid', 'qqKTVGrid',
-  'qqTopList', 'qqNewSongsList', 'qqRadiosGrid', 'qqHotSingersGrid', 'biliRankingList',
-];
-
-function _cacheHomeDom() {
-  HOME_ELEMENT_IDS.forEach(id => {
-    _homeDom[id] = document.getElementById(id);
-  });
-}
-
-async function loadHomeRecommendations() {
-  const _api = _getApi();
-  if (!_api || typeof _api.getHomeSection !== 'function') {
-    logger.warn('[Home] API not ready, fallback to legacy');
-    return loadHomeRecommendationsLegacy();
-  }
-
-  // 允许强制刷新（F5 / 点击重试）
-  if (homeRecommendations && homeRecommendations._loaded && !window._forceHomeRefresh) {
-    return;
-  }
-  if (window._forceHomeRefresh) window._forceHomeRefresh = false;
-
-  // 初始化已在模块顶部完成，这里只检查 _loaded 标志
-
-  // 只加载默认 Tab（网易云）— QQ/B站 由 switchPlatTab 按需加载
-  const neteaseSections = [
-    ['netease.tops',      (data) => { homeRecommendations.netease.tops = data; renderRecommendList('neteaseTopsList', data); }],
-    ['netease.hot',       (data) => { homeRecommendations.netease.hot = data; renderRecommendList('neteaseHotList', data); }],
-    ['netease.new',       (data) => { homeRecommendations.netease.newSongs = data; renderRecommendList('neteaseNewList', data); }],
-    ['netease.original',  (data) => { homeRecommendations.netease.original = data; renderRecommendList('neteaseOriginalList', data); }],
-    ['netease.playlists', (data) => { homeRecommendations.netease.playlists = data; renderRecommendGrid('neteasePlaylistGrid', data, '网易云'); }],
-  ];
-
-  await Promise.allSettled(neteaseSections.map(([section, render]) => loadHomeSection(section, render)));
-
-  // 所有分区加载完毕，触发全量渲染确保所有 UI 同步
-  renderAllPlatforms();
-
-  // 标记加载完成
-  homeRecommendations._loaded = true;
-}
-
-const _qqSections = [
-  ['qq.recommend',      (data) => { homeRecommendations.qq.recommend = data; renderRecommendGrid('qqRecommendGrid', data, 'QQ音乐'); }],
-  ['qq.official',       (data) => { homeRecommendations.qq.official = data; renderRecommendGrid('qqOfficialGrid', data, 'QQ官方'); }],
-  ['qq.classic',        (data) => { homeRecommendations.qq.classic = data; renderRecommendGrid('qqClassicGrid', data, '经典'); }],
-  ['qq.love',           (data) => { homeRecommendations.qq.love = data; renderRecommendGrid('qqLoveGrid', data, '情歌'); }],
-  ['qq.ktv',            (data) => { homeRecommendations.qq.ktv = data; renderRecommendGrid('qqKTVGrid', data, 'KTV'); }],
-  ['qq.top',            (data) => { homeRecommendations.qq.topList = data; renderRecommendList('qqTopList', data); }],
-  ['qq.new',            (data) => { homeRecommendations.qq.newSongs = data; renderRecommendList('qqNewSongsList', data); }],
-  ['qq.radio',          (data) => { homeRecommendations.qq.radios = data; renderRecommendGrid('qqRadiosGrid', data, '电台'); }],
-  ['qq.singers',        (data) => { homeRecommendations.qq.hotSingers = data; renderRecommendGrid('qqHotSingersGrid', data, '歌手'); }],
-];
-const _biliSections = [
-  ['bilibili.ranking',  (data) => { homeRecommendations.bilibili.ranking = data; renderRecommendList('biliRankingList', data, true); }],
-];
-
-let _qqLoaded = false;
-let _biliLoaded = false;
-
-async function ensureQQLoaded() {  try {
-    
-    if (_qqLoaded) return;
-    _qqLoaded = true;
-    await Promise.allSettled(_qqSections.map(([section, render]) => loadHomeSection(section, render)));
-    
-  } catch (e) {
-    logger.warn(`[ensureQQLoaded] error:`, e);
-  }
-}
-
-async function ensureBiliLoaded() {
+/** 取 i18n 词条，缺失时回落中文（英文模式下不再丢词条） */
+function _tr(key, fallback) {
+  if (!key) return fallback;
   try {
-    if (_biliLoaded) return;
-    _biliLoaded = true;
-    await Promise.allSettled(_biliSections.map(([section, render]) => loadHomeSection(section, render)));
-  } catch (e) {
-    logger.warn(`[ensureBiliLoaded] error:`, e);
+    const v = typeof window.t === 'function' ? window.t(key) : '';
+    return v && v !== key ? v : fallback;
+  } catch (_e) { return fallback; }
+}
+
+/** 区块 DOM id：netease.tops → sec-netease-tops（点号不能进 CSS 选择器） */
+function _domId(sec) { return 'sec-' + sec.replace(/\./g, '-'); }
+function _platOf(sec) { return sec.split('.')[0]; }
+function _blockId(plat) { return 'blk-' + plat; }
+function _findMeta(sec) {
+  for (const p of HOME_PLATFORMS) {
+    const s = p.sections.find(x => x.sec === sec);
+    if (s) return s;
+  }
+  return null;
+}
+function _getSection(sec) {
+  const st = homeState.plat[_platOf(sec)];
+  return (st && st.sections[sec]) || [];
+}
+
+/**
+ * 取（或建）平台状态槽。
+ * 每次重新从 homeState 读取，避免 reloadPlatform 换掉状态对象后，
+ * 尚在飞行中的 fetchSection 把计数写进已废弃的旧对象。
+ */
+function _platState(plat) {
+  const cur = homeState.plat[plat];
+  if (cur) return cur;
+  const fresh = { status: 'idle', sections: {}, ok: 0, fail: 0 };
+  homeState.plat[plat] = fresh;
+  return fresh;
+}
+
+/** 骨架屏由 JS 生成，避免在 HTML 里重复几十段同样标记 */
+function _skeletonHtml(kind) {
+  if (kind === 'grid') return '<div class="skel-card"></div>'.repeat(6);
+  return ('<div class="skel-row"><div class="skel-avatar"></div>'
+    + '<div class="skel-lines"><div class="skel-line w60"></div>'
+    + '<div class="skel-line w40"></div></div></div>').repeat(5);
+}
+
+// ── 骨架构建 ──────────────────────────────────────────────
+function renderHeroTags() {
+  const el = document.getElementById('homeHeroTags');
+  if (!el) return;
+  el.innerHTML = HERO_TAGS.map(g =>
+    `<span class="hot-tag${g.hot ? ' trending' : ''}" onclick="quickSearch('${escAttr(g.text)}')">${esc(g.text)}</span>`
+  ).join('');
+}
+
+function renderHomeShell() {
+  const wrap = document.getElementById('homeBlocks');
+  if (!wrap) return;
+
+  wrap.innerHTML = HOME_PLATFORMS.map(p => {
+    const label = _tr(p.i18n, p.label);
+    return `
+    <section class="plat-block" id="${_blockId(p.plat)}" data-plat="${p.plat}">
+      <div class="plat-block-head">
+        <span class="plat-dot ${p.dot}"></span>
+        <span class="plat-block-name">${esc(label)}</span>
+        <span class="plat-block-state" data-state>待加载</span>
+      </div>
+      <div class="plat-chips">
+        ${p.sections.map((s, i) => `<button class="plat-chip${i === 0 ? ' active' : ''}" data-sec="${escAttr(s.sec)}" onclick="showHomeSection('${escAttr(p.plat)}','${escAttr(s.sec)}',this)">${esc(_tr(s.i18n, s.title))}</button>`).join('')}
+      </div>
+      ${p.sections.map((s, i) => `<div class="home-sec home-sec--${s.kind}" id="${_domId(s.sec)}" data-sec="${escAttr(s.sec)}"${i === 0 ? '' : ' hidden'}>${_skeletonHtml(s.kind)}</div>`).join('')}
+    </section>`;
+  }).join('');
+
+  const anchors = document.getElementById('homeAnchors');
+  if (anchors) {
+    anchors.innerHTML = HOME_PLATFORMS.map(p =>
+      `<button class="anchor-chip" data-anchor="${_blockId(p.plat)}" onclick="scrollToHomeBlock('${_blockId(p.plat)}',this)"><span class="plat-dot ${p.dot}"></span>${esc(_tr(p.i18n, p.label))}</button>`
+    ).join('');
+  }
+
+  _shellRendered = true;
+}
+
+// ── 锚点导航 / 分区切换 ───────────────────────────────────
+function scrollToHomeBlock(blockId, btn) {
+  const el = document.getElementById(blockId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  _setActiveAnchor(blockId);
+  if (btn) btn.blur();
+}
+
+function _setActiveAnchor(blockId) {
+  const bar = document.getElementById('homeAnchors');
+  if (!bar) return;
+  bar.querySelectorAll('.anchor-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.anchor === blockId));
+}
+
+/** 手动滚动时同步锚点高亮（否则高亮会一直停在最后点击的那个平台） */
+function _syncActiveAnchor() {
+  const root = document.getElementById('homePage');
+  if (!root) return;
+  const threshold = root.getBoundingClientRect().top + 64;
+  let current = _blockId(HOME_PLATFORMS[0].plat);
+  for (const p of HOME_PLATFORMS) {
+    const el = document.getElementById(_blockId(p.plat));
+    if (el && el.getBoundingClientRect().top <= threshold) current = _blockId(p.plat);
+  }
+  _setActiveAnchor(current);
+}
+
+function _bindAnchorSpy() {
+  const root = document.getElementById('homePage');
+  if (!root) return;
+  let raf = 0;
+  root.addEventListener('scroll', () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; _syncActiveAnchor(); });
+  }, { passive: true });
+  _syncActiveAnchor();
+}
+
+/** 平台内切换分区：显式比对 data-sec，不再用 id.includes(type) 的子串匹配 */
+function showHomeSection(plat, sec, btn) {
+  const block = document.getElementById(_blockId(plat));
+  if (!block) return;
+  block.querySelectorAll('.plat-chip').forEach(c => c.classList.toggle('active', c.dataset.sec === sec));
+  block.querySelectorAll('.home-sec').forEach(el => { el.hidden = el.dataset.sec !== sec; });
+  if (btn) btn.blur();
+}
+
+// ── 懒加载 ────────────────────────────────────────────────
+function observeBlocks() {
+  if (_observer) { _observer.disconnect(); _observer = null; }
+
+  // 无 IntersectionObserver（老运行时）：降级为一次性全量加载
+  if (typeof IntersectionObserver !== 'function') {
+    HOME_PLATFORMS.forEach(p => loadPlatform(p.plat));
+    return;
+  }
+
+  const root = document.getElementById('homePage');
+  _observer = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      _observer.unobserve(en.target);
+      loadPlatform(en.target.dataset.plat);
+    }
+  }, { root: root || null, rootMargin: '240px 0px' });
+
+  document.querySelectorAll('.plat-block').forEach(el => _observer.observe(el));
+}
+
+// ── 平台状态徽标 ──────────────────────────────────────────
+function _setBlockState(plat, text, onRetry) {
+  const el = document.querySelector(`#${_blockId(plat)} [data-state]`);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-error', typeof onRetry === 'function');
+  el.onclick = typeof onRetry === 'function' ? onRetry : null;
+}
+
+function _refreshPlatformState(plat) {
+  const def = HOME_PLATFORMS.find(p => p.plat === plat);
+  const st = homeState.plat[plat];
+  if (!def || !st) return;
+
+  const total = def.sections.length;
+  const settled = st.ok + st.fail;
+
+  if (st.ok) {
+    _setBlockState(plat, `${st.ok}/${total} 个分区`);
+  } else if (settled >= total) {
+    _setBlockState(plat, '加载失败，点击重试', () => reloadPlatform(plat));
+  } else {
+    _setBlockState(plat, `加载中 ${settled}/${total}`);
   }
 }
 
-async function loadHomeSection(section, render) {
+// ── 数据加载 ──────────────────────────────────────────────
+async function loadPlatform(plat) {
+  const st = _platState(plat);
+  if (st.status === 'loading' || st.status === 'done') return;
+
+  const def = HOME_PLATFORMS.find(p => p.plat === plat);
+  if (!def) return;
+
+  st.status = 'loading';
+  _refreshPlatformState(plat);
+
+  await Promise.allSettled(def.sections.map(s => fetchSection(s)));
+
+  st.status = st.ok ? 'done' : 'error';
+  _refreshPlatformState(plat);
+}
+
+async function reloadPlatform(plat) {
+  const def = HOME_PLATFORMS.find(p => p.plat === plat);
+  if (!def) return;
+  homeState.plat[plat] = { status: 'idle', sections: {}, ok: 0, fail: 0 };
+  def.sections.forEach(s => {
+    const el = document.getElementById(_domId(s.sec));
+    if (el) el.innerHTML = _skeletonHtml(s.kind);
+  });
+  _refreshPlatformState(plat);
+  await loadPlatform(plat);
+}
+
+async function fetchSection(meta) {
+  const plat = _platOf(meta.sec);
+  const st = _platState(plat);
+  const el = document.getElementById(_domId(meta.sec));
   const _api = _getApi();
-  if (!_api) {
-    logger.error('[Home] loadHomeSection failed: api is null for', section);
-    markHomeSectionError(section, 'API 未就绪');
-    return;
+
+  if (!_api || typeof _api.getHomeSection !== 'function') {
+    if (el) el.innerHTML = '<div class="home-sec-msg">接口未就绪</div>';
+    st.fail++;
+    _refreshPlatformState(plat);
+    return false;
   }
+
+  // 超时计时器必须在 finally 清掉，否则每次加载都会遗留一堆 10s 定时器
+  let timer = null;
   try {
     const result = await Promise.race([
-      _api.getHomeSection(section),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('请求超时(10s)')), 10000)),
+      _api.getHomeSection(meta.sec),
+      new Promise((_res, rej) => {
+        timer = setTimeout(() => rej(new Error('请求超时(10s)')), SECTION_TIMEOUT);
+      }),
     ]);
-    if (result?.ok) {
-      logger.log(`[Home] ✓ ${section} -> ${(result.data || []).length} items`);
-      render(result.data || []);
-    } else {
-      logger.warn(`[Home] ✗ ${section}:`, result?.error || '加载失败');
-      markHomeSectionError(section, result?.error || '加载失败');
+
+    if (result && result.ok) {
+      const data = Array.isArray(result.data) ? result.data : [];
+      st.sections[meta.sec] = data;
+      st.ok++;
+      renderSection(meta, data);
+      logger.log(`[Home] ✓ ${meta.sec} -> ${data.length} items`);
+      _refreshPlatformState(plat);
+      return true;
     }
+
+    logger.warn(`[Home] ✗ ${meta.sec}:`, (result && result.error) || '加载失败');
+    renderSectionError(meta, (result && result.error) || '加载失败');
+    st.fail++;
+    _refreshPlatformState(plat);
+    return false;
   } catch (e) {
-    logger.warn(`[Home] ✗ ${section} exception:`, e.message);
-    markHomeSectionError(section, e.message || String(e));
+    logger.warn(`[Home] ✗ ${meta.sec} exception:`, e.message);
+    renderSectionError(meta, e.message || String(e));
+    st.fail++;
+    _refreshPlatformState(plat);
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
-async function loadHomeRecommendationsLegacy() {
-  const _api = _getApi();
-  try {
-    if (!_api || typeof _api.getHomeRecommendations !== 'function') {
-      throw new Error('window.musicAPI 未加载（preload 失败）');
-    }
-    if (homeRecommendations && homeRecommendations._loaded) {
-      return;
-    }
-    const data = await Promise.race([
-      _api.getHomeRecommendations(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('请求超时(30s)')), 30000)),
-    ]);
-    // 安全合并，保证 netease/qq/bilibili 子结构始终存在
-    homeRecommendations = {
-      netease: { ...homeRecommendations.netease, ...(data?.netease || {}) },
-      qq: { ...homeRecommendations.qq, ...(data?.qq || {}) },
-      bilibili: { ...homeRecommendations.bilibili, ...(data?.bilibili || {}) },
-      _loaded: true,
-    };
-    setState('homeRecommendations', homeRecommendations);
-    renderAllPlatforms();
-  } catch (e) {
-    logger.error('[Home] 加载推荐内容失败:', e);
-    showToast('推荐加载失败: ' + e.message + ' (开发者工具 → Console)', 'error');
-    clearLoadingPlaceholders();
+/**
+ * 首页入口（app.js init / router switchTab('home') 调用）
+ * 幂等：重复调用不重复加载。window._forceHomeRefresh = true 可强制重载全部平台。
+ */
+async function loadHomeRecommendations() {
+  const force = !!window._forceHomeRefresh;
+  window._forceHomeRefresh = false;
+
+  if (!_shellRendered) {
+    renderHeroTags();
+    renderHomeShell();
+    observeBlocks();
+    _bindAnchorSpy();
+  }
+
+  if (homeState._booted && !force) return;
+  homeState._booted = true;
+
+  if (force) {
+    HOME_PLATFORMS.forEach(p => reloadPlatform(p.plat));
   }
 }
 
-// ── 渲染 ──────────────────────────────────────────────
-function renderRecommendList(elId, songs, showSource = false) {
-  const el = document.getElementById(elId);
+// ── 渲染 ──────────────────────────────────────────────────
+function renderSection(meta, data) {
+  const el = document.getElementById(_domId(meta.sec));
   if (!el) return;
-  if (!Array.isArray(songs) || !songs.length) {
-    el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px;">暂无数据</div>';
+
+  if (!Array.isArray(data) || !data.length) {
+    el.innerHTML = '<div class="home-sec-msg">暂无数据</div>';
     return;
   }
-  state.setRecommend(elId, songs);
-  el.innerHTML = songs.map((s, i) => `
-    <div class="top-song-row">
+
+  el.innerHTML = meta.kind === 'grid'
+    ? data.map(playlistCardHtml).join('')
+    : listHtml(meta, data);
+}
+
+function renderSectionError(meta, msg) {
+  const el = document.getElementById(_domId(meta.sec));
+  if (!el) return;
+  el.innerHTML = `<div class="home-sec-msg is-error" onclick="reloadHomePlatform('${escAttr(_platOf(meta.sec))}')">⚠️ ${esc(msg)}，点击重试</div>`;
+}
+
+function playlistCardHtml(p) {
+  return `
+    <div class="playlist-card" onclick="openPlaylistModal('${escAttr(p.source)}', '${escAttr(p.id)}', '${escAttr(p.name)}')">
+      <div class="playlist-cover-wrap">
+        ${p.cover
+          ? `<img class="playlist-cover" src="${escAttr(p.cover)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          : ''}
+        <div class="playlist-cover-ph" ${p.cover ? 'style="display:none"' : ''}>📀</div>
+        ${p.playCount ? `<span class="playlist-playcount">${formatPlayCount(p.playCount)}</span>` : ''}
+        <div class="playlist-hover-play">▶ 浏览歌单</div>
+      </div>
+      <div class="playlist-name" title="${esc(p.name)}">${esc(p.name)}</div>
+      <div class="playlist-source">${esc(srcLabel(p.source))}</div>
+    </div>`;
+}
+
+function listHtml(meta, songs) {
+  const expanded = _expanded.has(meta.sec);
+  const fold = songs.length > LIST_FOLD && !expanded;
+  const shown = fold ? songs.slice(0, LIST_FOLD) : songs;
+
+  const foldBtn = songs.length > LIST_FOLD
+    ? `<div class="list-fold-btn" onclick="toggleHomeListFold('${escAttr(meta.sec)}')">${expanded ? '收起 ▴' : `展开全部 ${songs.length} 首 ▾`}</div>`
+    : '';
+
+  return songRowsHtml(meta, shown) + foldBtn;
+}
+
+function songRowsHtml(meta, songs) {
+  return songs.map((s, i) => `
+    <div class="top-song-row" onclick="playRecommendById('${escAttr(meta.sec)}',${i})">
       <span class="top-song-rank ${i < 3 ? 'top3' : ''}">${i + 1}</span>
       <div class="top-song-info">
         <div class="top-song-title">${esc(s.title)}</div>
@@ -175,105 +426,26 @@ function renderRecommendList(elId, songs, showSource = false) {
           ? `<span class="album-link" onclick="event.stopPropagation();openAlbumView('${escAttr(s.albumMid)}','${escAttr(s.source)}','${escAttr(s.album)}')">${esc(s.album)}</span>`
           : esc(s.album)) : ''}</div>
       </div>
-      ${showSource ? `<span class="source-badge badge-${escAttr(s.source)}">${srcLabel(s.source)}</span>` : ''}
-      <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendById('${elId}', ${i})">▶</button>
-      <button class="top-song-action" title="下载" onclick="event.stopPropagation();addRecommendDownload('${elId}', ${i})">⬇</button>
-      <button class="top-song-action" title="添加到歌单" onclick="event.stopPropagation();quickAddRecommendToPlaylist('${elId}', ${i})">📋</button>
+      ${meta.showSource ? `<span class="source-badge badge-${escAttr(s.source)}">${esc(srcLabel(s.source))}</span>` : ''}
+      <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendById('${escAttr(meta.sec)}',${i})">▶</button>
+      <button class="top-song-action" title="下载" onclick="event.stopPropagation();addRecommendDownload('${escAttr(meta.sec)}',${i})">⬇</button>
+      <button class="top-song-action" title="添加到歌单" onclick="event.stopPropagation();quickAddRecommendToPlaylist('${escAttr(meta.sec)}',${i})">📋</button>
     </div>
   `).join('');
 }
 
-function renderRecommendGrid(elId, playlists, sourceLabel) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  if (!Array.isArray(playlists) || !playlists.length) {
-    el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:12px;grid-column:1/-1;">暂无数据</div>';
-    return;
-  }
-  el.innerHTML = playlists.map(p => `
-    <div class="playlist-card" onclick="openPlaylistModal('${escAttr(p.source)}', '${escAttr(p.id)}', '${escAttr(p.name)}')">
-      <div class="playlist-cover-wrap">
-        ${p.cover
-          ? `<img class="playlist-cover" src="${escAttr(p.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-          : ''}
-        <div class="playlist-cover-ph" ${p.cover ? 'style="display:none"' : ''}>📀</div>
-        ${p.playCount ? `<span class="playlist-playcount">${formatPlayCount(p.playCount)}</span>` : ''}
-      </div>
-      <div class="playlist-name" title="${esc(p.name)}">${esc(p.name)}</div>
-      <div class="playlist-source">${sourceLabel}</div>
-    </div>
-  `).join('');
+/** 展开/收起榜单（用 homeState 里的全集重渲染，序号保持连续） */
+function toggleHomeListFold(sec) {
+  if (_expanded.has(sec)) _expanded.delete(sec);
+  else _expanded.add(sec);
+  const meta = _findMeta(sec);
+  if (meta) renderSection(meta, _getSection(sec));
 }
 
-function renderAllPlatforms() {
-  const r = homeRecommendations;
-  if (!r) return;
-  renderRecommendList('allTopsList', r.netease?.tops || []);
-  renderRecommendList('allBiliList', r.bilibili?.ranking || [], true);
-  renderRecommendGrid('allPlaylistsGrid', [
-    ...(r.netease?.playlists || []).map(p => ({ ...p, sourceLabel: '网易云' })),
-    ...(r.qq?.recommend || []).map(p => ({ ...p, sourceLabel: 'QQ音乐' })),
-  ], '');
-  renderRecommendList('neteaseTopsList', r.netease?.tops || []);
-  renderRecommendList('neteaseHotList', r.netease?.hot || []);
-  renderRecommendList('neteaseNewList', r.netease?.newSongs || []);
-  renderRecommendList('neteaseOriginalList', r.netease?.original || []);
-  renderRecommendGrid('neteasePlaylistGrid', r.netease?.playlists || [], '网易云');
-  renderRecommendGrid('qqRecommendGrid',  r.qq?.recommend  || [], 'QQ音乐');
-  renderRecommendGrid('qqOfficialGrid',   r.qq?.official   || [], 'QQ官方');
-  renderRecommendGrid('qqClassicGrid',    r.qq?.classic    || [], '经典');
-  renderRecommendGrid('qqLoveGrid',       r.qq?.love       || [], '情歌');
-  renderRecommendGrid('qqKTVGrid',        r.qq?.ktv        || [], 'KTV');
-  renderRecommendList('qqTopList',        r.qq?.topList    || []);
-  renderRecommendList('qqNewSongsList',   r.qq?.newSongs   || []);
-  renderRecommendGrid('qqRadiosGrid',     r.qq?.radios     || [], '电台');
-  renderRecommendGrid('qqHotSingersGrid', r.qq?.hotSingers || [], '歌手');
-  renderRecommendList('biliRankingList', r.bilibili?.ranking || [], true);
-}
-
-function updateAllPlaylistsGrid() {
-  const r = homeRecommendations;
-  if (!r) return;
-  renderRecommendGrid('allPlaylistsGrid', [
-    ...(r.netease?.playlists || []).map(p => ({ ...p, sourceLabel: '网易云' })),
-    ...(r.qq?.recommend || []).map(p => ({ ...p, sourceLabel: 'QQ音乐' })),
-  ], '');
-}
-
-function markHomeSectionError(section, msg) {
-  const idMap = {
-    'netease.tops': 'neteaseTopsList', 'netease.hot': 'neteaseHotList',
-    'netease.new': 'neteaseNewList', 'netease.original': 'neteaseOriginalList',
-    'netease.playlists': 'neteasePlaylistGrid',
-    'qq.recommend': 'qqRecommendGrid', 'qq.official': 'qqOfficialGrid',
-    'qq.classic': 'qqClassicGrid', 'qq.love': 'qqLoveGrid', 'qq.ktv': 'qqKTVGrid',
-    'qq.top': 'qqTopList', 'qq.new': 'qqNewSongsList', 'qq.radio': 'qqRadiosGrid',
-    'qq.singers': 'qqHotSingersGrid', 'bilibili.ranking': 'biliRankingList',
-  };
-  const id = idMap[section];
-  const el = id && document.getElementById(id);
-  if (el) {
-    el.innerHTML = `<div class="rec-error" onclick="window._forceHomeRefresh=true;loadHomeRecommendations()" style="color:var(--text-muted);font-size:12px;padding:14px;text-align:center;cursor:pointer;border:1px dashed var(--border);border-radius:8px;">⚠️ ${esc(msg)}，点击重试</div>`;
-  }
-}
-
-function clearLoadingPlaceholders() {
-  const ids = ['allTopsList', 'allBiliList', 'allPlaylistsGrid',
-    'neteaseTopsList', 'neteaseHotList', 'neteaseNewList', 'neteaseOriginalList', 'neteasePlaylistGrid',
-    'qqRecommendGrid', 'qqOfficialGrid', 'qqClassicGrid', 'qqLoveGrid', 'qqKTVGrid',
-    'qqTopList', 'qqNewSongsList', 'qqRadiosGrid', 'qqHotSingersGrid', 'biliRankingList'];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (el && (el.querySelector('.loading') || el.querySelector('.skel-row') || el.querySelector('.skel-card'))) {
-      el.innerHTML = `<div class="rec-error" onclick="window._forceHomeRefresh=true;loadHomeRecommendations()" style="color:var(--text-muted);font-size:12px;padding:14px;text-align:center;cursor:pointer;border:1px dashed var(--border);border-radius:8px;">⚠️ 加载失败，点击重试</div>`;
-    }
-  }
-}
-
-// ── 推荐歌曲交互 ──────────────────────────────────────
-async function playRecommendById(elId, idx) {
+// ── 推荐歌曲交互 ──────────────────────────────────────────
+async function playRecommendById(sec, idx) {
   try {
-    const song = state.getRecommend(elId, idx);
+    const song = _getSection(sec)[idx];
     if (song) await playRecommendSong(song);
   } catch (e) {
     logger.warn(`[playRecommendById] error:`, e);
@@ -313,7 +485,6 @@ async function playRecommendSong(song) {
     setState('playIdx', 0);
     setState('currentPlaying', song);
     await loadAndPlay(song, proxied.fileUrl, true);
-    // loadAndPlay 内部已调用 audio.play()，无需重复调用
     showToast('▶ 正在播放：' + song.title, 'success', 2500);
   } catch (e) {
     logger.warn('播放推荐歌曲失败:', e);
@@ -321,8 +492,8 @@ async function playRecommendSong(song) {
   }
 }
 
-async function addRecommendDownload(elId, idx) {
-  const song = state.getRecommend(elId, idx);
+async function addRecommendDownload(sec, idx) {
+  const song = _getSection(sec)[idx];
   if (!song) return;
   const existing = (state.get('queueSnapshot') || []).find(q => q.id === song.id && q.source === song.source && q.status !== 'done');
   if (existing) {
@@ -351,9 +522,9 @@ async function addRecommendDownload(elId, idx) {
   }
 }
 
-async function quickAddRecommendToPlaylist(elId, idx) {
+async function quickAddRecommendToPlaylist(sec, idx) {
   try {
-    const song = state.getRecommend(elId, idx);
+    const song = _getSection(sec)[idx];
     if (!song) return;
     const playlists = getState('userPlaylists') || [];
     if (playlists.length === 0) {
@@ -367,69 +538,23 @@ async function quickAddRecommendToPlaylist(elId, idx) {
   }
 }
 
-// ── 首页 UI ───────────────────────────────────────────
-function switchPlatTab(tab, btn) {
-  document.querySelectorAll('.platform-tabs .plat-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-
-  const panelMap = {
-    netease: 'platNeteasePanel',
-    qq: 'platQQPanel',
-    bilibili: 'platBiliPanel',
-  };
-  const targetId = panelMap[tab];
-  ['platNeteasePanel', 'platQQPanel', 'platBiliPanel'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const isActive = id === targetId;
-    el.classList.toggle('hidden', !isActive);
-    el.style.display = isActive ? 'flex' : 'none';
-  });
-
-  if (tab === 'qq') ensureQQLoaded();
-  else if (tab === 'bilibili') ensureBiliLoaded();
-  else if (tab === 'netease') {
-    // 网易云默认已加载，确保数据已渲染
-    if (homeRecommendations && homeRecommendations.netease?.tops?.length) {
-      renderRecommendList('neteaseTopsList', homeRecommendations.netease.tops);
-    }
-  }
-}
-
-function switchNeteaseSub(type, btn) {
-  document.querySelectorAll('#neteaseSubTabs .rec-subtab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  const typeLower = type.toLowerCase();
-  ['neteaseTopsPanel', 'neteaseHotPanel', 'neteaseNewPanel', 'neteaseOriginalPanel', 'neteasePlaylistPanel'].forEach(id => {
-    document.getElementById(id).style.display = id.toLowerCase().includes(typeLower) ? 'block' : 'none';
-  });
-}
-
-// QQ 面板子 tab：九个分区收纳为一行切换（原平铺 9 屏太长）
-function switchQQSub(key, btn) {
-  document.querySelectorAll('#qqSubTabs .rec-subtab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('#platQQPanel [id^="qqSec-"]').forEach(el => {
-    el.style.display = el.id === 'qqSec-' + key ? 'block' : 'none';
-  });
-}
-
+// ── 搜索入口 ──────────────────────────────────────────────
 function quickSearch(keyword) {
-  document.getElementById('searchInput').value = keyword;
+  const input = document.getElementById('searchInput');
+  if (input) input.value = keyword;
   const searchNav = document.querySelector('.nav-item[data-tab="search"]');
   if (searchNav) switchTab('search', searchNav);
   doSearch(1);
 }
 
-// 首页快捷搜索条：空关键词直接跳搜索页，不触发空检索
+/** 首页快捷搜索条：空关键词直接跳搜索页，不触发空检索 */
 function homeHeroSearch(keyword) {
   const kw = String(keyword || '').trim();
   if (!kw) { quickSearch(''); return; }
   quickSearch(kw);
 }
 
-// ── 统计概览卡片 ──────────────────────────────────────
-// 本地曲库数 / 已下载数 / 累计收听时长 / 最常播放
+// ── 统计概览卡片 ──────────────────────────────────────────
 async function loadHomeStats() {
   try {
     const _api = _getApi();
@@ -454,7 +579,7 @@ async function loadHomeStats() {
 
     const elTime = document.getElementById('statPlayTime');
     if (elTime) {
-      const totalSec = stats ? (stats.totalPlayTime || 0) : 0;
+      const totalSec = stats.status === 'fulfilled' && stats.value ? (stats.value.totalPlayTime || 0) : 0;
       elTime.textContent = totalSec >= 3600
         ? (totalSec / 3600).toFixed(1) + ' 小时'
         : Math.round(totalSec / 60) + ' 分钟';
@@ -463,8 +588,9 @@ async function loadHomeStats() {
     const elMost = document.getElementById('statMostPlayed');
     if (elMost) {
       let most = null;
-      if (stats && stats.playCount) {
-        const entries = Object.entries(stats.playCount).sort((a, b) => b[1] - a[1]);
+      const pv = stats.status === 'fulfilled' && stats.value ? stats.value : null;
+      if (pv && pv.playCount) {
+        const entries = Object.entries(pv.playCount).sort((a, b) => b[1] - a[1]);
         if (entries.length) most = entries[0];
       }
       if (most) {
@@ -480,7 +606,7 @@ async function loadHomeStats() {
   }
 }
 
-// ── 最近播放渲染 ──────────────────────────────────────
+// ── 最近播放 ──────────────────────────────────────────────
 function renderRecentlyPlayed() {
   const section = document.getElementById('recentlyPlayedSection');
   const list = document.getElementById('recentlyPlayedList');
@@ -502,11 +628,12 @@ function renderRecentlyPlayed() {
     btn.onclick = () => playAllRecent();
     titleEl.appendChild(btn);
   }
+
   list.innerHTML = recent.slice(0, 10).map((s, i) => `
     <div class="recent-item" onclick="playRecentSong(${i})" title="${esc(s.title)} - ${esc(s.artist)}">
       <div class="recent-cover">
         ${s.cover
-          ? `<img src="${escAttr(s.cover)}" alt="" onerror="this.parentElement.innerHTML='🎵'">`
+          ? `<img src="${escAttr(s.cover)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.parentElement.innerHTML='🎵'">`
           : '🎵'}
         <div class="recent-play-overlay">▶</div>
       </div>
@@ -518,8 +645,6 @@ function renderRecentlyPlayed() {
     </div>
   `).join('');
 }
-
-// fmtHistoryTime 已由 utils.js 全局导出
 
 async function playRecentSong(idx) {
   try {
@@ -552,53 +677,46 @@ async function playAllRecent() {
   }
 }
 
-// ── ES Module 导出 ──────────────────────────────────────
+// ── ES Module 导出 ────────────────────────────────────────
 export {
-  homeRecommendations,
+  HOME_PLATFORMS,
+  homeState,
   loadHomeRecommendations,
-  renderRecommendList,
-  renderRecommendGrid,
-  renderAllPlatforms,
+  reloadPlatform,
+  renderSection,
+  renderHomeShell,
+  scrollToHomeBlock,
+  showHomeSection,
+  toggleHomeListFold,
+  observeBlocks,
   playRecommendById,
   playRecommendSong,
   addRecommendDownload,
-  switchPlatTab,
-  switchNeteaseSub,
-  switchQQSub,
+  quickAddRecommendToPlaylist,
   quickSearch,
   homeHeroSearch,
   loadHomeStats,
   playAllRecent,
-  markHomeSectionError,
-  clearLoadingPlaceholders,
-  updateAllPlaylistsGrid,
-  renderRecentlyPlayed,
   playRecentSong,
-}
+  renderRecentlyPlayed,
+};
 
-// ── 全局桥接（HTML onclick 兼容） ──────────────────────
-window.homeRecommendations = homeRecommendations;
+// ── 全局桥接（HTML onclick 兼容） ─────────────────────────
 window.loadHomeRecommendations = loadHomeRecommendations;
-window.renderRecommendList = renderRecommendList;
-window.renderRecommendGrid = renderRecommendGrid;
-window.renderAllPlatforms = renderAllPlatforms;
+window.reloadHomePlatform = reloadPlatform;
+window.scrollToHomeBlock = scrollToHomeBlock;
+window.showHomeSection = showHomeSection;
+window.toggleHomeListFold = toggleHomeListFold;
 window.playRecommendById = playRecommendById;
 window.playRecommendSong = playRecommendSong;
 window.addRecommendDownload = addRecommendDownload;
-window.switchPlatTab = switchPlatTab;
-window.switchNeteaseSub = switchNeteaseSub;
-window.switchQQSub = switchQQSub;
+window.quickAddRecommendToPlaylist = quickAddRecommendToPlaylist;
 window.quickSearch = quickSearch;
 window.homeHeroSearch = homeHeroSearch;
 window.loadHomeStats = loadHomeStats;
 window.playAllRecent = playAllRecent;
-window.markHomeSectionError = markHomeSectionError;
-window.clearLoadingPlaceholders = clearLoadingPlaceholders;
-window.updateAllPlaylistsGrid = updateAllPlaylistsGrid;
-window.renderRecentlyPlayed = renderRecentlyPlayed;
 window.playRecentSong = playRecentSong;
-// 推荐卡片"📋 添加到歌单"按钮（模板 onclick）
-window.quickAddRecommendToPlaylist = quickAddRecommendToPlaylist;
+window.renderRecentlyPlayed = renderRecentlyPlayed;
 
-// ── DOM 缓存初始化 ──────────────────────────────────
-_cacheHomeDom();
+// ── 兼容旧调用名（外部自动化/CDP 可能仍在用） ──────────────
+window.switchPlatTab = (plat) => scrollToHomeBlock(_blockId(plat));

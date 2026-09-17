@@ -45,7 +45,6 @@ const __state = {
 
   // IPC 推送缓存
   queueSnapshot: [],
-  recommendSongs: {},
 
   // 用户歌单
   userPlaylists: [],
@@ -183,14 +182,6 @@ const store = {
     } else {
       _notifyKey(key, __state[key]);
     }
-  },
-
-  // 推荐歌曲按 elId 索引存取
-  setRecommend(elId, songs) {
-    __state.recommendSongs[elId] = songs;
-  },
-  getRecommend(elId, idx) {
-    return __state.recommendSongs[elId]?.[idx];
   },
 
   // 歌单状态

@@ -63,6 +63,9 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // 5180：5173 被 OpenClaw coze-clone 网关（Windows 计划任务）独占，勿占用。
+    // strictPort：端口被占直接报错，不做静默 fallback——避免开发时误连到别的服务。
+    port: 5180,
+    strictPort: true,
   },
 });

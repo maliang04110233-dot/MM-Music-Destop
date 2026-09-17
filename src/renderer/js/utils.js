@@ -40,7 +40,7 @@ function formatBytes(bytes) {
 
 // ── 平台标签 ──────────────────────────────────────────
 function srcLabel(s) {
-  return { netease: '网易云', qq: 'QQ音乐', bilibili: 'B站', kugou: '酷狗' }[s] || s;
+  return { netease: '网易云', qq: 'QQ音乐', bilibili: 'B站', kugou: '酷狗', kuwo: '酷我' }[s] || s;
 }
 
 function statusLabel(s) {
