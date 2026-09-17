@@ -27,6 +27,8 @@ import './views/history.js';
 import './views/local.js';
 import './views/settings.js';
 import './views/ai-music.js';
+// 转码公共层要在三个视图之前引入：它们 import 其中的弹窗与 runner
+import './converter-core.js';
 import './views/converter.js';
 import './views/playlist.js';
 import './player-controls.js';
@@ -104,6 +106,9 @@ const mockApi = {
   checkLocalExists: async () => [],
   savePlayQueue: async () => ({ ok: true }),
   loadPlayQueue: async () => ({ queue: [] }),
+  convertAudio: async (opts) => ({ success: false, error: '开发模式不支持转码（需要 ffmpeg）', format: opts && opts.outputFormat }),
+  cancelConvertAudio: async () => ({ success: true }),
+  onConvertAudioProgress: () => {},
   onPlayQueueRestored: () => {},
   checkForUpdate: async () => ({ success: true }),
   restartAndInstall: () => {},

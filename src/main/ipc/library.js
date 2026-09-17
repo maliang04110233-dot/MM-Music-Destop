@@ -21,8 +21,12 @@ const logger = require('../../utils/logger');
 const { scheduleOnlineLrcFetch } = require('../../utils/onlineLrc');
 const { safeSend } = require('../context');
 const prefs = require('../../utils/prefs');
+const { convertAudioFile, normalizeFormat, formatExtension } = require('../../utils/audioConvert');
 // 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
 const fsa = require('../../utils/fsAsync');
+
+// 转码中止标志：cancel-convert-audio 置位，convert-audio 每次开始前复位
+let _cancelRequested = false;
 
 // ── C9: 路径沙箱 ───────────────────────────────────────────
 function isValidPath(p) {
@@ -260,11 +264,23 @@ function register() {
   });
 
   // ── 多格式转码 ──────────────────────────────────────────
+  // ffmpeg 定位/参数拼装/进度/中止都在 utils/audioConvert.js，这里只做沙箱校验、
+  // 把进度经 safeSend 回推渲染层，以及「未指定输出目录时弹保存对话框」这一处
+  // 需要 electron 的分支。
+  // 注意：IPC 走 structured clone，函数无法跨进程传递——进度与中止不能从
+  // params 带进来，必须由主进程自己构造闭包。
   ipcMain.handle('convert-audio', async (_, params) => {
     const { dialog, shell } = require('electron');
 
     try {
-      const { inputPath, outputFormat = 'mp3', bitrate = '192k', outputDir = null } = params;
+      const {
+        inputPath,
+        outputFormat = 'mp3',
+        bitrate = '320k',
+        outputDir = null,
+        revealFolder = false,
+        timeoutMs,
+      } = params;
 
       if (!isValidPath(inputPath) || !isInAllowedDir(inputPath)) {
         return { error: '路径不可访问' };
@@ -272,88 +288,51 @@ function register() {
       if (!await fsa.exists(inputPath)) {
         return { error: '源文件不存在' };
       }
-
-      const ffmpegPath = await findFfmpeg();
-      if (!ffmpegPath) {
-        return { error: '未找到 ffmpeg，请安装后重试' };
+      if (!normalizeFormat(outputFormat)) {
+        return { error: `不支持的格式: ${outputFormat}` };
       }
-
-      // 输出路径
       if (outputDir && !isInAllowedDir(outputDir)) {
         return { error: '输出目录不可访问' };
       }
-      const ext = outputFormat.toLowerCase();
-      let outputPath;
 
-      if (outputDir) {
-        // 自动保存到指定目录
-        const defaultName = path.basename(inputPath, path.extname(inputPath)) + '.' + ext;
-        outputPath = path.join(outputDir, defaultName);
-      } else {
-        // 弹出保存对话框
-        const filters = [
-          { name: `${outputFormat.toUpperCase()} 文件`, extensions: [ext] },
-          { name: '所有文件', extensions: ['*'] },
-        ];
+      // 无输出目录 = 用户想自己挑保存位置，必须弹对话框；
+      // 批量转换页总是传 outputDir，不会走到这里
+      let resolvedOutputDir = outputDir;
+      if (!resolvedOutputDir) {
+        const ext = formatExtension(outputFormat);
         const defaultName = path.basename(inputPath, path.extname(inputPath)) + '.' + ext;
         const result = await dialog.showSaveDialog({
           defaultPath: defaultName,
-          filters,
+          filters: [
+            { name: `${ext.toUpperCase()} 文件`, extensions: [ext] },
+            { name: '所有文件', extensions: ['*'] },
+          ],
         });
         if (result.canceled) return { canceled: true };
-        outputPath = result.filePath;
+        resolvedOutputDir = path.dirname(result.filePath);
       }
 
-      // 构建 ffmpeg 命令
-      const args = ['-i', inputPath, '-y'];
-
-      // 根据格式设置编码参数
-      switch (ext) {
-        case 'mp3':
-          args.push('-codec:a', 'libmp3lame', '-b:a', bitrate);
-          break;
-        case 'flac':
-          args.push('-codec:a', 'flac');
-          break;
-        case 'aac':
-        case 'm4a':
-          args.push('-codec:a', 'aac', '-b:a', bitrate);
-          break;
-        case 'ogg':
-          args.push('-codec:a', 'libvorbis', '-b:a', bitrate);
-          break;
-        case 'wav':
-          args.push('-codec:a', 'pcm_s16le');
-          break;
-        default:
-          args.push('-codec:a', 'copy');
-      }
-
-      args.push(outputPath);
-
-      // 执行转换
-      return new Promise((resolve) => {
-        const proc = spawn(ffmpegPath, args, { stdio: 'pipe' });
-        let stderr = '';
-
-        proc.stderr.on('data', (data) => { stderr += data.toString(); });
-
-        proc.on('close', (code) => {
-          if (code === 0) {
-            shell.showItemInFolder(outputPath);
-            resolve({ success: true, path: outputPath });
-          } else {
-            resolve({ error: `转换失败: ${stderr.slice(0, 200)}` });
-          }
-        });
-
-        proc.on('error', (err) => {
-          resolve({ error: `转换失败: ${err.message}` });
-        });
+      _cancelRequested = false;
+      const result = await convertAudioFile({
+        inputPath,
+        outputDir: resolvedOutputDir,
+        format: outputFormat,
+        bitrate,
+        onProgress: (pct) => safeSend('convert-audio-progress', { path: inputPath, pct }),
+        shouldStop: () => _cancelRequested,
+        timeoutMs,
       });
+      if (result.success && revealFolder) shell.showItemInFolder(result.path);
+      return result;
     } catch (e) {
       return { error: e.message };
     }
+  });
+
+  // 中止当前正在进行的转码（渲染层点「取消」）
+  ipcMain.handle('cancel-convert-audio', () => {
+    _cancelRequested = true;
+    return { success: true };
   });
 }
 
@@ -389,79 +368,5 @@ function _swapBytes16(buf) {
   return out;
 }
 
-// ── 多格式转码辅助 ──────────────────────────────────────────
-const { spawn } = require('child_process');
+module.exports = { register };
 
-// ffmpeg 探测结果缓存：
-//   undefined → 尚未探测
-//   string    → 已确认可用的命令（永久缓存）
-//   null      → 确认找不到，30s 后允许重试（用户可能刚装好 ffmpeg，不该等到重启）
-let _ffmpegCache;
-let _ffmpegMissAt = 0;
-const FFMPEG_MISS_TTL = 30 * 1000;
-
-/**
- * 探测单个 ffmpeg 候选是否可以执行（异步，单次最长 5s）
- * @param {string} cmd
- * @returns {Promise<boolean>}
- */
-function _probeFfmpeg(cmd) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
-
-    let proc;
-    try {
-      proc = spawn(cmd, ['-version'], { stdio: 'ignore' });
-    } catch (_e) {
-      return done(false);
-    }
-    const timer = setTimeout(() => {
-      // 超时：杀掉子进程，避免残留
-      try { proc.kill(); } catch (_e) { /* 已退出 */ }
-      done(false);
-    }, 5000);
-
-    proc.on('close', (code) => { clearTimeout(timer); done(code === 0); });
-    proc.on('error', () => { clearTimeout(timer); done(false); });
-  });
-}
-
-/**
- * 定位可用的 ffmpeg
- *
- * 旧实现用 spawnSync 逐个探测 5 个候选、每个超时 5s——未安装 ffmpeg 时
- * 最坏会让主进程（UI 线程）连续冻结 25 秒。改为异步探测 + 缓存，
- * 转码只在这一个入口调用，缓存命中后零开销。
- *
- * @returns {Promise<string|null>}
- */
-async function findFfmpeg() {
-  if (typeof _ffmpegCache === 'string') return _ffmpegCache;
-  if (_ffmpegCache === null && Date.now() - _ffmpegMissAt < FFMPEG_MISS_TTL) return null;
-
-  const candidates = [
-    'ffmpeg',
-    'C:\\ffmpeg\\bin\\ffmpeg.exe',
-    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
-    '/usr/bin/ffmpeg',
-    '/usr/local/bin/ffmpeg',
-  ];
-  for (const cmd of candidates) {
-    if (await _probeFfmpeg(cmd)) {
-      _ffmpegCache = cmd;
-      return cmd;
-    }
-  }
-  _ffmpegCache = null;
-  _ffmpegMissAt = Date.now();
-  return null;
-}
-
-module.exports = { register, findFfmpeg, _resetFfmpegCacheForTest };
-
-/** 测试用：清空 ffmpeg 探测缓存 */
-function _resetFfmpegCacheForTest() {
-  _ffmpegCache = undefined;
-  _ffmpegMissAt = 0;
-}

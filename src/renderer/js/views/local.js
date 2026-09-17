@@ -8,6 +8,9 @@ import { logger } from '../logger.js';
 
 import { VirtualScroller } from '../virtualList.js';
 
+// 转码共用弹窗 + 批量 runner（下载页/转换页/本地库三处共用）
+import { openConvertModal, runConvertBatch } from '../converter-core.js';
+
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
   showLibraryStats, detectDuplicateSongs, toggleDupSelect, selectAllDups,
@@ -945,129 +948,54 @@ async function batchDownloadCovers() {
   showToast(`批量封面下载完成：✅ ${ok} 成功  ❌ ${fail} 失败`, ok > 0 ? 'success' : 'warn', 4000);
 }
 
-// ── 多格式转码 ──────────────────────────────────────────
-async function convertSelectedAudio() {  try {
-    
-    const localFiltered = getState('localFiltered');
-    const selected = getState('selectedSongs');
-    
-    let songsToConvert = [];
-    if (selected && selected.size > 0) {
-    // 使用选中的歌曲
-    songsToConvert = Array.from(selected).map(i => localFiltered[i]).filter(Boolean);
-    } else if (localFiltered && localFiltered.length > 0) {
-    // 使用第一首歌曲
-    songsToConvert = [localFiltered[0]];
-    }
-    
-    if (!songsToConvert.length) {
-    showToast('请先选择要转换的歌曲', 'warn');
-    return;
-    }
-    
-    // 显示格式选择弹窗
-    let overlay = document.getElementById('convertModal');
-    if (overlay) overlay.remove();
-    
-    overlay = document.createElement('div');
-    overlay.id = 'convertModal';
-    overlay.className = 'edit-overlay';
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-    overlay.innerHTML = `
-    <div class="edit-panel">
-    <div class="edit-header">
-    <span class="edit-title">🔄 音频转码</span>
-    <button class="edit-close" onclick="document.getElementById('convertModal').remove()">✕</button>
-    </div>
-    <div class="edit-body">
-    <div class="edit-field">
-    <label class="edit-label">选择歌曲 (${songsToConvert.length} 首)</label>
-    <div style="max-height:120px;overflow-y:auto;margin-top:6px;">
-    ${songsToConvert.map((s, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">
-    <input type="checkbox" checked data-convert-idx="${i}" class="convert-checkbox">
-    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.title || '未知')} - ${esc(s.artist || '')}</span>
-    <span style="color:var(--neon-dim);font-size:11px;">${(s.ext || '').toUpperCase()}</span>
-    </div>
-    `).join('')}
-    </div>
-    </div>
-    <div class="edit-field">
-    <label class="edit-label">输出格式</label>
-    <select class="edit-input" id="convertFormat">
-    <option value="mp3">MP3 (通用)</option>
-    <option value="flac">FLAC (无损)</option>
-    <option value="aac">AAC/M4A</option>
-    <option value="ogg">OGG Vorbis</option>
-    <option value="wav">WAV (无压缩)</option>
-    </select>
-    </div>
-    <div class="edit-field">
-    <label class="edit-label">比特率</label>
-    <select class="edit-input" id="convertBitrate">
-    <option value="128k">128 kbps</option>
-    <option value="192k" selected>192 kbps</option>
-    <option value="256k">256 kbps</option>
-    <option value="320k">320 kbps</option>
-    </select>
-    </div>
-    </div>
-    <div class="edit-footer">
-    <button class="edit-btn-cancel" onclick="document.getElementById('convertModal').remove()">取消</button>
-    <button class="edit-btn-save" onclick="executeConvert()">开始转换</button>
-    </div>
-    </div>
-    `;
-    document.body.appendChild(overlay);
-    
-  } catch (e) {
-    logger.error(`[convertSelectedAudio] error:`, e);
-  }
+// ── 多格式转码（复用 converter-core 的共用弹窗）──────────
+// 选中的歌按 Set 里存的路径回查，避免按 localFiltered 索引取——弹窗开着
+// 期间列表被过滤/重排会转错歌。
+function _selectedSongsToConvert() {
+  const localFiltered = getState('localFiltered');
+  const selected = getState('selectedSongs');
+  const sel = new Set(selected);
+  return Array.from(sel)
+    .map(p => (localFiltered || []).find(s => s.filePath === p || s.path === p))
+    .filter(Boolean)
+    .map(s => ({
+      path: s.filePath || s.path,
+      title: s.title,
+      artist: s.artist,
+      ext: s.ext,
+    }));
 }
 
-async function executeConvert() {
-  const format = document.getElementById('convertFormat')?.value || 'mp3';
-  const bitrate = document.getElementById('convertBitrate')?.value || '192k';
-  const checkboxes = document.querySelectorAll('.convert-checkbox:checked');
-  
-  if (!checkboxes.length) {
-    showToast('请至少选择一首歌曲', 'warn');
+async function convertSelectedAudio() {
+  const songsToConvert = _selectedSongsToConvert();
+  if (!songsToConvert.length) {
+    showToast('请先选择要转换的歌曲', 'warn');
     return;
   }
 
-  const localFiltered = getState('localFiltered');
-  const songsToConvert = Array.from(checkboxes).map(cb => {
-    const idx = parseInt(cb.dataset.convertIdx);
-    return localFiltered[idx];
-  }).filter(Boolean);
-
-  document.getElementById('convertModal')?.remove();
-
-  let ok = 0, fail = 0;
-  for (const song of songsToConvert) {
-    try {
-      const result = await api.convertAudio({
-        inputPath: song.filePath,
-        outputFormat: format,
+  // allowOutputDirPick：批量场景必须共用一个输出目录。旧实现不给 outputDir，
+  // 后端会为每一首歌各弹一次另存对话框——9 首歌就是 9 次弹窗。
+  openConvertModal({
+    items: songsToConvert,
+    title: '🔄 音频转码',
+    allowOutputDirPick: true,
+    onConfirm: async (format, bitrate, items, outputDir) => {
+      // items 是弹窗里实际勾选的，不是打开弹窗时的全选列表
+      const { ok, fail, canceled } = await runConvertBatch({
+        items,
+        format,
         bitrate,
+        outputDir,
       });
-      if (result.error) {
-        showToast(`转换失败: ${result.error}`, 'error');
-        fail++;
-      } else if (result.canceled) {
-        break;
-      } else {
-        ok++;
+      if (ok > 0 || fail > 0 || canceled > 0) {
+        showToast(
+          `转码结束：✅ ${ok} 成功${fail > 0 ? ` ❌ ${fail} 失败` : ''}${canceled > 0 ? ' ⏹ 已取消' : ''}`,
+          ok > 0 ? 'success' : 'warn',
+          4000,
+        );
       }
-    } catch (e) {
-      showToast(`转换异常: ${e.message}`, 'error');
-      fail++;
-    }
-  }
-
-  if (ok > 0) {
-    showToast(`✅ 成功转换 ${ok} 首${fail > 0 ? `，${fail} 首失败` : ''}`, 'success');
-  }
+    },
+  });
 }
 
 // ── 本地库视图清理（切换页面时调用）─────────────────────
@@ -1113,7 +1041,6 @@ export {
   showLibraryStats,
   detectDuplicateSongs,
   convertSelectedAudio,
-  executeConvert,
   toggleDupSelect,
   selectAllDups,
   deselectAllDups,
@@ -1152,7 +1079,6 @@ window.saveBatchEdit = saveBatchEdit;
 window.showLibraryStats = showLibraryStats;
 window.detectDuplicateSongs = detectDuplicateSongs;
 window.convertSelectedAudio = convertSelectedAudio;
-window.executeConvert = executeConvert;
 window.toggleDupSelect = toggleDupSelect;
 window.selectAllDups = selectAllDups;
 window.deselectAllDups = deselectAllDups;

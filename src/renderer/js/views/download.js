@@ -419,43 +419,9 @@ window.exitDlSelectionMode = exitDlSelectionMode;
 window.toggleDlSelect = toggleDlSelect;
 window.selectAllDl = selectAllDl;
 window.deselectAllDl = deselectAllDl;
-// ── 音频格式转换 ───────────────────────────────────────
-let _convertTarget = { path: '', title: '' };
+// 音频格式转换入口已收敛到 ../converter-core.js
+// （showConvertModal / closeConvertModal / doConvertAudio 由该模块挂到 window）
 
-function showConvertModal(filePath, title) {
-  _convertTarget = { path: filePath, title };
-  document.getElementById('convertModalInfo').textContent = title ? `📄 ${title}` : '';
-  document.getElementById('convertModal').classList.remove('hidden');
-}
-window.showConvertModal = showConvertModal;
-
-function closeConvertModal() {
-  document.getElementById('convertModal').classList.add('hidden');
-  _convertTarget = { path: '', title: '' };
-}
-window.closeConvertModal = closeConvertModal;
-
-async function doConvertAudio(outputFormat) {
-  const { path: inputPath } = _convertTarget;
-  if (!inputPath) { showToast('文件路径无效', 'error'); closeConvertModal(); return; }
-
-  closeConvertModal();
-  showToast(`🔄 开始转换 ${outputFormat.toUpperCase()}...`, 'info', 3000);
-
-  try {
-    const result = await api.convertAudio({ inputPath, outputFormat, bitrate: '320k' });
-    if (result && result.canceled) {
-      // 用户取消了保存对话框
-    } else if (result && result.success) {
-      showToast(`✅ 转换成功：${result.path}`, 'success', 4000);
-    } else {
-      showToast('❌ 转换失败：' + (result?.error || '未知错误'), 'error', 5000);
-    }
-  } catch (e) {
-    showToast('❌ 转换异常：' + e.message, 'error', 5000);
-  }
-}
-window.doConvertAudio = doConvertAudio;
 
 window.batchRetryDl = batchRetryDl;
 window.batchRemoveDl = batchRemoveDl;
