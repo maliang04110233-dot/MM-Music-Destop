@@ -35,6 +35,24 @@ let mainWindow;
 let tray = null;
 let isQuitting = false;
 const downloadQueue = [];
+
+// ─── 单实例锁 ──────────────────────────────────────────
+// 没有它时每次启动都是一个完全独立的进程：各自的托盘图标、各自的下载队列，
+// 且共同读写 userData 下的 queue.json / play-queue.json / history.json ——
+// atomicWriteJson 防文件损坏但不防后写覆盖先写，两个窗口的队列会互相清空。
+// 全局媒体键也只有一份归属（register 后到的静默失败），按键会打到错误实例。
+// 因此第二次启动直接退出，并把焦点还给已开着的窗口。
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    // 主窗口平时「关闭」只是 hide 到托盘，这里要把它捞回来
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    if (!mainWindow.isFocused()) mainWindow.focus();
+  });
+}
 // 修复 P1-8：用 activeDownloads 计数替代旧的 isDownloading 标志
 // 旧实现是 1 首歌下完才下 1 首；现在最多并发 3 首，5MB 歌曲不用等 50MB 视频
 let activeDownloads = 0;
