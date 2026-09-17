@@ -100,7 +100,7 @@ module.exports = {
   publish: {
     provider: 'github',
     owner: 'maliang04110233-dot',
-    repo: 'MusicDL',
+    repo: 'MM-Music-Destop',
     private: false,
     releaseType: 'release',
   },
