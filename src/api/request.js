@@ -22,6 +22,7 @@
 const https = require('https');
 const http = require('http');
 const logger = require('../utils/logger');
+const { USER_AGENT } = require('../utils/userAgent');
 
 /** 网络层错误 / 超时 → 值得重试 */
 function isRetriableError(err) {
@@ -54,7 +55,7 @@ function _followRedirects(url, options, redirectCount = 0) {
       path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        'User-Agent': USER_AGENT,
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9',
         ...options.headers,
@@ -131,4 +132,125 @@ async function request(url, options = {}) {
   throw lastErr;
 }
 
+// ── 音频直链预检 ────────────────────────────────────────────
+// 用途：平台给出直链后先探一次，坏链可及早触发换源（getDownloadUrlSmart），
+// 而不是把坏链交给下载器/播放器才失败。
+//
+// 关键约束：绝不在内存里累积音频体。
+//   - 先 HEAD；CDN 不支持 HEAD（403/405/501）时退化为 GET + Range: bytes=0-1
+//   - 收到响应头立即 destroy()，最多只读 1 字节（服务器忽略 Range 返回整体也安全）
+const MAX_PROBE_REDIRECTS = 5;
+
+/** 从响应头取音频体积：优先 content-range 的总长（Range 请求），否则 content-length */
+function _sizeFromHeaders(h) {
+  const cr = h['content-range'];
+  if (cr) {
+    const m = /\/(\d+)\s*$/.exec(String(cr));
+    if (m) return parseInt(m[1], 10);
+  }
+  const cl = h['content-length'];
+  return cl ? parseInt(cl, 10) : null;
+}
+
+/** 由 content-type 推断扩展名，缺失时回落到 URL 后缀，默认 mp3（酷我主路径即 mp3） */
+function _extFromMeta(contentType, url) {
+  const c = String(contentType || '').toLowerCase();
+  if (/flac/.test(c)) return 'flac';
+  if (/mp4|m4a|aac/.test(c)) return 'm4a';
+  if (/ogg|opus/.test(c)) return 'ogg';
+  if (/wav|wave/.test(c)) return 'wav';
+  if (/mpeg|mp3/.test(c)) return 'mp3';
+  const m = /\.(mp3|flac|m4a|aac|ogg|wav)(?:$|[?#])/i.exec(String(url));
+  return m ? m[1].toLowerCase() : 'mp3';
+}
+
+/**
+ * 单次探测（never reject，失败也 resolve 成 { ok:false } 形态给上层判断）
+ * @returns {Promise<{status:number|null, contentType?:string, sizeBytes?:number|null, reason?:string}>}
+ */
+function _probeAudio(url, method, headers, timeout, redirectLeft) {
+  return new Promise((resolve) => {
+    let parsed;
+    try { parsed = new URL(url); }
+    catch { return resolve({ status: null, reason: 'invalid-url' }); }
+
+    const isHttps = parsed.protocol === 'https:';
+    const lib = isHttps ? https : http;
+
+    const req = lib.request({
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method,
+      headers,
+      timeout,
+    }, (res) => {
+      const status = res.statusCode || 0;
+
+      // 直链常 302 到 CDN，跟到底（手动跟，避免 request() 的 body 累积）
+      if (status >= 300 && status < 400 && res.headers.location && redirectLeft > 0) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        return resolve(_probeAudio(next, method, headers, timeout, redirectLeft - 1));
+      }
+
+      const out = {
+        status,
+        contentType: res.headers['content-type'] || '',
+        sizeBytes: _sizeFromHeaders(res.headers),
+      };
+      res.destroy(); // 只要头，不读 body
+      resolve(out);
+    });
+
+    req.on('error', (e) => resolve({ status: null, reason: e.message || 'error' }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: null, reason: 'timeout' }); });
+    req.end();
+  });
+}
+
+/**
+ * 音频直链可用性预检
+ *
+ * @param {string} url
+ * @param {{headers?: Object, timeout?: number}} [opts]
+ * @returns {Promise<{ok:boolean, status?:number|null, contentType?:string, sizeBytes?:number|null, ext?:string, reason?:string}>}
+ */
+async function testAudioLink(url, opts = {}) {
+  if (!url || typeof url !== 'string') return { ok: false, status: null, reason: 'empty-url' };
+
+  const headers = {
+    'User-Agent': USER_AGENT,
+    'Accept': '*/*',
+    ...(opts.headers || {}),
+  };
+  const timeout = opts.timeout || 8000;
+
+  let r = await _probeAudio(url, 'HEAD', headers, timeout, MAX_PROBE_REDIRECTS);
+  if (!r.status || r.status === 403 || r.status === 405 || r.status === 501) {
+    r = await _probeAudio(url, 'GET', { ...headers, Range: 'bytes=0-1' }, timeout, MAX_PROBE_REDIRECTS);
+  }
+
+  const status = r.status;
+  if (status !== 200 && status !== 206) {
+    return { ok: false, status: status || null, reason: r.reason || `HTTP ${status}` };
+  }
+
+  const ct = String(r.contentType || '').toLowerCase();
+  // 无版权曲常返回 text/plain 的 "refuse request!"（酷我 antiserver 即如此）
+  if (/^text\//.test(ct)) {
+    return { ok: false, status, contentType: ct, reason: 'not-audio' };
+  }
+
+  return {
+    ok: true,
+    status,
+    contentType: ct,
+    sizeBytes: r.sizeBytes,
+    ext: _extFromMeta(ct, url),
+  };
+}
+
 module.exports = request;
+// 挂在 request 函数上（module.exports 保持函数本身，不破坏既有 `request(...)` 调用）
+module.exports.testAudioLink = testAudioLink;

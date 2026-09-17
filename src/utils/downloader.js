@@ -5,6 +5,7 @@ const path = require('path');
 const { Transform } = require('stream');
 const childProcess = require('child_process');
 const logger = require('./logger');
+const fsa = require('./fsAsync');
 
 /**
  * 限速 Transform 流（令牌桶 + 正确背压）
@@ -109,7 +110,43 @@ function createThrottleStream(bytesPerSec) {
 let _cachedPythonCmd = null;
 let _pythonDetected = false;
 
-function findPythonWithMutagen() {
+/**
+ * 探测带 mutagen 的 Python 解释器
+ *
+ * 异步：旧实现用 spawnSync 逐个试 3 个候选、每个超时 3 秒，首次调用最坏
+ * 让主进程（UI 线程）冻结 9 秒。探测结果有缓存，只在首次付出成本。
+ *
+ * @returns {Promise<string|null>} 可用的命令名
+ */
+function _probePython(cmd) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+
+    let proc;
+    try {
+      proc = childProcess.spawn(cmd, ['-c', 'import mutagen; print(1)'], {
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (_e) {
+      return done(false);
+    }
+
+    let stdout = '';
+    if (proc.stdout) proc.stdout.on('data', (d) => { stdout += d.toString(); });
+
+    const timer = setTimeout(() => {
+      try { proc.kill(); } catch (_e) { /* 已退出 */ }
+      done(false);
+    }, 3000);
+
+    proc.on('close', (code) => { clearTimeout(timer); done(code === 0 && stdout.trim() === '1'); });
+    proc.on('error', () => { clearTimeout(timer); done(false); });
+  });
+}
+
+async function findPythonWithMutagen() {
   if (_pythonDetected) return _cachedPythonCmd;
 
   const candidates = [
@@ -118,20 +155,11 @@ function findPythonWithMutagen() {
     'python',
   ];
   for (const cmd of candidates) {
-    try {
-      const r = childProcess.spawnSync(cmd, ['-c', 'import mutagen; print(1)'], {
-        timeout: 3000,
-        shell: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      if (r.status === 0 && r.stdout.toString().trim() === '1') {
-        _cachedPythonCmd = cmd;
-        _pythonDetected = true;
-        logger.log('[Python] 检测到 mutagen:', cmd);
-        return cmd;
-      }
-    } catch (e) {
-      // continue trying
+    if (await _probePython(cmd)) {
+      _cachedPythonCmd = cmd;
+      _pythonDetected = true;
+      logger.log('[Python] 检测到 mutagen:', cmd);
+      return cmd;
     }
   }
   _cachedPythonCmd = null;
@@ -147,7 +175,7 @@ let _cachedScriptPath = null;
 let _scriptPathDetected = false;
 
 async function embedTagsWithPython(filePath, meta) {
-  const pythonCmd = findPythonWithMutagen();
+  const pythonCmd = await findPythonWithMutagen();
   if (!pythonCmd) {
     logger.warn('[embedTags] 找不到带 mutagen 的 Python，跳过标签写入:', filePath);
     return false;
@@ -159,7 +187,9 @@ async function embedTagsWithPython(filePath, meta) {
       path.join(process.resourcesPath || '', 'scripts', 'write_tags.py'),
       path.join(__dirname, '..', '..', '..', 'scripts', 'write_tags.py'),
     ];
-    _cachedScriptPath = candidates.find(p => p && fs.existsSync(p));
+    for (const p of candidates) {
+      if (p && await fsa.exists(p)) { _cachedScriptPath = p; break; }
+    }
     _scriptPathDetected = true;
   }
 
@@ -265,9 +295,9 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
 
     const tmpPath = savePath + '.tmp';
     // 统一的 .tmp 清理函数（任何一个失败路径都调用）
+    // 异步且自吞错误：调用点都在流回调里，无法 await，也不能让拒绝逃逸
     const cleanupTmp = () => {
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); }
-      catch (e) { logger.warn('清理 .tmp 失败:', tmpPath, e.message); }
+      fsa.removeQuiet(tmpPath).catch((e) => logger.warn('清理 .tmp 失败:', tmpPath, e.message));
     };
 
     const req = lib.request(reqOptions, (res) => {
@@ -555,9 +585,8 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
       const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(e.message || '');
       if (attempt <= maxRetry && isTransient) {
         // 只有成功写入过部分数据才值得续传；用已落盘 .tmp 大小作为偏移
-        try {
-          resumeOffset = fs.existsSync(savePath + '.tmp') ? fs.statSync(savePath + '.tmp').size : 0;
-        } catch (_e) { resumeOffset = 0; }
+        const tmpStat = await fsa.statOrNull(savePath + '.tmp');
+        resumeOffset = tmpStat ? tmpStat.size : 0;
         if (resumeOffset > 0) {
           logger.info(`[downloadFileWithRetry] 检测到已下载 ${resumeOffset} 字节，将尝试断点续传`);
         }

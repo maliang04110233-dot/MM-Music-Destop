@@ -6,7 +6,6 @@
  */
 
 const { ipcMain } = require('electron');
-const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const {
@@ -22,6 +21,8 @@ const logger = require('../../utils/logger');
 const { scheduleOnlineLrcFetch } = require('../../utils/onlineLrc');
 const { safeSend } = require('../context');
 const prefs = require('../../utils/prefs');
+// 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
+const fsa = require('../../utils/fsAsync');
 
 // ── C9: 路径沙箱 ───────────────────────────────────────────
 function isValidPath(p) {
@@ -59,7 +60,7 @@ function register() {
   ipcMain.handle('scan-local-library', async (_, dirPath) => {
     try {
       if (!isValidPath(dirPath)) return { error: '非法路径', songs: [] };
-      if (!fs.existsSync(dirPath)) return { error: '目录不存在', songs: [] };
+      if (!await fsa.exists(dirPath)) return { error: '目录不存在', songs: [] };
 
       // 尝试增量扫描
       const result = await incrementalScan(
@@ -99,7 +100,7 @@ function register() {
   // 读取缓存索引（启动时秒加载）
   ipcMain.handle('load-library-index', async () => {
     try {
-      const index = loadIndex();
+      const index = await loadIndex();
       return { songs: index.songs || [], dirPath: index.dirPath, lastScan: index.lastScan };
     } catch (e) {
       return { songs: [], dirPath: '', lastScan: 0 };
@@ -127,10 +128,10 @@ function register() {
       const lrcPath = path.parse(filePath).ext
         ? filePath.replace(/\.[^.]+$/, '.lrc')
         : filePath + '.lrc';
-      if (fs.existsSync(lrcPath)) {
-        const stat = fs.statSync(lrcPath);
-        if (stat.size > 0 && stat.size <= 1024 * 1024) {
-          const buf = fs.readFileSync(lrcPath);
+      if (await fsa.exists(lrcPath)) {
+        const stat = await fsa.statOrNull(lrcPath);
+        if (stat && stat.size > 0 && stat.size <= 1024 * 1024) {
+          const buf = await fsa.fsp.readFile(lrcPath);
           const text = _decodeLrcBuffer(buf);
           if (text && text.trim()) return { lrc: text, source: 'sidecar' };
         }
@@ -201,7 +202,7 @@ function register() {
         : filePath + '.lrc';
       const bom = Buffer.from([0xEF, 0xBB, 0xBF]);
       const body = Buffer.from(lrc, 'utf8');
-      fs.writeFileSync(lrcPath, Buffer.concat([bom, body]));
+      await fsa.fsp.writeFile(lrcPath, Buffer.concat([bom, body]));
       return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
@@ -226,7 +227,7 @@ function register() {
   ipcMain.handle('delete-file', async (_, filePath) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
-      if (!fs.existsSync(filePath)) {
+      if (!await fsa.exists(filePath)) {
         return { success: false, error: '文件不存在' };
       }
       const { shell } = require('electron');
@@ -243,13 +244,14 @@ function register() {
     try {
       if (!isValidPath(oldPath) || !isValidPath(newPath)) return { success: false, error: '非法路径' };
       if (!isInAllowedDir(oldPath) || !isInAllowedDir(newPath)) return { success: false, error: '路径不可访问' };
-      if (!fs.existsSync(oldPath)) {
+      // 先检查目标是否存在：Windows 上 rename 会直接覆盖，这步不能省
+      if (!await fsa.exists(oldPath)) {
         return { success: false, error: '源文件不存在' };
       }
-      if (fs.existsSync(newPath)) {
+      if (await fsa.exists(newPath)) {
         return { success: false, error: '目标文件已存在' };
       }
-      fs.renameSync(oldPath, newPath);
+      await fsa.fsp.rename(oldPath, newPath);
       return { success: true };
     } catch (e) {
       logger.warn('[rename-file] 重命名失败:', e.message);
@@ -267,11 +269,11 @@ function register() {
       if (!isValidPath(inputPath) || !isInAllowedDir(inputPath)) {
         return { error: '路径不可访问' };
       }
-      if (!fs.existsSync(inputPath)) {
+      if (!await fsa.exists(inputPath)) {
         return { error: '源文件不存在' };
       }
 
-      const ffmpegPath = findFfmpeg();
+      const ffmpegPath = await findFfmpeg();
       if (!ffmpegPath) {
         return { error: '未找到 ffmpeg，请安装后重试' };
       }
@@ -388,10 +390,56 @@ function _swapBytes16(buf) {
 }
 
 // ── 多格式转码辅助 ──────────────────────────────────────────
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 
-function findFfmpeg() {
-  // 尝试常见路径
+// ffmpeg 探测结果缓存：
+//   undefined → 尚未探测
+//   string    → 已确认可用的命令（永久缓存）
+//   null      → 确认找不到，30s 后允许重试（用户可能刚装好 ffmpeg，不该等到重启）
+let _ffmpegCache;
+let _ffmpegMissAt = 0;
+const FFMPEG_MISS_TTL = 30 * 1000;
+
+/**
+ * 探测单个 ffmpeg 候选是否可以执行（异步，单次最长 5s）
+ * @param {string} cmd
+ * @returns {Promise<boolean>}
+ */
+function _probeFfmpeg(cmd) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+
+    let proc;
+    try {
+      proc = spawn(cmd, ['-version'], { stdio: 'ignore' });
+    } catch (_e) {
+      return done(false);
+    }
+    const timer = setTimeout(() => {
+      // 超时：杀掉子进程，避免残留
+      try { proc.kill(); } catch (_e) { /* 已退出 */ }
+      done(false);
+    }, 5000);
+
+    proc.on('close', (code) => { clearTimeout(timer); done(code === 0); });
+    proc.on('error', () => { clearTimeout(timer); done(false); });
+  });
+}
+
+/**
+ * 定位可用的 ffmpeg
+ *
+ * 旧实现用 spawnSync 逐个探测 5 个候选、每个超时 5s——未安装 ffmpeg 时
+ * 最坏会让主进程（UI 线程）连续冻结 25 秒。改为异步探测 + 缓存，
+ * 转码只在这一个入口调用，缓存命中后零开销。
+ *
+ * @returns {Promise<string|null>}
+ */
+async function findFfmpeg() {
+  if (typeof _ffmpegCache === 'string') return _ffmpegCache;
+  if (_ffmpegCache === null && Date.now() - _ffmpegMissAt < FFMPEG_MISS_TTL) return null;
+
   const candidates = [
     'ffmpeg',
     'C:\\ffmpeg\\bin\\ffmpeg.exe',
@@ -400,12 +448,20 @@ function findFfmpeg() {
     '/usr/local/bin/ffmpeg',
   ];
   for (const cmd of candidates) {
-    try {
-      const r = spawnSync(cmd, ['-version'], { timeout: 5000, stdio: 'ignore' });
-      if (r.status === 0) return cmd;
-    } catch (_e) { /* continue */ }
+    if (await _probeFfmpeg(cmd)) {
+      _ffmpegCache = cmd;
+      return cmd;
+    }
   }
+  _ffmpegCache = null;
+  _ffmpegMissAt = Date.now();
   return null;
 }
 
-module.exports = { register };
+module.exports = { register, findFfmpeg, _resetFfmpegCacheForTest };
+
+/** 测试用：清空 ffmpeg 探测缓存 */
+function _resetFfmpegCacheForTest() {
+  _ffmpegCache = undefined;
+  _ffmpegMissAt = 0;
+}

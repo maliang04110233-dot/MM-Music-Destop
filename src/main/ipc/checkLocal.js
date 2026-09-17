@@ -10,10 +10,11 @@
  * （music-metadata 异步并发 + 缓存）。
  */
 
-const fs = require('fs');
 const { ipcMain } = require('electron');
 const { scanDirectory, readAudioMetadata } = require('../../utils/localLibrary');
 const logger = require('../../utils/logger');
+// 主进程即 UI 线程：文件 IO 必须异步
+const fsa = require('../../utils/fsAsync');
 
 const AUDIO_EXTS = new Set(['.mp3', '.m4a', '.flac', '.ogg', '.wav', '.wma']);
 
@@ -53,7 +54,7 @@ function register() {
   ipcMain.handle('check-local-exists', async (_, ...a) => {
     const { saveDir, items } = (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) ? a[0] : (a[1] || {});
     try {
-      if (!saveDir || !fs.existsSync(saveDir)) {
+      if (!saveDir || !await fsa.exists(saveDir)) {
         return items.map(it => ({ ...it, exists: false }));
       }
       if (!Array.isArray(items) || items.length === 0) return [];

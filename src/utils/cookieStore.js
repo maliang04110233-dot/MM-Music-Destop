@@ -6,6 +6,12 @@
  * - 内存缓存：首次 loadAll 后缓存 JSON 对象，后续 get() 不再读盘
  * - set() 同时更新缓存和磁盘（避免下次 get 拿到旧值）
  * - clear() 语义不变；saveAll() 兼容外部直接调用
+ *
+ * 关于同步 IO（有意保留的例外，勿当作遗漏）：
+ *   本模块只在「首次加载」读一次 cookies.json、在 set 时写一次，文件很小，
+ *   之后 get() 全程走内存缓存。改成异步会把 get() 变成 Promise，
+ *   而 api 层各平台（netease/qq/kugou/kuwo）拼请求头时都要同步取 cookie，
+ *   等于要求整个取流链路异步化——收益极小、回归面极大。故保留同步实现。
  */
 
 const fs = require('fs');

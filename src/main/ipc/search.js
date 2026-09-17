@@ -122,13 +122,13 @@ function register() {
   // ── 源可用性探针（P2）─────────────────────────────
   // 被动健康度快照：getDownloadUrlSmart 各环节记的滑动窗口统计
   ipcMain.handle('get-source-health', () => {
-    return api.getSourceHealthMap(['netease', 'qq', 'kugou', 'bilibili']);
+    return api.getSourceHealthMap(['netease', 'qq', 'kugou', 'kuwo', 'bilibili']);
   });
 
   // 主动探测：各源搜一首公共曲并尝试取流。搜索通=源可达；取流通=源健康。
   // 探测结果记入 sourceHealth 滑动窗口（与真实下载共用同一分数）。
   ipcMain.handle('probe-sources', async () => {
-    const PROBE_SOURCES = ['netease', 'qq', 'kugou', 'bilibili'];
+    const PROBE_SOURCES = ['netease', 'qq', 'kugou', 'kuwo', 'bilibili'];
     const KEYWORD = '周杰伦 晴天';
     const withTimeout = (p) => Promise.race([
       p,

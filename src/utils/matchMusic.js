@@ -10,14 +10,15 @@
  *   - LRU 结果缓存 + 失败结果 60s 防抖（避免反复失败反复打接口）
  *   - 总超时 15s
  *
- * 候选源：netease / qq / kugou。B 站默认不入候选——其"歌名"是视频标题，
+ * 候选源：netease / qq / kugou / kuwo。B 站默认不入候选——其"歌名"是视频标题，
  * 同曲匹配会把翻唱合集、DJ 版误当原曲（lx 同样排除了部分噪声源）。
+ * 酷我（2026-09 接入）：免 Cookie、有免费 128k 直链，是有效的兜底源。
  */
 
 const logger = require('./logger');
 
 // 候选源及其 VIP 标记字段（无 Cookie 时需过滤，否则拿到 30s 试听 URL 误判成功）
-const CANDIDATE_SOURCES = ['netease', 'qq', 'kugou'];
+const CANDIDATE_SOURCES = ['netease', 'qq', 'kugou', 'kuwo'];
 const SEARCH_TIMEOUT_MS = 15000;
 const NEGATIVE_TTL_MS = 60 * 1000; // 失败结果缓存时长
 const CACHE_MAX = 200;             // LRU 上限

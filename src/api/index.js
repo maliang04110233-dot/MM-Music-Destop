@@ -19,6 +19,7 @@ const netease = require('./platforms/netease');
 const qq = require('./platforms/qq');
 const bilibili = require('./platforms/bilibili');
 const kugou = require('./platforms/kugou');
+const kuwo = require('./platforms/kuwo');
 
 // ── 平台适配器定义 ────────────────────────────────────────
 // 每个适配器把老式函数名映射到标准化插件接口
@@ -63,6 +64,14 @@ const _ADAPTERS = [
     searchSinger: (keyword, page) => kugou.kugouSearchSinger(keyword, page),
     getSingerSongs: (mid, page) => kugou.kugouGetSingerSongs(mid, page),
     getSingerAlbums: (mid, page) => kugou.kugouGetSingerAlbums(mid, page),
+  },
+  {
+    // 酷我：仅搜索 / 取流 / 歌词三项能力（无专辑、歌手、榜单接口）。
+    // 取流策略见 platforms/kuwo.js——无损走中转、失败自动降级官方 128k。
+    id: 'kuwo', name: '酷我音乐', icon: '🎧',
+    search: (keyword, page, _cookie) => kuwo.kuwoSearch(keyword, page),
+    getUrl: (id, quality) => kuwo.kuwoGetUrl(id, quality),
+    getLyrics: (id) => kuwo.kuwoGetLyrics(id),
   },
 ];
 
@@ -421,6 +430,7 @@ module.exports = {
   qq,
   bilibili,
   kugou,
+  kuwo,
   // 转发 utils/cookie
   detectQQCookieType,
   normalizeQQCookie,

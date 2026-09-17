@@ -1,4 +1,4 @@
-const fs = require('fs');
+// 本模块跑在主进程（UI 线程），全部文件 IO 必须异步：禁止引入 fs.*Sync
 const fsp = require('fs').promises;
 const path = require('path');
 const logger = require('./logger');
@@ -70,9 +70,9 @@ async function scanDirectory(dirPath, onProgress) {
 async function readAudioMetadata(filePath) {
   let stat;
   try {
-    stat = fs.statSync(filePath);
+    stat = await fsp.stat(filePath);
   } catch (e) {
-    logger.warn('[readAudioMetadata] statSync failed:', e.message);
+    logger.warn('[readAudioMetadata] stat failed:', e.message);
     return { title: '', artist: '', album: '', year: '', genre: '', coverBase64: null, embeddedLyrics: '', realDurationMs: null, bitrate: 0, size: 0, source: '', error: e.message };
   }
   // 缓存命中且文件未变更：直接返回，避免重复解码
@@ -166,10 +166,10 @@ async function _decodeAudioMetadata(filePath, stat) {
 
   // 3) 文件夹封面兜底（cover.jpg / folder.jpg / front.jpg / AlbumArt*/同名）
   if (!coverBase64) {
-    const folderCover = _findFolderCover(filePath, fileName);
+    const folderCover = await _findFolderCover(filePath, fileName);
     if (folderCover) {
       try {
-        const buf = fs.readFileSync(folderCover);
+        const buf = await fsp.readFile(folderCover);
         const mime = _guessMimeFromBuffer(buf);
         coverBase64 = `data:${mime};base64,${buf.toString('base64')}`;
       } catch (_e) { /* 封面读取失败使用默认 */ }
@@ -345,10 +345,31 @@ const _guessMimeFromBuffer = guessMime;
 /**
  * 在音频文件同目录查找封面图片
  * 候选顺序：cover.{jpg,png} → folder → front → Cover/Folder → 同名 → AlbumArt*
+ *
+ * 性能：旧实现对 22 个候选逐个 existsSync + statSync（每首歌最多 22 次同步
+ * 磁盘调用，且它在「无内嵌封面」时必然执行），扫整库时叠加成明显卡顿。
+ * 现在改为一次 readdir 拿到目录清单后在内存比对——1 次异步调用替代最多 23 次同步。
+ * 比对走小写名映射，保留 Windows/macOS 大小写不敏感文件系统下
+ * 「cover.jpg 命中 Cover.JPG」的既有行为。
+ *
+ * @param {string} audioPath - 音频文件路径
+ * @param {string} baseName - 音频文件名（不含扩展名），用于「同名封面」
+ * @returns {Promise<string|null>} 封面绝对路径
  */
-function _findFolderCover(audioPath, baseName) {
+async function _findFolderCover(audioPath, baseName) {
   let dir;
   try { dir = path.dirname(audioPath); } catch { return null; }
+
+  let entries;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch (_e) {
+    return null; // 目录不存在 / 无权限
+  }
+  const files = new Map();
+  for (const e of entries) {
+    if (e.isFile()) files.set(e.name.toLowerCase(), e.name);
+  }
 
   const candidates = [
     'cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp',
@@ -361,19 +382,13 @@ function _findFolderCover(audioPath, baseName) {
     `${baseName}.jpg`, `${baseName}.jpeg`, `${baseName}.png`, `${baseName}.webp`,
   ];
   for (const c of candidates) {
-    const p = path.join(dir, c);
-    try { if (fs.existsSync(p) && fs.statSync(p).isFile()) return p; } catch (_e) { /* 文件不存在跳过 */ }
+    const hit = files.get(c.toLowerCase());
+    if (hit) return path.join(dir, hit);
   }
   // AlbumArt* 通配（Windows 兼容：用 readdir 替代 glob）
-  try {
-    const entries = fs.readdirSync(dir);
-    for (const e of entries) {
-      if (/^AlbumArt.*\.(jpe?g|png|webp)$/i.test(e)) {
-        const p = path.join(dir, e);
-        try { if (fs.statSync(p).isFile()) return p; } catch (_e) { /* 文件不存在跳过 */ }
-      }
-    }
-  } catch (_e) { /* 目录不存在跳过 */ }
+  for (const [lower, original] of files) {
+    if (/^albumart.*\.(jpe?g|png|webp)$/.test(lower)) return path.join(dir, original);
+  }
   return null;
 }
 

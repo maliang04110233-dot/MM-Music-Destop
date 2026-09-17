@@ -12,6 +12,8 @@ const { ipcMain, BrowserWindow, dialog, shell, app } = require('electron');
 const path = require('path');
 const { getMainWindow } = require('../context');
 const playCache = require('../playCache');
+// 主进程即 UI 线程：文件 IO 必须异步
+const fsa = require('../../utils/fsAsync');
 
 let miniPlayerWin = null;
 let desktopLyricWin = null;
@@ -179,15 +181,14 @@ function register() {
   });
 
   // 打开目录 / 外部链接（渲染层经 musicAPI invoke 调用，需 handle）
-  const openFolderImpl = (folder) => {
+  const openFolderImpl = async (folder) => {
     if (!folder || typeof folder !== 'string') return { ok: false };
     // H11: Validate path is a local filesystem path (no protocol handlers)
     if (/^[a-zA-Z]+:/.test(folder) || folder.startsWith('\\') || folder.startsWith('/')) {
       // Resolve to real path and ensure it exists
-      const fs = require('fs');
       try {
         const resolved = path.resolve(folder);
-        if (fs.existsSync(resolved)) {
+        if (await fsa.exists(resolved)) {
           shell.showItemInFolder(resolved);
         }
       } catch (_) { /* ignore invalid paths */ }
@@ -204,12 +205,12 @@ function register() {
   ipcMain.handle('open-external', (_, url) => openExternalImpl(url));
 
   // 缓存管理
-  ipcMain.handle('get-cache-size', () => {
-    const size = playCache.getCacheSize(app.getPath('userData'));
+  ipcMain.handle('get-cache-size', async () => {
+    const size = await playCache.getCacheSize(app.getPath('userData'));
     return playCache.formatCacheSize(size);
   });
-  ipcMain.handle('clear-play-cache', () => {
-    playCache.clearAllCache(app.getPath('userData'));
+  ipcMain.handle('clear-play-cache', async () => {
+    await playCache.clearAllCache(app.getPath('userData'));
     return { cleared: true };
   });
 }

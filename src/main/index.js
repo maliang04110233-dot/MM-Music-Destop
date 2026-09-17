@@ -13,6 +13,8 @@ const playCache = require('./playCache');
 const history = require('../utils/history');
 const prefs = require('../utils/prefs');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
+// 主进程即 UI 线程：文件 IO 走异步封装（见 utils/fsAsync.js）
+const fsa = require('../utils/fsAsync');
 const ipcWindow  = require('./ipc/window');
 const ipcSearch  = require('./ipc/search');
 const ipcDownload= require('./ipc/download');
@@ -477,10 +479,13 @@ app.whenReady().then(async () => {
 
   // 确保默认下载目录存在（如果有用户自定义的 saveDir 则用之，否则用系统默认）
   const defaultDir = prefs.get('saveDir') || path.join(app.getPath('music'), 'MusicDownloader');
-  if (!fs.existsSync(defaultDir)) fs.mkdirSync(defaultDir, { recursive: true });
+  await fsa.ensureDir(defaultDir); // mkdir recursive 本身幂等，无需先探测
 
-  // 初始化 play_cache 目录 + 启动清理陈旧临时文件
-  playCache.cleanupStaleFiles(app.getPath('userData'));
+  // 初始化 play_cache 目录 + 清理上次进程遗留的陈旧临时文件
+  // 不 await：清理是尽力而为，不该拖慢启动
+  playCache.cleanupStaleFiles(app.getPath('userData')).catch((e) => {
+    logger.warn('[playCache] 清理陈旧缓存失败:', e.message);
+  });
 
   // 设置在线拉歌词完成后的 renderer 通知回调
   setOnlineLrcNotifier(({ filePath, lrc, source }) => {
@@ -522,7 +527,10 @@ app.whenReady().then(async () => {
   }
 
   // 定期 GC play_cache（10 分钟一次，.unref() 不阻塞进程退出）
-  const gcTimer = setInterval(playCache.cleanupExpired, playCache.PLAY_CACHE_GC_INTERVAL);
+  // cleanupExpired 是异步的：setInterval 不接收返回值，需自带 catch 防未处理拒绝
+  const gcTimer = setInterval(() => {
+    playCache.cleanupExpired().catch((e) => logger.warn('[playCache] GC 失败:', e.message));
+  }, playCache.PLAY_CACHE_GC_INTERVAL);
   if (gcTimer.unref) gcTimer.unref();
 
   // 安装自定义应用菜单（屏蔽开发者工具菜单项及其加速键）
@@ -536,6 +544,11 @@ app.whenReady().then(async () => {
     'https://y.qq.com',
     'https://www.bilibili.com',
     'https://www.kugou.com',
+    // 酷我：搜索(www) / 取流(antiserver) / 歌词(m) / 封面(img4)
+    'http://www.kuwo.cn',
+    'http://antiserver.kuwo.cn',
+    'http://m.kuwo.cn',
+    'https://img4.kuwo.cn',
   ]);
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
@@ -781,7 +794,7 @@ async function processOneSong(song) {
 
       // 写入下载历史（换源成功时记实际取流源，便于排查与统计）
       try {
-        const stat = fs.existsSync(savePath) ? fs.statSync(savePath) : null;
+        const stat = await fsa.statOrNull(savePath);
         history.add({
           id: String(song.id),
           source: urlInfo.matchedSong ? urlInfo.matchedSong.source : song.source,

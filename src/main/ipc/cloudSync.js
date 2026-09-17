@@ -7,9 +7,10 @@
 const { ipcMain, dialog } = require('electron');
 const prefs = require('../../utils/prefs');
 const history = require('../../utils/history');
-const fs = require('fs');
 const path = require('path');
 const logger = require('../../utils/logger');
+// 主进程即 UI 线程：文件 IO 必须异步
+const fsa = require('../../utils/fsAsync');
 
 // 导入允许写入的 prefs 键（与 ipc/prefs.js 的 ALLOWED_PREF_KEYS 保持一致，
 // 另加仅主进程内部使用的键）。导入文件内容不可信，未列出的键一律丢弃。
@@ -47,7 +48,7 @@ function register() {
         exportedAt: new Date().toISOString(),
         app: 'music-downloader',
         data: {
-          prefs: prefs.getAll ? prefs.getAll() : getAllPrefs(),
+          prefs: prefs.getAll ? prefs.getAll() : await getAllPrefs(),
           userPlaylists: prefs.get('userPlaylists') || [],
           downloadTemplates: prefs.get('downloadTemplates') || [],
           activeTemplate: prefs.get('activeDownloadTemplate') || null,
@@ -60,7 +61,7 @@ function register() {
         },
       };
 
-      fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8');
+      await fsa.writeText(result.filePath, JSON.stringify(exportData, null, 2));
       return { success: true, path: result.filePath };
     } catch (e) {
       logger.warn('导出失败:', e);
@@ -82,7 +83,10 @@ function register() {
       }
 
       const filePath = result.filePaths[0];
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = await fsa.tryReadText(filePath);
+      if (content === null) {
+        return { success: false, error: '无法读取所选文件' };
+      }
       const importData = JSON.parse(content);
 
       // 验证格式
@@ -153,13 +157,12 @@ function register() {
   });
 }
 
-function getAllPrefs() {
+async function getAllPrefs() {
   // prefs.js 可能没有 getAll，尝试直接读取
   try {
     const prefsPath = path.join(require('electron').app.getPath('userData'), 'prefs.json');
-    if (fs.existsSync(prefsPath)) {
-      return JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
-    }
+    const raw = await fsa.tryReadText(prefsPath);
+    if (raw) return JSON.parse(raw);
   } catch (_) {
     // 忽略非 JSON 格式或文件缺失
   }

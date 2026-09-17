@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   normalizeName, normalizeArtists, matchScore, isPaidCandidate,
-  findMatchedCandidates, _resetForTest,
+  findMatchedCandidates, CANDIDATE_SOURCES, _resetForTest,
 } = require('../src/utils/matchMusic');
 
 // ── normalizeName ──────────────────────────────────────
@@ -162,8 +162,8 @@ test('findMatchedCandidates: 并发去重——同 key 只搜一次', async () =
     findMatchedCandidates(deps, song),
     findMatchedCandidates(deps, song),
   ]);
-  // 每个源一次搜索，3 个并发请求合并为 1 轮（netease+kugou 两个源 = 2 次 searchFn）
-  assert.strictEqual(calls, 2);
+  // 每个源一次搜索，3 个并发请求合并为 1 轮（除本源外每个候选源各 1 次 searchFn）
+  assert.strictEqual(calls, CANDIDATE_SOURCES.length - 1);
 });
 
 test('findMatchedCandidates: 缓存命中——第二次不再搜索', async () => {
@@ -177,9 +177,9 @@ test('findMatchedCandidates: 缓存命中——第二次不再搜索', async () 
 
   const a = await findMatchedCandidates(deps, song);
   const b = await findMatchedCandidates(deps, song);
-  assert.strictEqual(calls, 2); // 只首轮：netease+kugou 各搜一次，缓存轮 0 次
-  // searchFn 不分源都返回 n1（source:'netease'），两个源的结果都贡献同一个候选
-  assert.strictEqual(a.length, 2);
+  assert.strictEqual(calls, CANDIDATE_SOURCES.length - 1); // 只首轮：各候选源搜一次，缓存轮 0 次
+  // searchFn 不分源都返回 n1（source:'netease'），每个源的结果都贡献同一个候选
+  assert.strictEqual(a.length, CANDIDATE_SOURCES.length - 1);
   assert.deepStrictEqual(a.map(x => x.id), b.map(x => x.id));
 });
 

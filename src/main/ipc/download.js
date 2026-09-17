@@ -13,6 +13,8 @@ const { getDownloadQueue, safeSend } = require('../context');
 const { proxyPlay } = require('../playCache');
 const history = require('../../utils/history');
 const logger = require('../../utils/logger');
+// 主进程即 UI 线程：文件 IO 必须异步
+const fsa = require('../../utils/fsAsync');
 
 function register() {
   // 关键：downloadQueue / app / persistQueue / processQueue 都通过 getter 拿，
@@ -236,7 +238,6 @@ function register() {
   // ── 导出播放列表 ──────────────────────────────────────────
   ipcMain.handle('export-playlist', async (_, params) => {
     const { dialog } = require('electron');
-    const fs = require('fs');
 
     try {
       const { songs, format = 'm3u', name = 'MusicDL' } = params;
@@ -273,7 +274,7 @@ function register() {
         content += `NumberOfEntries=${songs.length}\n`;
       }
 
-      fs.writeFileSync(result.filePath, content, 'utf-8');
+      await fsa.writeText(result.filePath, content);
       return { success: true, path: result.filePath };
     } catch (e) {
       return { error: e.message };

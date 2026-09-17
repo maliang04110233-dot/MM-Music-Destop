@@ -14,6 +14,12 @@
  *   safeReadJson(file, { backupOnCorrupt })
  *     JSON.parse 失败时先把损坏文件备份为 file.bak（抢救数据），
  *     再返回 null 由调用方走默认值，避免「损坏即清空」。
+ *
+ * 同步与异步两套并存的原因：
+ *   主进程 UI 线程上的文件 IO 必须是异步的（见 utils/fsAsync.js），
+ *   但 utils/prefs.js 的 flush() 需要在进程退出路径上做同步落盘
+ *   ——那时事件循环可能已经不再推进，await 永远不会回来。
+ *   因此同步版仅保留给这类必须「立即写完」的场景，其余一律用异步版。
  */
 
 const fs = require('fs');
@@ -61,4 +67,50 @@ function safeReadJson(file, opts = {}) {
   }
 }
 
-module.exports = { atomicWriteJson, safeReadJson };
+module.exports = { atomicWriteJson, safeReadJson, atomicWriteJsonAsync, safeReadJsonAsync };
+
+/**
+ * 原子写 JSON（异步版）：tmp + rename
+ * 主进程 UI 线程的默认选择，语义与 atomicWriteJson 完全一致。
+ * @param {string} file
+ * @param {*} data
+ * @param {number} [space=2]
+ */
+async function atomicWriteJsonAsync(file, data, space = 2) {
+  const fsp = require('fs').promises;
+  const tmp = file + '.tmp';
+  await fsp.writeFile(tmp, JSON.stringify(data, null, space), 'utf8');
+  await fsp.rename(tmp, file);
+}
+
+/**
+ * 安全读 JSON（异步版）：损坏时备份 .bak 后返回 { ok:false }
+ * @param {string} file
+ * @param {Object} [opts]
+ * @param {boolean} [opts.backupOnCorrupt=true]
+ * @returns {Promise<{ ok: boolean, data?: *, empty: boolean }>}
+ */
+async function safeReadJsonAsync(file, opts = {}) {
+  const fsp = require('fs').promises;
+  const { backupOnCorrupt = true } = opts;
+  let raw;
+  try {
+    raw = await fsp.readFile(file, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return { ok: true, empty: true };
+    throw e;
+  }
+  if (!raw.trim()) return { ok: true, empty: true };
+  try {
+    return { ok: true, data: JSON.parse(raw) };
+  } catch (e) {
+    if (backupOnCorrupt) {
+      try {
+        await fsp.copyFile(file, file + '.bak');
+      } catch (bakE) {
+        // 备份失败不阻断读取流程
+      }
+    }
+    return { ok: false, empty: false };
+  }
+}

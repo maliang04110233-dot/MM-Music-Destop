@@ -9,6 +9,8 @@ const { ipcMain } = require('electron');
 const { app } = require('electron');
 const path = require('path');
 const aiMusic = require('../../api/ai-music');
+// 主进程即 UI 线程：文件 IO 必须异步
+const fsa = require('../../utils/fsAsync');
 
 /**
  * 根据歌词内容和歌曲时长，生成带时间轴的 LRC 文件
@@ -129,7 +131,6 @@ function register() {
       if (result.audioHex) {
         // H10: Validate saveDir — must be within allowed directories
         // 用 path.relative 判定（startsWith 有前缀碰撞：C:\MusicX 会误判在 C:\Music 内）
-        const fs = require('fs');
         const isInside = (base, target) => {
           const rel = path.relative(base, target);
           return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -145,7 +146,7 @@ function register() {
         if (!isAllowed) {
           saveDir = path.join(app.getPath('music'), 'MusicDownloader', 'AI生成');
         }
-        if (!fs.existsSync(saveDir)) fs.mkdirSync(saveDir, { recursive: true });
+        await fsa.ensureDir(saveDir);
 
         const safeName = (params.title || 'AI创作').replace(/[\\/:*?"<>|]/g, '_');
         const savePath = path.join(saveDir, `${safeName}_${Date.now()}.mp3`);
@@ -157,7 +158,7 @@ function register() {
           const lrcPath = savePath.replace(/\.mp3$/i, '.lrc');
           const durationMs = result.duration || 180000; // 默认 3 分钟
           const lrcContent = generateLrcWithTiming(params.lyrics, params.title, durationMs);
-          fs.writeFileSync(lrcPath, lrcContent, 'utf-8');
+          await fsa.writeText(lrcPath, lrcContent);
         }
 
         result.filePath = savePath;
