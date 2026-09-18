@@ -17,6 +17,7 @@ import './router.js';
 
 // 播放器和快捷键
 import { updateProgress, onAudioEnded, parseLrc, showNoLyrics } from './player.js';
+import { initMediaSession } from './player/mediaSession.js';
 import { heartBtnHtml } from './favorites.js';
 import './shortcuts.js';
 
@@ -427,6 +428,9 @@ async function init() {
     api.onTrayPrev(() => { if (typeof prevSong === 'function') prevSong(); });
     api.onTrayNext(() => { if (typeof nextSong === 'function') nextSong(); });
   }
+
+  // ── 系统级「正在播放」（Media Session：音量浮窗/锁屏曲目 + 媒体键 actionHandler）──
+  try { initMediaSession(); } catch (e) { logger.warn('[init] mediaSession 初始化失败:', e.message); }
 
   // ── 应用菜单 IPC 监听（主进程菜单项经 webContents.send 下发）──
   // 此前渲染层从未注册这两个监听：菜单的「聚焦搜索」「定时停止」是断链的。
