@@ -4,6 +4,7 @@
 
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
+import { showContextMenu } from '../contextMenu.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -161,7 +162,7 @@ function renderQueue(queue) {
     // 格式化下载耗时
     const downloadTime = s.downloadTime ? formatDuration(s.downloadTime) : '';
     return `
-    <div class="queue-item queue-status-${s.status}${selected && _dlSelectionMode ? ' selected' : ''}">
+    <div class="queue-item queue-status-${s.status}${selected && _dlSelectionMode ? ' selected' : ''}" data-taskid="${escAttr(s.taskId)}">
       ${_dlSelectionMode ? `
       <div class="queue-item-cb" onclick="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
         <input type="checkbox" id="dlcb_${escAttr(s.taskId)}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
@@ -207,6 +208,42 @@ function renderQueue(queue) {
 }
 
 // esc() 和 statusLabel() 已由 utils.js 全局导出，此处不再重复定义
+
+// ── 队列行右键菜单（按状态组装，动作全部复用行内既有函数）────
+function queueRowContext(e) {
+  if (_dlSelectionMode) return; // 批量选择模式：行点击=勾选，不弹菜单
+  const row = e.target && e.target.closest ? e.target.closest('.queue-item') : null;
+  if (!row || !_dlDom.queueList || !_dlDom.queueList.contains(row)) return;
+  const taskId = row.getAttribute('data-taskid');
+  if (!taskId) return;
+  const s = (getState('queueSnapshot') || []).find(x => x && x.taskId === taskId);
+  if (!s) return;
+  e.preventDefault();
+  const items = [];
+  if (s.status === 'pending') {
+    items.push(
+      { icon: '⏫', label: '置顶', onClick: () => reorderQueueItem(taskId, 'top') },
+      { icon: '⬆', label: '上移', onClick: () => reorderQueueItem(taskId, 'up') },
+      { icon: '✕', label: '取消任务', danger: true, onClick: () => api.cancelDownload(taskId) },
+    );
+  } else if (s.status === 'downloading') {
+    items.push({ icon: '✕', label: '取消下载', danger: true, onClick: () => api.cancelDownload(taskId) });
+  } else if (s.status === 'done') {
+    if (s.savePath) items.push({ icon: '▶', label: '本地播放', onClick: () => playQueueItem(taskId) });
+    items.push({ icon: '📂', label: '打开文件夹', onClick: () => api.openFolder(getState('saveDir') || '') });
+    if (s.savePath && typeof window.showConvertModal === 'function') {
+      items.push({ icon: '🔄', label: '转换格式', onClick: () => window.showConvertModal(s.savePath, s.title || '') });
+    }
+  } else if (s.status === 'error') {
+    items.push(
+      { icon: '🔄', label: '重试下载', onClick: () => retryQueueItem(taskId) },
+      { icon: '✕', label: '移除', danger: true, onClick: () => removeQueueItem(taskId) },
+    );
+  }
+  if (!items.length) return;
+  showContextMenu(e.clientX, e.clientY, items);
+}
+document.addEventListener('contextmenu', queueRowContext);
 
 // ── 错误分类标签 ───────────────────────────────────────
 const ERROR_TAGS = {
