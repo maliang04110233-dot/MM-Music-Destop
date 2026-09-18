@@ -98,7 +98,7 @@ test('契约结构合法（方向、窗口、参数规格）', () => {
 test('通道数量钉死（意外增删即失败，逼迫改动者过目契约）', () => {
   assert.strictEqual(MAIN_INVOKE.size, 90);
   assert.strictEqual(MAIN_SEND.size, 16);
-  assert.strictEqual(MAIN_RECEIVE.size, 24); // +subscriptions-updated
+  assert.strictEqual(MAIN_RECEIVE.size, 25); // +subscriptions-updated +clipboard-link
   assert.strictEqual(SEC_SEND.size, 7);
   assert.strictEqual(SEC_RECEIVE.size, 2);
   assert.strictEqual(Object.keys(METHODS).length, 99);

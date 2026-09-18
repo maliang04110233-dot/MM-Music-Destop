@@ -1014,6 +1014,7 @@ window.backToSearch = backToSearch;
 window.debounceSearch = debounceSearch;
 window.selectSuggestion = selectSuggestion;
 window.searchCleanup = searchCleanup;
+window.handleLinkInput = handleLinkInput; // 剪贴板识别条复用同一链接处理流程
 window.enterSearchBatchMode = enterSearchBatchMode;
 window.exitSearchBatchMode = exitSearchBatchMode;
 

@@ -1596,3 +1596,19 @@
 .sub-new-artist { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 .sub-new-more { font-size: 11px; color: var(--text-muted); }
 .pl-toolbar-actions .sub-on { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+
+/* ── 剪贴板识别通知条（clipboardWatch → clipboard-link 事件）────── */
+.clip-banner {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  z-index: 1200; display: flex; align-items: center; gap: var(--sp-3);
+  padding: 10px 16px; border-radius: var(--r-lg);
+  background: var(--bg-deep); border: 1px solid var(--neon-cyan);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  font-size: 13px; color: var(--neon-text);
+  animation: clipBannerIn var(--dur-2) var(--ease);
+}
+.clip-banner .clip-banner-text { white-space: nowrap; }
+@keyframes clipBannerIn {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

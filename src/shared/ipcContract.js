@@ -174,6 +174,7 @@ const CHANNELS = {
   // ── 主进程 → 渲染层（receive 事件） ───────────────
   'queue-updated':         { receive: MAIN },
   'subscriptions-updated': { receive: MAIN },
+  'clipboard-link':        { receive: MAIN },
   'download-progress':     { receive: MAIN },
   'download-error':        { receive: MAIN },
   'play-queue-restored':   { receive: MAIN },
@@ -321,6 +322,7 @@ const METHODS = {
 const EVENTS = {
   onQueueUpdated: 'queue-updated',
   onSubscriptionsUpdated: 'subscriptions-updated',
+  onClipboardLink: 'clipboard-link',
   onDownloadProgress: 'download-progress',
   onDownloadError: 'download-error',
   onPlayQueueRestored: 'play-queue-restored',

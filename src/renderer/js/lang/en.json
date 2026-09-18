@@ -152,6 +152,7 @@
   "settings.general.autoLyric": "Auto download and embed lyrics",
   "settings.general.autoCover": "Auto download and embed covers",
   "settings.general.notifications": "Show notification when download completes",
+  "settings.general.clipboardWatch": "Detect copied music links and show a download prompt",
   "settings.general.playbackBehaviorTitle": "Playback Behaviour",
   "settings.general.playProgressMemory": "Remember play progress (resume after restart)",
   "settings.general.dlPathTemplateTitle": "Download Path Template",

@@ -482,6 +482,7 @@ const GENERAL_PREFS = {
   autoLyric:     { key: 'autoLyric',     default: true,          el: 'settingAutoLyric' },
   autoCover:     { key: 'autoCover',     default: true,          el: 'settingAutoCover' },
   notifications: { key: 'notifications',  default: true,          el: 'settingNotifications' },
+  clipboardWatch: { key: 'clipboardWatch', default: true,         el: 'settingClipboardWatch' },
   playProgressMemory: { key: 'playProgressMemory', default: true, el: 'settingPlayProgressMemory' },
   globalShortcuts: { key: 'globalShortcuts', default: true, el: 'settingGlobalShortcuts' },
   theme:         { key: 'theme',         default: 'default',     el: 'settingTheme' },

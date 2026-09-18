@@ -31,6 +31,7 @@ const ipcDownloadTemplates = require('./ipc/downloadTemplates');
 const ipcCloudSync = require('./ipc/cloudSync');
 const ipcSubscriptions = require('./ipc/subscriptions');
 const subscriptions = require('./subscriptions');
+const clipboardWatch = require('./clipboardWatch');
 
 // 修复 B15：使用 context.js 提供的统一 safeSend，避免代码漂移
 const safeSend = ctxSafeSend;
@@ -565,6 +566,9 @@ app.whenReady().then(async () => {
   // 订阅更新周期检查（同为 unref 定时器；首查延迟 30s 避开启动峰值）
   subscriptions.startScheduler();
 
+  // 剪贴板音乐链接嗅探（unref；prefs.clipboardWatch 每次 tick 现读，设置页即时生效）
+  clipboardWatch.start();
+
   // 安装自定义应用菜单（屏蔽开发者工具菜单项及其加速键）
   buildAppMenu();
 
@@ -615,6 +619,7 @@ app.on('window-all-closed', () => {
   }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
   subscriptions.stopScheduler();
+  clipboardWatch.stop();
   unregisterGlobalShortcuts();
   try { prefs.flush(); } catch (e) { logger.warn('prefs.flush 失败:', e.message); }
   try { history.flush(); } catch (e) { logger.warn('history.flush 失败:', e.message); }

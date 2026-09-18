@@ -30,6 +30,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
   'playbackRate', 'globalShortcuts',
+  // 剪贴板链接识别开关（主进程 clipboardWatch 每 tick 读取）
+  'clipboardWatch',
   // 播放状态持久化
   'recentlyPlayed', 'playStats', 'playProgressMap',
   // EQ

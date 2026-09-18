@@ -39,6 +39,7 @@ import './converter-core.js';
 import './views/converter.js';
 import './views/playlist.js';
 import './views/subscriptions.js';
+import './views/clipboard.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -114,6 +115,7 @@ const mockApi = {
   subscribeCheck: async () => ({ checked: 0, newTotal: 0 }),
   subscribeMarkSeen: async () => ({ success: true }),
   onSubscriptionsUpdated: () => {},
+  onClipboardLink: () => {},
   proxyPlay: async () => ({ fileUrl: '' }),
   queryHistory: async () => ({ items: [], total: 0 }),
   getHistoryStats: async () => ({ total: 0, done: 0, error: 0 }),
@@ -191,6 +193,7 @@ async function init() {
   api = buildApi();
   // 订阅事件接线：视图模块 import 期拿不到 api，只能在 buildApi 之后
   if (typeof wireSubscriptionEvents === 'function') wireSubscriptionEvents();
+  if (typeof wireClipboardEvents === 'function') wireClipboardEvents();
   // 启动即拉一次订阅列表：导航红点不依赖用户先访问订阅页
   if (typeof loadSubscriptions === 'function') loadSubscriptions();
 
