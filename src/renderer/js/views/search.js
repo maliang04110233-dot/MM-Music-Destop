@@ -1063,6 +1063,15 @@ async function playSong(idx) {
   }
 }
 
+// ── 播放全部 ─────────────────────────────────────────
+/** 整页单曲结果进播放队列，从第一首起连播（复用 playSong 的换源/防串台全语义） */
+async function playSearchAll() {
+  if (_searchType !== 'song') { showToast('「播放全部」仅支持单曲结果', 'info'); return; }
+  const songs = getState('songs') || [];
+  if (!songs.length) { showToast('暂无结果可播放，请先搜索', 'warn'); return; }
+  await playSong(0); // playSong 内 setState('playQueue', songs)，天然整列表连播
+}
+
 // ── 来源切换 ─────────────────────────────────────────
 // 平台筛选已改为下拉框：选中态由 <select> 自身反映，这里只同步 state 后重搜
 // （仅 HTML 内联 onclick 调用，经下方 window 桥接暴露，无模块导入方）
@@ -1139,6 +1148,7 @@ window.addDownload = addDownload;
 window.searchInputKey = searchInputKey;
 window.searchListKey = searchListKey;
 window.toggleHideDownloaded = toggleHideDownloaded;
+window.playSearchAll = playSearchAll;
 window.showSearchHistory = showSearchHistory;
 window.hideSearchHistory = hideSearchHistory;
 window.clearSearchHistory = clearSearchHistory;
