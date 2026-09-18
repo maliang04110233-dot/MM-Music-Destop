@@ -1,6 +1,6 @@
 {
   "name": "music-downloader",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "多平台音乐下载器 - 支持网易云/QQ音乐/B站/酷狗/酷我",
   "main": "dist/main/index.js",
   "scripts": {
@@ -11,7 +11,12 @@
     "publish": "vite build && node scripts/postbuild.js && electron-builder --config build/config.cjs --publish always",
     "postinstall": "electron-builder install-app-deps",
     "test": "node --test \"test/*.test.js\"",
-    "lint": "eslint src/ test/"
+    "lint": "eslint src/ test/",
+    "smoke:asar": "node scripts/smoke-asar.js",
+    "check:dead-deps": "node scripts/check-dead-deps.cjs",
+    "check:icons": "node scripts/check-icons.cjs",
+    "gen:icons": "node scripts/gen-icon.js",
+    "verify": "npm run lint && npm test && npm run check:dead-deps && npm run check:icons && npm run build && npm run smoke:asar"
   },
   "keywords": [
     "music",
@@ -22,15 +27,14 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^26.0.0",
-    "electron": "^28.3.3",
-    "electron-builder": "^24.0.0",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^8.57.0",
     "vite": "^5.4.21",
     "vite-plugin-electron": "^1.0.4",
     "vite-plugin-electron-renderer": "^1.0.0"
   },
   "dependencies": {
-    "crypto-js": "^4.2.0",
     "electron-updater": "^6.8.9",
     "iconv-lite": "^0.6.3",
     "music-metadata": "^7.14.0",

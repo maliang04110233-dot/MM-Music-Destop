@@ -23,7 +23,11 @@ Desktop.ini
 # Build output
 release/
 *.blockmap
-*.yml
+# electron-builder 的发布元数据。**不要写 `*.yml`** —— 那会连
+# .github/workflows/ci.yml 一起忽略（GitHub 的 CI 配置被静默丢掉，
+# 本地完全看不出来，直到发现 Actions 一直没跑）。
+# 只在 release/ 下按需忽略：见下方 `release/*.yml`。
+release/*.yml
 build-log.txt
 build-log-full.txt
 
@@ -40,3 +44,4 @@ C:*Users*
 # 本地验证台与重构前备份（不入仓库）
 .preview/
 .backup/
+.git-rescue/
