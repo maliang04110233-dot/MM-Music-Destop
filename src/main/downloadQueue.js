@@ -32,6 +32,7 @@ const fsaDefault = require('../utils/fsAsync');
 const downloaderDefault = require('../utils/downloader');
 const { renderFileName } = require('../utils/naming');
 const speedMeter = require('./speedMeter');
+const diskSpace = require('./diskSpace');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
 
 /** done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长 */
@@ -235,6 +236,24 @@ function createDownloadQueueEngine({
         await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
           logger.warn('[processOneSong] 创建下载目录失败:', saveDir, e.message);
         });
+
+        // 容量预检：磁盘快满时提前给出人话错误（否则写出半截文件才 ENOSPC）。
+        // statfs 不可用/出错一律放行，绝不因预检本身挡下载。
+        if (typeof fs.promises.statfs === 'function') {
+          try {
+            const verdict = diskSpace.diskVerdict(
+              diskSpace.availFromStatfs(await fs.promises.statfs(saveDir)), song.quality);
+            if (!verdict.ok) {
+              throw Object.assign(
+                new Error(diskSpace.diskShortageMessage(
+                  { availBytes: verdict.availBytes, neededBytes: diskSpace.estimateSongBytes(song.quality) }, song.quality)),
+                { diskShortage: true });
+            }
+          } catch (e) {
+            if (e.diskShortage) throw e;
+            logger.warn('[processOneSong] statfs 失败，跳过容量预检:', e.message);
+          }
+        }
 
         // 修复 B8：携带 extraHeaders（Referer 等），downloadFile 内部重定向会递归传递
         // B 站 DASH CDN 要求 Referer: https://www.bilibili.com/，否则可能 403
