@@ -59,6 +59,7 @@ let _searchDebounceTimer = null;
 const SEARCH_DEBOUNCE_MS = 300;
 
 function debounceSearch() {
+  _kbdIdx = -1; // 用户重新输入，键盘建议循环归零
   if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
   _searchDebounceTimer = setTimeout(() => {
     _searchDebounceTimer = null;
@@ -145,6 +146,97 @@ function showSearchSuggestions() {
 function hideSearchSuggestions() {
   const container = document.getElementById('searchSuggestions');
   if (container) container.style.display = 'none';
+}
+
+// ── 键盘导航 ─────────────────────────────────────────
+// 输入框内：↑/↓ 循环当前可见的搜索建议/历史并回填输入框，Enter 搜索，Esc 收起并失焦
+// 输入框外（搜索页激活）：↑/↓ 高亮结果行，Enter 将高亮曲加入下载队列
+let _kbdIdx = -1;
+let _rowIdx = -1;
+let _lastRenderedSongList = null;
+
+function searchInputKey(e) {
+  if (e.key === 'Enter') {
+    hideSearchSuggestions();
+    hideSearchHistory();
+    doSearch();
+    return;
+  }
+  if (e.key === 'Escape') {
+    hideSearchSuggestions();
+    hideSearchHistory();
+    e.target.blur();
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const kws = _visibleSuggestKeywords();
+    if (!kws.length) return;
+    e.preventDefault();
+    const n = kws.length;
+    _kbdIdx = e.key === 'ArrowDown' ? (_kbdIdx + 1) % n : (_kbdIdx - 1 + n) % n;
+    _dom.searchInput.value = kws[_kbdIdx];
+    _markSuggestActive(kws[_kbdIdx]);
+  }
+}
+
+function _visibleSuggestKeywords() {
+  const out = [];
+  const sug = document.getElementById('searchSuggestions');
+  if (sug && sug.style.display !== 'none') {
+    sug.querySelectorAll('.suggestion-item').forEach(el => {
+      const t = el.querySelector('.suggestion-title')?.textContent?.trim();
+      if (t && !out.includes(t)) out.push(t);
+    });
+  }
+  const hist = document.getElementById('searchHistory');
+  if (hist && hist.style.display !== 'none') {
+    hist.querySelectorAll('.history-kw').forEach(el => {
+      const t = el.textContent.trim();
+      if (t && !out.includes(t)) out.push(t);
+    });
+  }
+  return out;
+}
+
+function _markSuggestActive(kw) {
+  document.querySelectorAll('#searchSuggestions .kbd-active, #searchHistory .kbd-active')
+    .forEach(el => el.classList.remove('kbd-active'));
+  document.querySelectorAll('#searchSuggestions .suggestion-title, #searchHistory .history-kw').forEach(el => {
+    if (el.textContent.trim() === kw) {
+      const row = el.closest('.suggestion-item, .search-history-item');
+      if (row) row.classList.add('kbd-active');
+    }
+  });
+}
+
+function _songRows() {
+  const list = document.getElementById('songList');
+  return list ? Array.from(list.querySelectorAll('.song-row')) : [];
+}
+
+/** 全局 keydown 委托入口；消费了按键返回 true */
+function searchListKey(e) {
+  const rows = _songRows();
+  if (!rows.length) return false;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    _rowIdx = e.key === 'ArrowDown'
+      ? Math.min(rows.length - 1, _rowIdx + 1)
+      : Math.max(0, _rowIdx - 1);
+    _markRowActive(rows);
+    return true;
+  }
+  if (e.key === 'Enter' && _rowIdx >= 0 && _rowIdx < rows.length) {
+    e.preventDefault();
+    addDownload(_rowIdx);
+    return true;
+  }
+  return false;
+}
+
+function _markRowActive(rows) {
+  rows.forEach((r, i) => r.classList.toggle('kbd-focus', i === _rowIdx));
+  if (rows[_rowIdx]) rows[_rowIdx].scrollIntoView({ block: 'nearest' });
 }
 
 function selectSuggestion(keyword) {
@@ -708,6 +800,8 @@ addDlChangeListener(() => {
 
 function renderSongList(list) {
   _dlLastList = list;
+  if (list !== _lastRenderedSongList) _rowIdx = -1; // 新结果集：行焦点归零；徽标重绘保持
+  _lastRenderedSongList = list;
   dlEnsureHistoryLoaded(); // 首次渲染后拉一次下载历史，到达时自动重打徽标
   const _dlQueue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
   const el = document.getElementById('songList');
@@ -752,6 +846,7 @@ function renderSongList(list) {
       </div>
     </div>
   `}).join('');
+  _markRowActive(_songRows()); // 重绘后恢复行焦点（徽标防抖重渲染不丢高亮）
 }
 
 function renderPagination(page, count) {
@@ -1013,6 +1108,8 @@ export {
 window.renderPagination = renderPagination;
 window.switchSource = switchSource;
 window.addDownload = addDownload;
+window.searchInputKey = searchInputKey;
+window.searchListKey = searchListKey;
 window.showSearchHistory = showSearchHistory;
 window.hideSearchHistory = hideSearchHistory;
 window.clearSearchHistory = clearSearchHistory;

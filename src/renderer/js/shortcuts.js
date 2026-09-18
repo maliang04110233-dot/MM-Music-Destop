@@ -32,6 +32,15 @@ function handleKey(e) {
   // 输入框中不处理其他快捷键
   if (inInput) return;
 
+  // ── 搜索页结果列表导航：↑/↓ 选行，Enter 将高亮曲加入下载队列 ──
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')
+      && !ctrlOrCmd
+      && typeof window.searchListKey === 'function'
+      && document.querySelector('.nav-item.active[data-tab="search"]')
+      && !_anyModalOpen()) {
+    if (window.searchListKey(e)) return;
+  }
+
   // ── Ctrl/Cmd 组合快捷键 ──
   if (ctrlOrCmd) {
     const key = e.key.toLowerCase();
@@ -118,6 +127,15 @@ function focusTab(tabName, focusElId) {
   }
 }
 
+function _anyModalOpen() {
+  const ids = ['playlistModal', 'playlistDetailModal', 'playlistSelectModal', 'playlistEditorModal', 'editOverlay', 'settingsOverlay'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains('hidden')) return true;
+  }
+  return !!document.querySelector('.welcome-overlay');
+}
+
 function closeActiveModal() {
   // 按优先级关闭：歌单弹窗 > ID3 编辑 > 设置
   const playlistModal = document.getElementById('playlistModal');
@@ -189,6 +207,12 @@ export function showShortcutsHelp() {
           <div class="shortcut-row"><span>跳到下载队列</span><kbd>Ctrl</kbd>+<kbd>D</kbd></div>
           <div class="shortcut-row"><span>跳到本地歌曲</span><kbd>Ctrl</kbd>+<kbd>L</kbd></div>
           <div class="shortcut-row"><span>跳到下载历史</span><kbd>Ctrl</kbd>+<kbd>H</kbd></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">搜索页</div>
+          <div class="shortcut-row"><span>循环选择搜索建议/历史</span><kbd>↑</kbd><kbd>↓</kbd>（输入框内）</div>
+          <div class="shortcut-row"><span>高亮上/下结果行</span><kbd>↑</kbd><kbd>↓</kbd>（输入框外）</div>
+          <div class="shortcut-row"><span>下载高亮歌曲</span><kbd>Enter</kbd></div>
         </div>
         <div class="shortcut-group">
           <div class="shortcut-group-title">播放控制</div>

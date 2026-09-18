@@ -1651,3 +1651,11 @@
 .dl-badge-queued { color: var(--neon-dim); border-color: var(--neon-dim); }
 .dl-badge-downloading { color: var(--neon-cyan); border-color: var(--neon-cyan); }
 .dl-badge-done { color: var(--neon-green); border-color: var(--neon-green); }
+
+/* 搜索页键盘导航高亮 */
+.suggestion-item.kbd-active,
+.search-history-item.kbd-active { background: var(--bg-hover); }
+.song-row.kbd-focus {
+  background: var(--bg-hover);
+  box-shadow: inset 2px 0 0 var(--neon-cyan);
+}

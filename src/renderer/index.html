@@ -186,7 +186,7 @@
                         </div>
                         <div class="search-input-wrap">
               <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴网易云/QQ/B站/酷狗链接）"
-                onkeydown="if(event.key==='Enter')doSearch()" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
+                onkeydown="searchInputKey(event)" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
               <button class="search-btn" onclick="doSearch()">🔍</button>
             </div>
             <select class="quality-select" id="qualitySelect">
