@@ -1,6 +1,6 @@
 /**
 * MusicDL 播放器 — 霓虹科技风格
-* 圆形封面盘 + 环形进度条
+* 方形封面 + 封面下缘进度条（环形进度已随 UI 重设计移除）
 * 
 * ES Module — export 供其他模块 import，同时保留 window 全局供 HTML onclick
  */
@@ -17,133 +17,23 @@ import {
 } from './player/lyrics.js';
 
 const audio = document.getElementById('audioPlayer');
-const RING_CIRCUMFERENCE = 552.9; // 2 * PI * 88
 
 // ── 状态 ─────────────────────────────────────────────
 let audioCtx = null;
 
 
-// ── EQ 5 段均衡器 ────────────────────────────────────
-const EQ_BANDS = [
-   { freq: 60,   label: '60Hz',   type: 'lowshelf' },
-   { freq: 230,  label: '230Hz',  type: 'peaking' },
-   { freq: 910,  label: '910Hz',  type: 'peaking' },
-   { freq: 3600, label: '3.6kHz', type: 'peaking' },
-   { freq: 14000,label: '14kHz',  type: 'highshelf' },
-];
-const eqFilters = []; // BiquadFilterNode[]
-let eqBypassed = false; // EQ bypass state
+// ── EQ 均衡器（已拆出 player/eq.js） ─────────────────
+// 本文件只做 re-export，保持 player.js 的公开面（含 window 挂载）逐字不变；
+// 实现、已知状态说明与守卫测试见 player/eq.js 头部注释。
+import {
+  applyEqPreset, toggleEqBypass, setEqBand, resetEq,
+  saveEqSettings, restoreEqPresetSetting,
+} from './player/eq.js';
 
-// ── EQ 预设曲线 ───────────────────────────────────────
-// 每条预设是 EQ_BANDS 对应索引的增益值 [60Hz, 230Hz, 910Hz, 3.6kHz, 14kHz] (dB)
-const EQ_PRESETS = {
-  flat:    [ 0,  0,  0,  0,  0],
-  pop:     [ 2,  3,  1,  2,  3],
-  rock:    [ 4,  2, -1,  1,  3],
-  classic: [ 1,  1,  2,  2,  1],
-  vocal:   [-1,  2,  4,  3,  0],
-  dance:   [ 4,  1,  0,  0,  3],
-  jazz:    [ 2,  3,  2,  1,  3],
-  bass:    [ 6,  3, -1, -1,  0],
+export {
+  applyEqPreset, toggleEqBypass, setEqBand, resetEq,
+  saveEqSettings, restoreEqPresetSetting,
 };
-let currentEqPreset = 'flat';
-
-// ── 应用 EQ 预设 ──────────────────────────────────────
-export function applyEqPreset(name) {
-  const gains = EQ_PRESETS[name];
-  if (!gains) return;
-  currentEqPreset = name;
-  eqBypassed = false;
-  EQ_BANDS.forEach((_, i) => {
-    if (eqFilters[i]) {
-      eqFilters[i].gain.value = gains[i];
-    }
-  });
-  // 更新 UI 滑块
-  const sliders = document.querySelectorAll('#eqPanel input[type=range]');
-  const labels = document.querySelectorAll('#eqPanel [id^=eq_val_]');
-  [...sliders].forEach((sl, i) => {
-    if (gains[i] !== undefined) {
-      sl.value = gains[i];
-      if (labels[i]) labels[i].textContent = gains[i] + 'dB';
-    }
-  });
-  // 更新预设按钮高亮
-  document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('eq-preset-active'));
-  document.querySelectorAll(`[data-eq-preset="${name}"]`).forEach(b => b.classList.add('eq-preset-active'));
-  saveEqPresetSetting(name);
-}
-export function toggleEqBypass() {
-  eqBypassed = !eqBypassed;
-  const bypass = eqBypassed;
-  EQ_BANDS.forEach((_, i) => {
-    if (eqFilters[i]) {
-      // bypass 时全部增益设为 0，恢复时还原为当前预设
-      eqFilters[i].gain.value = bypass ? 0 : (EQ_PRESETS[currentEqPreset]?.[i] ?? 0);
-    }
-  });
-  // 更新 UI
-  const btn = document.getElementById('eqBypassBtn');
-  if (btn) {
-    btn.textContent = bypass ? '🔇 EQ关闭' : '🎚️ EQ开启';
-    btn.classList.toggle('eq-bypassed', bypass);
-  }
-  // bypass 时不改滑块显示，只改按钮状态
-  saveEqPresetSetting(currentEqPreset);
-}
-
-// ── 预设持久化 ────────────────────────────────────────
-async function saveEqPresetSetting(name) {
-  try {
-    await api.setPref('eqPreset', name);
-    await api.setPref('eqBypass', eqBypassed);
-  } catch (e) { /* silent */ }
-}
-
-async function restoreEqPresetSetting() {
-  try {
-    const name = await api.getPref('eqPreset') || 'flat';
-    const bypass = await api.getPref('eqBypass');
-    if (name && EQ_PRESETS[name]) {
-      currentEqPreset = name;
-      eqBypassed = bypass === true;
-      const gains = eqBypassed ? EQ_BANDS.map(() => 0) : EQ_PRESETS[name];
-      EQ_BANDS.forEach((_, i) => {
-        if (eqFilters[i]) eqFilters[i].gain.value = gains[i];
-      });
-    }
-  } catch (e) { /* silent */ }
-}
-
-// ── EQ 设置持久化 ─────────────────────────────────────
-function getEqGains() {
-   return eqFilters.map(f => f.gain.value);
-}
-
-export function setEqBand(index, gain) {
-   if (eqFilters[index]) {
-     eqFilters[index].gain.value = gain;
-   }
-}
-
-export function resetEq() {
-   eqFilters.forEach(f => { f.gain.value = 0; });
-   // 更新 UI
-   EQ_BANDS.forEach((_, i) => {
-     const slider = document.getElementById('eq_' + i);
-     const label = document.getElementById('eq_val_' + i);
-     if (slider) slider.value = 0;
-     if (label) label.textContent = '0dB';
-   });
-   saveEqSettings();
-}
-
-export async function saveEqSettings() {
-   try {
-     const gains = getEqGains();
-     await api.setPref('eqGains', gains);
-   } catch (_e) { /* EQ 保存失败使用默认 */ }
-}
 
 // ── 更新播放器卡片信息（不播放） ─────────────────────
 // 标题超宽时加 marquee 类（CSS 匀速滚动），并把实测溢出量写进 CSS 变量
@@ -160,8 +50,67 @@ function _applyTitleMarquee() {
   }
 }
 
+/** 顶栏状态文本（未在播放 / 正在播放 / 已暂停）。
+    纯展示用途：配色由 .player-card 的 playing/paused 类决定，此处只管文案。
+    挂到 window 供 app.js 的 play/pause 事件复用，避免两处各写一份 DOM 操作。 */
+/* ── 顶栏「更多」弹层 ────────────────────────────────
+   低频操作（封面动画 / 迷你播放器 / 桌面歌词 / 队列 / 倍速）收纳于此，
+   原先 7 个工具键挤在 184×29px 的一行里，单键命中区仅 26px。 */
+export function togglePlayerMore() {
+  const pop = document.getElementById('pcMorePop');
+  const btn = document.getElementById('btnMoreToggle');
+  if (!pop) return;
+  const open = pop.classList.toggle('open');
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+}
+
+export function closePlayerMore() {
+  const pop = document.getElementById('pcMorePop');
+  const btn = document.getElementById('btnMoreToggle');
+  if (!pop || !pop.classList.contains('open')) return;
+  pop.classList.remove('open');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+/* 点击弹层外 / 按 Esc 收起。capture 阶段监听：不受内部元素 stopPropagation 影响 */
+document.addEventListener('pointerdown', (e) => {
+  const pop = document.getElementById('pcMorePop');
+  if (!pop || !pop.classList.contains('open')) return;
+  if (pop.contains(e.target)) return;
+  if (document.getElementById('btnMoreToggle')?.contains(e.target)) return;
+  closePlayerMore();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePlayerMore();
+});
+
+export function setPlayerState(label) {
+  const el = document.getElementById('pcState');
+  if (el) el.textContent = label;
+}
+
+/**
+ * 依据「当前是否真的在播放」推导顶栏状态文案，并写入。
+ *
+ * ⚠️ 为什么需要它（2026-09-18 修复）：
+ *   pause 事件**每次换歌都会触发** —— loadAndPlay 给 audio.src 赋新值时，
+ *   浏览器会先 pause 旧音源。此刻 getState('currentPlaying') 可能仍指向上一首
+ *   （playSongByIdx 是 setState('currentPlaying') 之后才 loadAndPlay，
+ *   而 loadAndPlay 内部还有 await），于是顶栏被写成「已暂停」，
+ *   紧接着 play 事件再纠正为「正在播放」——肉眼看是闪一下，无头/慢盘下会停错。
+ *   更糟的是 app.js 的 pause 分支判定与 play 分支不对称：pause 看 currentPlaying，
+ *   play 却无条件写「正在播放」，两侧不同源。
+ *
+ * 统一为：只看 audio 的真实状态，不看 currentPlaying。无音源时才是「未在播放」。
+ */
+export function refreshPlayerState() {
+  if (!audio || !audio.src) { setPlayerState('未在播放'); return; }
+  setPlayerState(audio.paused ? '已暂停' : '正在播放');
+}
+
 export function updatePlayerCard(song) {
   if (!song) {
+    setPlayerState('未在播放');
     document.getElementById('playerTitle').textContent = '未在播放';
     document.getElementById('playerArtist').textContent = '—';
     document.getElementById('playerDiscImg').style.display = 'none';
@@ -170,6 +119,9 @@ export function updatePlayerCard(song) {
     _applyTitleMarquee();
     return;
   }
+  // 只声明「这首是谁」，不声明「在不在播」——后者由 refreshPlayerState() 按
+  // audio 真实状态决定。原先此处无条件写「正在播放」，与函数自身注释
+  // 「不修改播放状态」矛盾，也会在恢复播放队列（未自动播放）时显示错文案。
   document.getElementById('playerTitle').textContent = song.title || '未知歌曲';
   document.getElementById('playerArtist').textContent = song.artist || '未知艺术家';
   _updateSrcBadge(song);
@@ -187,7 +139,9 @@ export function updatePlayerCard(song) {
   // 不修改进度条、频谱等播放状态
 }
 
-const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', kuwo: '酷我', bilibili: 'B站' };
+// 平台名统一走 utils.js 的 platformName()（裸标识符用法同 esc()/fmtTime()，
+// 由 utils.js 挂 window）。原先此处手写 SOURCE_NAMES，与 settings.js / utils.js
+// 各存一份 —— 三份拷贝会漂移，且新增平台必漏改。
 /** 换源徽标：实际取流源(song._altSource.source)与原源不同时显示，
     让"换源成功"从一次性 toast 变为持续可见状态 */
 function _updateSrcBadge(song) {
@@ -195,8 +149,8 @@ function _updateSrcBadge(song) {
   if (!badge) return;
   const alt = song && song._altSource;
   if (alt && alt.source && alt.source !== song.source) {
-    badge.textContent = `↻ ${SOURCE_NAMES[alt.source] || alt.source}源`;
-    badge.title = `原源 ${SOURCE_NAMES[song.source] || song.source} 不可用，已自动切换`;
+    badge.textContent = `↻ ${platformName(alt.source)}源`;
+    badge.title = `原源 ${platformName(song.source)} 不可用，已自动切换`;
     badge.style.display = '';
   } else {
     badge.style.display = 'none';
@@ -283,7 +237,6 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
     if (titleEl) titleEl.textContent = song.title || '未知歌曲';
     if (artistEl) artistEl.textContent = song.artist || '未知艺术家';
     _applyTitleMarquee();
-    updateRingProgress(0);
 
     audio.src = localUrl;
     // 恢复播放进度
@@ -343,8 +296,6 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
       discPh2.style.display = 'flex';
     }
   }
-
-  updateRingProgress(0);
 
   // 如果有预获取的 URL（来自 proxyPlay），则播放音频
   if (localUrl) {
@@ -534,11 +485,9 @@ export function updatePlayModeButton() {
 
   // 更新图标和样式
   if (isActive) {
-    btn.style.color = 'var(--neon-purple)';
-    btn.style.filter = 'drop-shadow(0 0 6px rgba(167,139,250,0.8))';
+    btn.style.color = 'var(--accent-ui)';
   } else {
     btn.style.color = '';
-    btn.style.filter = '';
   }
 
   // 更新 SVG 图标
@@ -583,7 +532,7 @@ export function cycleCoverAnimation() {
   const idx = styles.indexOf(_coverAnimation);
   const next = styles[(idx + 1) % styles.length];
   setCoverAnimation(next);
-  const labels = { rotate: '旋转', pulse: '脉动', none: '静态' };
+  const labels = { rotate: '轻摆', pulse: '脉动', none: '静态' };
   showToast('封面动画：' + labels[next], 'info');
 }
 
@@ -733,30 +682,20 @@ window.addEventListener('beforeunload', () => {
   try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 同上：尽力写盘 */ }
 });
 
-// ── 环形进度 ─────────────────────────────────────────
-function updateRingProgress(fraction) {
-  const ring = document.getElementById('ringFill');
-  if (!ring) return;
-  const offset = RING_CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, fraction)));
-  ring.style.strokeDashoffset = offset;
-}
-
 // ── 进度条 ───────────────────────────────────────────
 let _lastProgressSave = 0;
 export function updateProgress() {
   const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
-  const fraction = audio.duration ? audio.currentTime / audio.duration : 0;
   const fill = document.getElementById('playerProgressFill');
   if (fill) fill.style.width = pct + '%';
   const thumb = document.getElementById('playerProgressThumb');
-  if (thumb) thumb.style.left = 'calc(' + pct + '% - 5px)';
+  if (thumb) thumb.style.left = pct + '%';
   const bar = document.getElementById('playerProgressBar');
   if (bar) bar.setAttribute('aria-valuenow', Math.round(pct));
   const now = document.getElementById('timeNow');
   if (now) now.textContent = fmtTime(audio.currentTime);
   const total = document.getElementById('timeTotal');
   if (total) total.textContent = fmtTime(audio.duration);
-  updateRingProgress(fraction);
   updateLyric(audio.currentTime);
   // 每 30 秒自动保存播放进度
   const t = Date.now();
@@ -819,7 +758,7 @@ function _initProgressDrag() {
     bar.setPointerCapture(e.pointerId);
     const preview = (pct) => {
       if (fill) fill.style.width = (pct * 100) + '%';
-      if (thumb) thumb.style.left = 'calc(' + (pct * 100) + '% - 5px)';
+      if (thumb) thumb.style.left = (pct * 100) + '%';
       if (hoverTime) {
         hoverTime.textContent = _fmtTime(pct * audio.duration);
         hoverTime.style.left = (pct * 100) + '%';
@@ -922,6 +861,10 @@ window.applyLyricOffset = applyLyricOffset;
 window.setCoverAnimation = setCoverAnimation;
 window.cycleCoverAnimation = cycleCoverAnimation;
 window.updatePlayerCard = updatePlayerCard;
+window.setPlayerState = setPlayerState;
+window.refreshPlayerState = refreshPlayerState;
+window.togglePlayerMore = togglePlayerMore;
+window.closePlayerMore = closePlayerMore;
 window.setEqBand = setEqBand;
 window.resetEq = resetEq;
 window.saveEqSettings = saveEqSettings;

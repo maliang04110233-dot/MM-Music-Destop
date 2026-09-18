@@ -152,7 +152,7 @@ function updateSidebarPlatformStatus(cookies) {
 }
 
 // ── 源可用性探针（P2）─────────────────────────────────
-const SOURCE_NAMES = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗', kuwo: '酷我', bilibili: 'B站' };
+// 平台名统一走 utils.js 的 platformName()（单一来源）。原先此处第二份 SOURCE_NAMES 拷贝。
 
 function renderSourceHealth(health, probes) {
   const list = document.getElementById('sourceHealthList');
@@ -168,7 +168,7 @@ function renderSourceHealth(health, probes) {
   list.innerHTML = sources.map(s => {
     const h = health[s];
     const probe = probeMap[s];
-    const name = SOURCE_NAMES[s] || s;
+    const name = platformName(s);
 
     // 一次性探测结果优先于历史成功率
     if (probe) {
@@ -409,6 +409,32 @@ const GENERAL_PREFS = {
   lyricOffset:   { key: 'lyricOffset',   default: 0,             el: 'settingLyricOffset' },
 };
 
+// 命名模板实时预览：renderFileName 跑在主进程（renderer 拿不到 src/utils），
+// 预览值必须走 IPC 取。250ms 防抖，避免每次击键都跨进程请求。
+let filenameTmplPreviewTimer = null;
+function updateFilenameTmplPreview() {
+  const input = document.getElementById('settingFilenameTmpl');
+  const out = document.getElementById('filenameTmplPreview');
+  const warn = document.getElementById('filenameTmplWarn');
+  if (!input || !out) return;
+  clearTimeout(filenameTmplPreviewTimer);
+  filenameTmplPreviewTimer = setTimeout(async () => {
+    try {
+      const r = await api.previewNamingTemplate(input.value);
+      if (!r) return;
+      out.textContent = r.preview || '—';
+      if (warn) {
+        warn.textContent = (r.unknown && r.unknown.length)
+          ? ('未知变量: ' + r.unknown.map(v => '{' + v + '}').join(' '))
+          : '';
+      }
+    } catch (_e) {
+      // 预览失败不该打断设置页：静默清空告警即可
+      if (warn) warn.textContent = '';
+    }
+  }, 250);
+}
+
 async function loadGeneralSettings() {
   try {
     const prefs = Object.values(GENERAL_PREFS);
@@ -425,6 +451,8 @@ async function loadGeneralSettings() {
     });
     // 色卡高亮不会随 select 的程序化赋值自动更新（不触发 change），加载完主动刷一次
     syncThemeCards();
+    // 预览同理：输入框被程序化赋值不触发 input，主动刷一次
+    updateFilenameTmplPreview();
   } catch (e) {
     logger.error(`[loadGeneralSettings] error:`, e);
   }
@@ -500,6 +528,10 @@ function setupGeneralSettingListeners() {
         try { if (typeof api.setGlobalShortcuts === 'function') api.setGlobalShortcuts(!!val); } catch (_e) { /* 下次启动仍会按 prefs 生效 */ }
       }
     });
+    // 命名模板走 input 事件实时预览：change 只在失焦时触发，敲字时看不出效果
+    if (cfg.key === 'namingTemplate') {
+      el.addEventListener('input', updateFilenameTmplPreview);
+    }
   }
 }
 

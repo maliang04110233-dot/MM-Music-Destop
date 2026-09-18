@@ -923,6 +923,31 @@ async function playSong(idx) {
 // ── 来源切换 ─────────────────────────────────────────
 // 平台筛选已改为下拉框：选中态由 <select> 自身反映，这里只同步 state 后重搜
 // （仅 HTML 内联 onclick 调用，经下方 window 桥接暴露，无模块导入方）
+/**
+ * 渲染「音源」下拉（v3）。
+ *
+ * 清单来自主进程 IPC get-platforms ← registry.toClientPayload()，
+ * 而 registry 又由平台 manifest 自动发现 —— 平台事实只有一处定义。
+ * 原先 index.html 里写死 8 个 <option>，是本工程最直白的"加平台要改渲染层"。
+ *
+ * ⚠️ 调用顺序：必须在 applyTranslations() **之前**。
+ *    「全部」选项带 data-i18n，本函数重建 DOM 会让既有翻译失效，
+ *    故由调用方在之后统一 applyTranslations()。
+ *
+ * @param {Array<{id:string,name:string,nameEn?:string}>} platforms
+ */
+function renderSourceSelect(platforms) {
+  const sel = document.getElementById('sourceSelect');
+  if (!sel) return;
+  const list = Array.isArray(platforms) ? platforms : [];
+  const keep = sel.value || 'all';
+
+  sel.innerHTML = '<option value="all" data-i18n="search.all">全部</option>'
+    + list.map(p => `<option value="${escAttr(p.id)}">${esc(platformName(p.id))}</option>`).join('');
+  // 还原选中值；若原选中的源已不存在（平台被移除）则回落「全部」
+  sel.value = list.some(p => p && p.id === keep) ? keep : 'all';
+}
+
 function switchSource(src) {
   setState('currentSource', src);
   if (getState('currentKeyword')) doSearch(1);
@@ -936,6 +961,7 @@ window.doSearch = doSearch;
 window.handleLinkInput = handleLinkInput;
 window.openAlbumSongsModal = openAlbumSongsModal;
 window.switchSearchType = switchSearchType;
+window.renderSourceSelect = renderSourceSelect;
 window.renderSongList = renderSongList;
 window.renderAlbumList = renderAlbumList;
 // ── ES Module 导出 ──────────────────────────────────────

@@ -38,10 +38,92 @@ function formatBytes(bytes) {
   return size.toFixed(1) + ' ' + units[unit];
 }
 
-// ── 平台标签 ──────────────────────────────────────────
-function srcLabel(s) {
-  return { netease: '网易云', qq: 'QQ音乐', bilibili: 'B站', kugou: '酷狗', kuwo: '酷我' }[s] || s;
+// ── 平台名 / 徽标配色（v3：单一事实来源）────────────────
+// 平台清单由主进程 IPC `get-platforms` 下发，而它来自平台 manifest —— 平台事实
+// 只有一处定义。渲染层不再持有平台 id 清单：新增平台只改主进程一侧。
+//
+// ⚠️ 降级路径（必须有）：无头验证台会桩掉 app.js（不跑 init），IPC 也可能未就绪。
+//    绝不允许清单缺失把界面炸掉 —— 故内置兜底**名称**表（配色缺失时回落默认灰）。
+const FALLBACK_PLATFORM_NAMES = {
+  netease: '网易云', qq: 'QQ音乐', bilibili: 'B站', kugou: '酷狗',
+  kuwo: '酷我', migu: '咪咕', fivesing: '5sing', soda: '汽水',
+};
+
+/** 当前语言。不 import i18n.js —— 那会新增一条模块依赖边且 utils 被广泛引用。 */
+function _lang() {
+  try { return (window.i18n && window.i18n.getLang && window.i18n.getLang()) || 'zh'; }
+  catch (_e) { return 'zh'; }
 }
+
+/** 兜底平台 id 清单（开发 mock 等自包含场景用，避免再写第二份字面量数组） */
+function fallbackPlatformIds() {
+  return Object.keys(FALLBACK_PLATFORM_NAMES);
+}
+
+/** 主进程下发的平台清单；未就绪时返回空数组（调用方必须能容忍） */
+function getPlatforms() {
+  return Array.isArray(window.__PLATFORMS) ? window.__PLATFORMS : [];
+}
+
+/**
+ * 灌入平台清单并注入徽标配色（app.js init 调用一次）
+ * @param {Array<{id:string,name:string,nameEn?:string,icon?:string,badge?:{bg:string,fg:string,border:string}}>} list
+ * @returns {Array} 规范化后的清单
+ */
+function setPlatforms(list) {
+  window.__PLATFORMS = Array.isArray(list) ? list : [];
+  applyPlatformBadgeTheme(window.__PLATFORMS);
+  return window.__PLATFORMS;
+}
+
+/**
+ * 取平台显示名（唯一来源）。英文界面取 nameEn，缺失回落 name。
+ * 清单缺失时回落内置表，未知 id 原样返回 —— 永不抛错。
+ * @param {string} id
+ * @returns {string}
+ */
+function platformName(id) {
+  if (!id) return '';
+  const p = getPlatforms().find(x => x && x.id === id);
+  if (p) return (_lang() === 'en' && p.nameEn) ? p.nameEn : (p.name || p.nameEn || id);
+  return FALLBACK_PLATFORM_NAMES[id] || id;
+}
+
+/** 平台 emoji 图标（manifest 未提供时返回空串） */
+function platformIcon(id) {
+  const p = getPlatforms().find(x => x && x.id === id);
+  return (p && p.icon) || '';
+}
+
+const BADGE_STYLE_ID = 'platformBadgeTheme';
+
+/**
+ * 把 manifest.badge 注入为 `.badge-<id>` 的 CSS 变量。
+ *
+ * 原来 content.css 手写 8 条 `.badge-<id>` 规则：新增平台忘了补 CSS **不报错**，
+ * 只静默掉回默认色。改为变量注入后，这一漏洞从"不可见"变成"契约测试可断言"。
+ * 幂等：重复调用只覆盖同一个 <style> 的内容。
+ * @param {Array} list
+ */
+function applyPlatformBadgeTheme(list) {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById(BADGE_STYLE_ID);
+  if (!el) {
+    el = document.createElement('style');
+    el.id = BADGE_STYLE_ID;
+    (document.head || document.documentElement).appendChild(el);
+  }
+  el.textContent = (list || [])
+    .filter(p => p && p.id && p.badge)
+    .map(p => `.badge-${p.id}{--badge-bg:${p.badge.bg};--badge-fg:${p.badge.fg};--badge-border:${p.badge.border};}`)
+    .join('');
+}
+
+/**
+ * 平台标签（旧名，等价 platformName）—— 保留以免打断既有调用方与 window 桥接
+ * @deprecated 新代码请用 platformName
+ */
+const srcLabel = platformName;
 
 function statusLabel(s) {
   return { pending: '⏳ 等待', downloading: '⬇ 下载中', done: '✅ 完成', error: '❌ 失败' }[s] || s;
@@ -107,6 +189,12 @@ export {
   fmtDuration,
   formatBytes,
   srcLabel,
+  platformName,
+  platformIcon,
+  getPlatforms,
+  setPlatforms,
+  fallbackPlatformIds,
+  applyPlatformBadgeTheme,
   statusLabel,
   formatPlayCount,
   fmtHistoryTime,
@@ -121,6 +209,12 @@ window.fmtTime = fmtTime;
 window.fmtDuration = fmtDuration;
 window.formatBytes = formatBytes;
 window.srcLabel = srcLabel;
+window.platformName = platformName;
+window.platformIcon = platformIcon;
+window.getPlatforms = getPlatforms;
+window.setPlatforms = setPlatforms;
+window.fallbackPlatformIds = fallbackPlatformIds;
+window.applyPlatformBadgeTheme = applyPlatformBadgeTheme;
 window.statusLabel = statusLabel;
 window.formatPlayCount = formatPlayCount;
 window.fmtHistoryTime = fmtHistoryTime;

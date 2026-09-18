@@ -19,9 +19,13 @@ import { logger } from '../logger.js';
 
 // ── 分区注册表 ────────────────────────────────────────────
 // 新增一个区块 = 这里加一行；DOM、锚点、懒加载、状态统计自动跟上
+//
+// 平台显示名不在此定义 —— 统一走 utils.js 的 platformName(p.plat)（单一来源）。
+// 原先这里带 label + i18n 键（home.neteaseTab / home.qqTab / home.biliTab），
+// 是平台名的第二份拷贝，且命名与 search.<id> 不统一，已移除。
 const HOME_PLATFORMS = [
   {
-    plat: 'netease', label: '网易云', i18n: 'home.neteaseTab', dot: 'wy',
+    plat: 'netease', dot: 'wy',
     sections: [
       { sec: 'netease.tops',      title: '飙升榜',   i18n: 'home.subtab.tops',      kind: 'list' },
       { sec: 'netease.hot',       title: '热歌榜',   i18n: 'home.subtab.hot',       kind: 'list' },
@@ -31,7 +35,7 @@ const HOME_PLATFORMS = [
     ],
   },
   {
-    plat: 'qq', label: 'QQ音乐', i18n: 'home.qqTab', dot: 'qq',
+    plat: 'qq', dot: 'qq',
     sections: [
       { sec: 'qq.recommend', title: '个性化推荐', kind: 'grid' },
       { sec: 'qq.official',  title: '官方歌单',   kind: 'grid' },
@@ -45,7 +49,7 @@ const HOME_PLATFORMS = [
     ],
   },
   {
-    plat: 'bilibili', label: 'B站', i18n: 'home.biliTab', dot: 'bi',
+    plat: 'bilibili', dot: 'bi',
     sections: [
       { sec: 'bilibili.ranking', title: '音乐区热门排行', kind: 'list', showSource: true },
     ],
@@ -144,7 +148,7 @@ function renderHomeShell() {
   if (!wrap) return;
 
   wrap.innerHTML = HOME_PLATFORMS.map(p => {
-    const label = _tr(p.i18n, p.label);
+    const label = platformName(p.plat);
     return `
     <section class="plat-block" id="${_blockId(p.plat)}" data-plat="${p.plat}">
       <div class="plat-block-head">
@@ -162,7 +166,7 @@ function renderHomeShell() {
   const anchors = document.getElementById('homeAnchors');
   if (anchors) {
     anchors.innerHTML = HOME_PLATFORMS.map(p =>
-      `<button class="anchor-chip" data-anchor="${_blockId(p.plat)}" onclick="scrollToHomeBlock('${_blockId(p.plat)}',this)"><span class="plat-dot ${p.dot}"></span>${esc(_tr(p.i18n, p.label))}</button>`
+      `<button class="anchor-chip" data-anchor="${_blockId(p.plat)}" onclick="scrollToHomeBlock('${_blockId(p.plat)}',this)"><span class="plat-dot ${p.dot}"></span>${esc(platformName(p.plat))}</button>`
     ).join('');
   }
 

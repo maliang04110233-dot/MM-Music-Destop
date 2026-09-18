@@ -19,6 +19,12 @@ import './router.js';
 import { updateProgress, onAudioEnded, parseLrc, showNoLyrics } from './player.js';
 import './shortcuts.js';
 
+// 播放状态外发同步 + 队列恢复（自 init() 内闭包提出，等价迁移）
+import {
+  syncToTray, syncToMiniPlayer, syncToDesktopLyric, resetDesktopLyricSong,
+  restorePlayQueueFromSaved,
+} from './player-sync.js';
+
 // 视图模块
 import './views/home.js';
 import './views/search.js';
@@ -50,6 +56,8 @@ const mockApi = {
   getSingerSongs: async () => [],
   getSingerAlbums: async () => ({ albums: [], total: 0 }),
   getAlbumSongs: async () => [],
+  // 无 musicAPI 时的开发兜底：平台清单为空 → 渲染层走内置兜底表（utils.js）
+  getPlatforms: async () => [],
   getDownloadUrl: async () => ({ url: '' }),
   getDownloadUrlSmart: async () => ({ url: '' }),
   getLyrics: async () => ({ lrc: '' }),
@@ -130,6 +138,12 @@ function buildApi() {
 }
 let api = buildApi();
 
+/** mock 用的来源 id：优先主进程下发的清单，缺失时用 utils.js 的兜底表 */
+function _mockSrcIds() {
+  const ids = getPlatforms().map(p => p.id);
+  return ids.length ? ids : fallbackPlatformIds();
+}
+
 // Mock 数据生成
 function mockSongs(k, s) {
   return Array.from({ length: 10 }, (_, i) => ({
@@ -139,7 +153,10 @@ function mockSongs(k, s) {
     album: ['专辑A', '专辑B', '专辑C'][i % 3],
     cover: '',
     duration: (3 + i * 0.5) * 60000,
-    source: s === 'all' ? ['netease','qq','bilibili'][i % 3] : s,
+    // 「全部」聚合搜索时给结果轮流打上来源标记。
+    // 不再写死 ['netease','qq','bilibili']：优先用主进程清单，缺失时用 utils.js
+    // 的兜底表 —— 平台 id 的字面量清单全仓只允许存在于 utils.js 一处。
+    source: s === 'all' ? _mockSrcIds()[i % _mockSrcIds().length] : s,
   }));
 }
 
@@ -151,7 +168,7 @@ function mockLocalSongs() {
   ];
 }
 
-// ── 音频元素（模块级，init 和 syncToMiniPlayer 都要访问）────────
+// ── 音频元素（模块级，init 绑定事件后以实参传给 player-sync.js）──
 let _audio = null;
 // 25s 加载超时守卫状态（事件绑定区使用）
 let _loadWatchSince = 0;
@@ -188,10 +205,21 @@ async function init() {
       if (savedTheme && typeof applyTheme === 'function') applyTheme(savedTheme);
     } catch (_e) { /* 主题恢复失败使用默认 */ }
 
-    // 加载语言包并应用翻译
+    // 平台清单（v3）：源下拉 / 平台名 / 徽标配色的唯一来源，来自主进程 registry。
+    // ⚠️ 必须在 applyTranslations() **之前** —— 本步会重建源下拉 DOM，
+    //    若放在之后，新插入的「全部」选项拿不到翻译（设计稿 §4.4 的顺序陷阱）。
     try {
-      const savedLang = await api.getPref('language') || 'zh';
-      if (window.i18n) { window.i18n.loadLanguage(savedLang); window.i18n.applyTranslations(); }
+      const platforms = await api.getPlatforms();
+      setPlatforms(platforms);
+      renderSourceSelect(platforms);
+    } catch (_e) {
+      logger.warn('[init] 获取平台清单失败，降级到内置兜底表:', _e && _e.message);
+      renderSourceSelect(getPlatforms());
+    }
+
+    // 加载语言包并应用翻译（applyTranslations 内部自会读一次 language pref）
+    try {
+      if (window.i18n) await window.i18n.applyTranslations();
     } catch (_e) { /* 忽略 */ }
 
     // 显示版本号 + commit
@@ -248,8 +276,8 @@ async function init() {
       // （此前注册了两个 timeupdate，updateProgress 每帧跑两遍）
       _audio.addEventListener('timeupdate', () => {
         updateProgress();
-        syncToMiniPlayer();
-        syncToDesktopLyric();
+        syncToMiniPlayer(_audio);
+        syncToDesktopLyric(_audio);
       });
       _audio.addEventListener('ended', onAudioEnded);
       // 音源加载/解码出错（URL 失效、代理文件损坏）：toast + 跳下一曲，避免静默卡死
@@ -290,9 +318,12 @@ async function init() {
         document.getElementById('playerCard')?.classList.remove('playing');
         // 暂停姿态：明确表达"是暂停不是卡死"（封面降饱和 + ⏸ 角标）
         if (getState('currentPlaying')) document.getElementById('playerCard')?.classList.add('paused');
+        // 状态文案统一按 audio 真实状态推导（不再用 currentPlaying 当判据，
+        // 换歌时它可能仍指向旧歌 → 误显示「已暂停」）
+        if (typeof refreshPlayerState === 'function') refreshPlayerState();
         if (typeof stopSpectrum === 'function') stopSpectrum();
-        syncToMiniPlayer();
-        syncToTray();
+        syncToMiniPlayer(_audio);
+        syncToTray(_audio);
       });
       _audio.addEventListener('play', () => {
         const icon = document.getElementById('btnPlayIcon');
@@ -300,9 +331,10 @@ async function init() {
         document.getElementById('btnPlay')?.setAttribute('aria-pressed', 'true');
         document.getElementById('playerCard')?.classList.remove('paused');
         document.getElementById('playerCard')?.classList.add('playing');
+        if (typeof refreshPlayerState === 'function') refreshPlayerState();
         if (typeof startSpectrum === 'function') startSpectrum();
-        syncToMiniPlayer();
-        syncToTray();
+        syncToMiniPlayer(_audio);
+        syncToTray(_audio);
       });
       // 缓冲反馈：waiting/stalled → 播放按钮转圈呼吸；playing/canplay → 恢复
       // （此前缓冲与暂停视觉上无法区分，用户分不清"正在缓冲"还是"出错"）
@@ -342,8 +374,8 @@ async function init() {
   if (typeof api.onSyncDesktopLyric === 'function') {
     api.onSyncDesktopLyric(() => {
       // 强制重推整份歌词（换歌标记重置）
-      _dlLastLyricSongId = null;
-      syncToDesktopLyric();
+      resetDesktopLyricSong();
+      syncToDesktopLyric(_audio);
     });
   }
 
@@ -366,103 +398,10 @@ async function init() {
     });
   }
 
-  // ── 播放状态同步到系统托盘 ──────────────────────────
-  function syncToTray() {
-    if (typeof api.trayUpdatePlayState !== 'function') return;
-    const song = getState('currentPlaying') || (getState('playQueue') || [])[getState('playIdx')] || null;
-    const isPlaying = _audio && !_audio.paused;
-    api.trayUpdatePlayState({
-      isPlaying,
-      title: song?.title || '',
-      artist: song?.artist || '',
-    });
-  }
-
-  // ── 播放状态同步到迷你播放器 ──────────────────────────
-  function syncToMiniPlayer() {
-    if (typeof api.syncMiniPlayer !== 'function' || !_audio) return;
-    const song = getState('currentPlaying') || (getState('playQueue') || [])[getState('playIdx')] || null;
-    const progress = _audio.duration ? (_audio.currentTime / _audio.duration * 100) : 0;
-
-    // 获取当前歌词行
-    let currentLyric = '';
-    const parsedLyrics = getState('parsedLyrics');
-    if (parsedLyrics && parsedLyrics.length) {
-      const idx = parsedLyrics.findIndex(l => l.t > _audio.currentTime) - 1;
-      if (idx >= 0 && idx < parsedLyrics.length) {
-        currentLyric = parsedLyrics[idx].text || '';
-      }
-    }
-
-    const timeNow = fmtTime(_audio.currentTime);
-    const timeTotal = fmtTime(_audio.duration);
-    const timeStr = `${timeNow} / ${timeTotal}`;
-
-    api.syncMiniPlayer({
-      title: song ? song.title : '未在播放',
-      artist: song ? (song.artist || '未知艺术家') : '—',
-      cover: song ? song.cover : '',
-      playing: !_audio.paused,
-      progress,
-      lyric: currentLyric,
-      time: timeStr,
-    });
-  }
-
-  // ── 播放状态同步到桌面歌词窗口 ────────────────────────
-  // 歌词整份只在换歌时推一次（避免每帧序列化整份 parsedLyrics），
-  // currentTime 每帧推；桌面窗口自行定位当前行+逐字高亮
-  let _dlLastLyricSongId = null;
-  function syncToDesktopLyric() {
-    if (typeof api.syncDesktopLyric !== 'function' || !_audio) return;
-    const song = getState('currentPlaying') || (getState('playQueue') || [])[getState('playIdx')] || null;
-    const payload = { currentTime: _audio.currentTime };
-    const songKey = song ? String(song.id) + ':' + String(song.source || '') : '';
-    if (songKey !== _dlLastLyricSongId) {
-      _dlLastLyricSongId = songKey;
-      const parsed = getState('parsedLyrics') || [];
-      // 只送渲染所需字段（wordTimes 用于逐字高亮）
-      payload.lyrics = parsed.map(l => ({
-        t: l.t, text: l.text, subText: l.subText || '',
-        words: l.words || [], wordTimes: l.wordTimes || [],
-      }));
-      payload.title = song ? song.title : '';
-    }
-    api.syncDesktopLyric(payload);
-  }
-
-  // 在 play/pause/timeupdate 时同步（已在上面合并）
-
-  // ── 播放队列持久化 ─────────────────────────────────
-  let _queueRestored = false; // 防双重恢复
-
-  // 辅助函数：恢复 loopMode/isShuffled 后更新按钮视觉
-  function applyRestoredPlayMode(loopMode, isShuffled) {
-    if (typeof loopMode === 'number') {
-      setState('loopMode', loopMode);
-    }
-    if (typeof isShuffled === 'boolean') {
-      setState('isShuffled', isShuffled);
-    }
-    // 更新合并按钮的视觉
-    if (typeof updatePlayModeButton === 'function') updatePlayModeButton();
-  }
-
-  function restorePlayQueueFromSaved(saved) {
-    if (_queueRestored || !saved || !saved.queue || !saved.queue.length) return;
-    _queueRestored = true;
-    setState('playQueue', saved.queue);
-    if (typeof saved.playIdx === 'number' && saved.playIdx >= 0 && saved.playIdx < saved.queue.length) {
-      setState('playIdx', saved.playIdx);
-    }
-    applyRestoredPlayMode(saved.loopMode, saved.isShuffled);
-    // 在播放器卡片上显示第一首歌（不自动播放）
-    const idx = (typeof saved.playIdx === 'number' && saved.playIdx >= 0 && saved.playIdx < saved.queue.length) ? saved.playIdx : 0;
-    if (saved.queue[idx]) {
-      if (typeof updatePlayerCard === 'function') updatePlayerCard(saved.queue[idx]);
-    }
-    showToast(`♻️ 恢复播放队列 ${saved.queue.length} 首`, 'info', 2000);
-  }
+  // ── 播放状态外发同步 / 队列恢复 ──────────────────────
+  // 这四个函数已外提到 player-sync.js（等价迁移）：它们原先定义在此处，
+  // 仅被 init 调用、彼此互调，故可整体外提；_audio 改为显式传参。
+  // 见 src/renderer/js/player-sync.js 与 test/player-sync.test.js。
 
   // 监听 playQueueRestored 事件（主进程启动时推送）
   api.onPlayQueueRestored((saved) => {
@@ -779,20 +718,32 @@ function invertSelection() {
   updatePlToolbarInfo();
 }
 
+// 歌单来源歌曲的额外命名元数据，供 {trackNo}/{trackTotal}/{playlist} 模板变量取值
+function playlistTaskMeta(idx) {
+  const meta = state.getPlaylistMeta();
+  const songs = state.getPlaylistSongs();
+  return {
+    playlistName: (meta && meta.name) || '',
+    trackNo: idx + 1,
+    trackTotal: songs.length,
+  };
+}
+
 async function addSingleToQueue(idx) {
   const s = state.getPlaylistSongs()[idx];
   if (!s) return;
   try {
     const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    const r = await api.addToQueue({ ...s, saveDir, quality });
+    const task = { ...s, ...playlistTaskMeta(idx), saveDir, quality };
+    const r = await api.addToQueue(task);
     if (r && r.duplicated) {
       showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
       return;
     }
     if (r && r.alreadyDownloaded) {
       showRedownloadToast(s.title, r.finishedAt, () => {
-        api.addToQueue({ ...s, saveDir, quality, forceRedownload: true })
+        api.addToQueue({ ...task, forceRedownload: true })
           .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
           .catch(e => showToast('加入失败: ' + e.message, 'error'));
       });
@@ -810,15 +761,16 @@ async function addPlaylistToQueueClick(skipExisting) {
     showToast('请先勾选要下载的歌曲', 'warn');
     return;
   }
-  let toAdd = Array.from(checkedSet).map(idx => state.getPlaylistSongs()[idx]).filter(Boolean);
+  let toAdd = Array.from(checkedSet).sort((a, b) => a - b)
+    .map(idx => ({ s: state.getPlaylistSongs()[idx], idx }))
+    .filter(x => x.s);
   let skipped = 0;
   if (skipExisting) {
     const filtered = [];
     const existsMap = state.getPlaylistLocalExists();
-    for (const s of toAdd) {
-      const i = state.getPlaylistSongs().indexOf(s);
-      if (existsMap.get(i) === true) skipped++;
-      else filtered.push(s);
+    for (const { s, idx } of toAdd) {
+      if (existsMap.get(idx) === true) skipped++;
+      else filtered.push({ s, idx });
     }
     toAdd = filtered;
   }
@@ -829,7 +781,7 @@ async function addPlaylistToQueueClick(skipExisting) {
   try {
     const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    const payload = { songs: toAdd.map(s => ({ ...s, saveDir, quality })) };
+    const payload = { songs: toAdd.map(({ s, idx }) => ({ ...s, ...playlistTaskMeta(idx), saveDir, quality })) };
     const r = await api.addPlaylistToQueue(payload);
     const dlSkipped = r && r.skippedDownloaded ? r.skippedDownloaded : 0;
     let msg = `已加入 ${r.queued} 首`;
@@ -975,10 +927,16 @@ let _pqVisible = false;
 window.togglePlayQueue = () => {
   const panel = document.getElementById('pqPanel');
   const btn = document.getElementById('btnQueueToggle');
+  const bar = document.getElementById('pcQueueBar');
+  const chev = document.getElementById('pcQueueChev');
   if (!panel) return;
   _pqVisible = !_pqVisible;
-  panel.style.display = _pqVisible ? 'block' : 'none';
+  // 用 .open 类而非内联 display：过渡动画与 :has(.open) 的卡片让位都依赖它
+  panel.classList.toggle('open', _pqVisible);
+  panel.style.display = '';
   if (btn) btn.classList.toggle('active', _pqVisible);
+  if (bar) bar.setAttribute('aria-expanded', String(_pqVisible));
+  if (chev) chev.textContent = _pqVisible ? '收起' : '展开';
   renderPlayQueueUI();
 };
 
@@ -986,22 +944,41 @@ function renderPlayQueueUI() {
   const list = document.getElementById('pqList');
   const count = document.getElementById('pqCount');
   const badge = document.getElementById('pqBadge');
+  const thumbs = document.getElementById('pcQueueThumbs');
   if (!list) return;
   const queue = getState('playQueue') || [];
   const playIdx = getState('playIdx') || 0;
+  const NOTE_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">'
+    + '<path d="M9 19a3 3 0 1 1-2-2.83V7l10-2v7.17A3 3 0 1 0 19 15V3L7 5v12.17Z"/></svg>';
   if (queue.length === 0) {
-    list.innerHTML = '<div class="pq-empty">暂无播放记录</div>';
+    list.innerHTML = '<div class="pq-empty">'
+      + '<div class="pq-empty-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">'
+      + '<path d="M9 19a3 3 0 1 1-2-2.83V7l10-2v7.17A3 3 0 1 0 19 15V3L7 5v12.17Z"/></svg></div>'
+      + '暂无播放歌曲<br><span class="pq-empty-hint">点击歌曲播放以添加</span></div>';
   } else {
     list.innerHTML = queue.map((s, i) => {
       const isCur = i === playIdx;
-      return `<div class="pq-item${isCur?' playing':''}" onclick="window._playQueueIdx(${i})">
-        <span class="pq-item-title">${s.title||''}</span>
-        <span class="pq-item-artist">${s.artist||''}</span>
-      </div>`;
+      const cover = s.cover
+        ? '<img class="pq-thumb" src="' + escAttr(s.cover) + '" alt="" loading="lazy">'
+        : '<span class="pq-thumb-ph">' + NOTE_SVG + '</span>';
+      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" onclick="window._playQueueIdx(' + i + ')">'
+        + '<span class="pq-idx">' + (i + 1) + '</span>'
+        + cover
+        + '<span class="pq-item-main">'
+        + '<span class="pq-item-title">' + esc(s.title || '') + '</span>'
+        + '<span class="pq-item-artist">' + esc(s.artist || '') + '</span>'
+        + '</span>'
+        + '<span class="pq-dur">' + fmtDuration(s.duration) + '</span>'
+        + '</div>';
     }).join('');
   }
   if (count) count.textContent = queue.length;
   if (badge) badge.textContent = queue.length > 0 ? String(queue.length) : '';
+  // 常驻条缩略图：队列前 3 首里有封面的（叠放展示）
+  if (thumbs) {
+    thumbs.innerHTML = queue.filter((s) => s.cover).slice(0, 3).map((s) =>
+      '<img class="pc-queue-thumb" src="' + escAttr(s.cover) + '" alt="">').join('');
+  }
 }
 
 window._playQueueIdx = (idx) => {
