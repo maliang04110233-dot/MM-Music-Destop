@@ -4,7 +4,7 @@
 
 import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
-import { dlBadgeHtml, dlEnsureHistoryLoaded, setDlChangeListener } from '../dlStatus.js';
+import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -698,7 +698,7 @@ function backToSearch() {
 // 下载状态徽标：记住当前列表，队列/历史变化时防抖重渲染（300ms 合并突发）
 let _dlLastList = null;
 let _dlRerenderTimer = null;
-setDlChangeListener(() => {
+addDlChangeListener(() => {
   if (_dlRerenderTimer || !_dlLastList) return;
   _dlRerenderTimer = setTimeout(() => {
     _dlRerenderTimer = null;

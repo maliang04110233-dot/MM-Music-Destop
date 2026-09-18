@@ -55,13 +55,15 @@ test('dlObserveQueue：容忍非数组/null 项', async () => {
   m.dlObserveQueue([null, undefined, { status: 'done' }]);
 });
 
-test('setDlChangeListener：observe 与历史加载各触发一次；回调抛错不外泄', async () => {
+test('addDlChangeListener：多订阅者并存同时触发；回调抛错不外泄', async () => {
   const m = await fresh();
+  let boom = 0;
   let hits = 0;
-  m.setDlChangeListener(() => { throw new Error('listener boom'); });
-  m.dlObserveQueue([]); // 抛错被吞即通过
-  m.setDlChangeListener(() => { hits++; });
-  m.dlObserveQueue([song('x', 1)]);
+  m.addDlChangeListener(() => { boom++; throw new Error('listener boom'); });
+  m.addDlChangeListener(() => { hits++; });
+  m.addDlChangeListener(null); // 非函数直接忽略
+  m.dlObserveQueue([song('x', 1)]); // 第一个抛错被吞，第二个仍被触发
+  assert.strictEqual(boom, 1);
   assert.strictEqual(hits, 1);
 });
 

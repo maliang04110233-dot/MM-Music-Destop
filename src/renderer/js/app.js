@@ -41,7 +41,7 @@ import './views/playlist.js';
 import './views/subscriptions.js';
 import './views/clipboard.js';
 import './views/welcome.js';
-import { dlObserveQueue } from './dlStatus.js';
+import { dlObserveQueue, dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from './dlStatus.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -672,6 +672,8 @@ function renderPlaylistModal(songs) {
   const body = document.getElementById('playlistModalBody');
   const checkedCount = state.getPlaylistChecked().size;
   const localCount = Array.from(state.getPlaylistLocalExists().values()).filter(Boolean).length;
+  const dlQueue = getState('queueSnapshot') || [];
+  dlEnsureHistoryLoaded(); // 跨会话"已下载"懒回填，加载完成后经监听器重渲染
 
   const toolbar = `
     <div class="pl-toolbar">
@@ -703,6 +705,7 @@ function renderPlaylistModal(songs) {
           : esc(s.album)) : ''}</div>
       </div>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
+      ${dlBadgeHtml(s, dlQueue)}
       <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendSong(state.getPlaylistSongs()[${i}])">▶</button>
       ${heartBtnHtml(s, 'top-song-action')}
       <button class="top-song-action" title="下载" onclick="event.stopPropagation();addSingleToQueue(${i})">⬇</button>
@@ -713,6 +716,18 @@ function renderPlaylistModal(songs) {
   body.innerHTML = toolbar + list;
   updatePlToolbarInfo();
 }
+
+// 弹层打开期间队列/历史变化 → 防抖重渲染徽标（勾选与本地检测结果均从 state 还原，不丢失）
+let _plDlTimer = null;
+addDlChangeListener(() => {
+  const modal = document.getElementById('playlistModal');
+  if (!modal || modal.classList.contains('hidden') || _plDlTimer) return;
+  _plDlTimer = setTimeout(() => {
+    _plDlTimer = null;
+    const songs = state.getPlaylistSongs();
+    if (songs.length) renderPlaylistModal(songs);
+  }, 300);
+});
 
 function updatePlToolbarInfo() {
   const el = document.getElementById('plToolbarInfo');

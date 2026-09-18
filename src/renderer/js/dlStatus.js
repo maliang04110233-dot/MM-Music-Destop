@@ -11,17 +11,21 @@
 const _downloaded = new Set(); // 'source:id' → 已下载（历史 ∪ 本次完成）
 let _historyLoaded = false;
 let _historyLoading = null;
-let _onChange = null;
+const _listeners = []; // 多个列表视图各自订阅，互不覆盖
 
 export function songDlKey(s) {
   if (!s || s.source == null || s.id == null) return null;
   return `${s.source}:${s.id}`;
 }
 
-/** done 事件回调（列表重渲染用），传 null 可注销 */
-export function setDlChangeListener(fn) { _onChange = fn; }
+/** done 事件回调（列表重渲染用），可注册多个 */
+export function addDlChangeListener(fn) { if (typeof fn === 'function') _listeners.push(fn); }
 
-function _fire() { try { if (_onChange) _onChange(); } catch (_e) { /* 视图未就绪 */ } }
+function _fire() {
+  for (const fn of _listeners) {
+    try { fn(); } catch (_e) { /* 单个视图异常不拖垮其他订阅者 */ }
+  }
+}
 
 /** queue-updated 驱动：吸收新的 done + 通知列表刷新 */
 export function dlObserveQueue(queue) {
@@ -88,7 +92,7 @@ export function _resetDlStatus() {
   _downloaded.clear();
   _historyLoaded = false;
   _historyLoading = null;
-  _onChange = null;
+  _listeners.length = 0;
 }
 
 if (typeof window !== 'undefined') {
@@ -97,4 +101,5 @@ if (typeof window !== 'undefined') {
   window.dlBadgeHtml = dlBadgeHtml;
   window.dlObserveQueue = dlObserveQueue;
   window.dlEnsureHistoryLoaded = dlEnsureHistoryLoaded;
+  window.addDlChangeListener = addDlChangeListener;
 }
