@@ -4,16 +4,17 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
   <title>桌面歌词</title>
+  <!-- 复用主窗口令牌；注意下方必须覆盖 base.css 的 html,body 背景，否则透明窗变不透明 -->
+  <link rel="stylesheet" href="./styles/base.css">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
+    html, body { background: transparent; }
+    body {
       width: 100%; height: 100%;
-      background: transparent;
+      display: flex; flex-direction: column;
       overflow: hidden;
       user-select: none;
-      font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
     }
-    body { display: flex; flex-direction: column; }
 
     /* 歌词主区：拖动区（未锁定时）+ 穿透（锁定后正文不响应鼠标） */
     .lyric-stage {
@@ -22,34 +23,35 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 8px;
-      padding: 0 20px;
-      -webkit-app-region: drag; /* 允许拖动窗口 */
+      gap: var(--sp-2);
+      padding: 0 var(--sp-5);
+      -webkit-app-region: drag;
     }
+    /* 主字用纯白 + 双层暗描边：桌面歌词浮在任意壁纸上，可读性优先于主题一致性 */
     .lyric-line {
-      font-size: 28px;
-      font-weight: 700;
-      color: #ffffff;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4);
       max-width: 100%;
+      font-size: 28px;
+      font-weight: var(--fw-bold);
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,.55), 0 0 2px rgba(0,0,0,.4);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      transition: opacity 0.3s, transform 0.3s;
       text-align: center;
+      transition: opacity var(--dur-3) var(--ease), transform var(--dur-3) var(--ease);
     }
-    .lyric-line.prev { opacity: 0.45; font-size: 22px; font-weight: 500; }
-    .lyric-line.next { opacity: 0.45; font-size: 22px; font-weight: 500; }
-    .lyric-line.empty::before { content: '♪ 暂无歌词 ♪'; font-size: 18px; font-weight: 400; opacity: 0.6; }
-    /* 逐字卡拉 OK 高亮 */
-    .lyric-line .w { color: rgba(255,255,255,0.5); transition: color 0.25s; }
-    .lyric-line .w.lit { color: #00ffc8; text-shadow: 0 1px 6px rgba(0,255,200,0.5); }
+    .lyric-line.prev,
+    .lyric-line.next { opacity: .45; font-size: 22px; font-weight: var(--fw-med); }
+    .lyric-line.empty::before { content: '♪ 暂无歌词 ♪'; font-size: 18px; font-weight: var(--fw-normal); opacity: .6; }
+    /* 逐字卡拉 OK 高亮（强调色走令牌，换主题即换色） */
+    .lyric-line .w { color: rgba(255,255,255,.5); transition: color var(--dur-2) var(--ease); }
+    .lyric-line .w.lit { color: var(--accent-ui); text-shadow: 0 1px 6px var(--accent-line); }
     .lyric-sub {
-      font-size: 16px;
-      font-weight: 500;
-      color: rgba(255,255,255,0.55);
-      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
       max-width: 100%;
+      font-size: 16px;
+      font-weight: var(--fw-med);
+      color: rgba(255,255,255,.55);
+      text-shadow: 0 1px 3px rgba(0,0,0,.5);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -59,22 +61,31 @@
     .control-bar {
       display: none;
       justify-content: flex-end;
-      gap: 6px;
-      padding: 4px 8px;
+      gap: var(--sp-1);
+      padding: var(--sp-1) var(--sp-2);
       -webkit-app-region: no-drag;
     }
     body:hover .control-bar { display: flex; }
-    .ctl-btn {
-      min-width: 26px; height: 26px;
+    .dl-btn {
+      min-width: 26px;
+      height: 26px;
       padding: 0 7px;
-      border: none; border-radius: 4px;
-      background: rgba(20,20,35,0.85);
-      color: #cdd3ff;
-      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: color-mix(in srgb, var(--bg-deep) 84%, transparent);
+      border: 1px solid var(--stroke-2);
+      border-radius: var(--r-sm);
+      color: var(--fg-1);
+      font-family: inherit;
+      font-size: var(--fs-xs);
       cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    .ctl-btn:hover { background: rgba(45,45,80,0.95); color: #fff; }
-    .ctl-btn.active { color: #00ffc8; }
+    .dl-btn:hover { background: var(--elev-2); color: var(--fg-1); border-color: var(--stroke-2); }
+    .dl-btn.active { color: var(--accent-ui); border-color: var(--accent-line); }
   </style>
 </head>
 <body>
@@ -85,10 +96,14 @@
     <div class="lyric-sub" id="lyricSub"></div>
   </div>
   <div class="control-bar" id="controlBar">
-    <button class="ctl-btn" id="btnLock" title="锁定歌词（锁定后正文鼠标穿透，仅控制条可点）">🔓</button>
-    <button class="ctl-btn" id="btnFontDown" title="缩小字号">A-</button>
-    <button class="ctl-btn" id="btnFontUp" title="放大字号">A+</button>
-    <button class="ctl-btn" id="btnClose" title="关闭桌面歌词">✕</button>
+    <button class="dl-btn" id="btnLock" title="锁定歌词（锁定后正文鼠标穿透，仅控制条可点）" aria-label="锁定或解锁歌词">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.9-1"/></svg>
+    </button>
+    <button class="dl-btn" id="btnFontDown" title="缩小字号" aria-label="缩小字号">A-</button>
+    <button class="dl-btn" id="btnFontUp" title="放大字号" aria-label="放大字号">A+</button>
+    <button class="dl-btn" id="btnClose" title="关闭桌面歌词" aria-label="关闭桌面歌词">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
   </div>
 
   <script>
@@ -193,10 +208,15 @@
     });
 
     // ── 控制条 ───────────────────────────────────────────
+    const ICON_UNLOCKED = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.9-1"/></svg>';
+    const ICON_LOCKED = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
     function setLocked(v) {
       locked = !!v;
-      document.getElementById('btnLock').textContent = locked ? '🔒' : '🔓';
-      document.getElementById('btnLock').classList.toggle('active', locked);
+      const btn = document.getElementById('btnLock');
+      btn.innerHTML = locked ? ICON_LOCKED : ICON_UNLOCKED;
+      btn.title = locked ? '解锁歌词（当前正文鼠标穿透）' : '锁定歌词（锁定后正文鼠标穿透，仅控制条可点）';
+      btn.classList.toggle('active', locked);
       // 锁定：整窗穿透（控制条靠 mouseenter 恢复）；解锁：恢复点击
       window.miniAPI.send('desktop-lyric-lock', locked);
     }

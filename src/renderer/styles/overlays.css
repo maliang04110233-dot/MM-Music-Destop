@@ -15,7 +15,7 @@
 .pl-checkbox { margin-right: 6px; width: 14px; height: 14px; cursor: pointer; }
 .pl-tag-local {
   display: inline-block; margin-left: 6px; padding: 1px 6px;
-  background: rgba(74,222,128,.15); color: var(--green);
+  background: var(--c-ok); color: var(--green);
   border-radius: 4px; font-size: 10px; font-weight: 600;
 }
 
@@ -164,7 +164,7 @@
   content: ''; flex-shrink: 0;
   width: 3px; height: 13px; border-radius: 2px;
   background: var(--neon-cyan);
-  box-shadow: 0 0 8px var(--neon-cyan-dim);
+  box-shadow: none;
 }
 .settings-page > .settings-section-title:first-child { margin-top: 0; }
 
@@ -436,8 +436,8 @@
   background: var(--neon-dim); opacity: .35;
   transition: background .3s, opacity .3s, box-shadow .3s;
 }
-.account-dot.ok  { background: var(--c-ok); opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--c-ok) 55%, transparent); }
-.account-dot.err { background: var(--c-danger); opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--c-danger) 55%, transparent); }
+.account-dot.ok  { background: var(--c-ok); opacity: 1; box-shadow: none; }
+.account-dot.err { background: var(--c-danger); opacity: 1; box-shadow: none; }
 
 /* 登录按钮：旧版是紫→浅紫实心渐变，与全应用的青绿语言脱节；改为主色描边 */
 .account-primary-btn {

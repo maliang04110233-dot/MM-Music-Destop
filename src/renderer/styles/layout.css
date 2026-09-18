@@ -1,153 +1,199 @@
+/* ══════════════════════════════════════════════════════════════════
+   MusicDL · Shell（外壳）
+   标题栏 / 侧栏 / 内容区骨架。视觉基调 = 现代播放器：
+     · 中性深色面 + 1px 描边建立层次，不靠发光
+     · 侧栏 64px 图标轨，悬停浮出为 216px（overlay，不推挤主区）
+     · 全量引用 base.css 的令牌，7 套主题一致生效
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 应用骨架（原先只定义在 base.css，重写时并入外壳层） ── */
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
 /* ── 标题栏 ─────────────────────────────────────────── */
 .titlebar {
   display: flex; align-items: center; justify-content: space-between;
-  height: 52px; padding: 0 18px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--neon-blue-dim);
+  height: 52px; padding: 0 var(--sp-4) 0 var(--sp-5);
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(130%);
+  border-bottom: 1px solid var(--stroke-1);
   -webkit-app-region: drag;
   flex-shrink: 0;
+  z-index: var(--z-sticky);
 }
-.titlebar-left { display: flex; align-items: center; gap: 12px; }
+.titlebar-left { display: flex; align-items: center; gap: var(--sp-3); }
 .app-logo {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue));
+  width: 32px; height: 32px; border-radius: var(--r-md);
+  background: linear-gradient(140deg, var(--accent-soft), transparent 85%);
+  border: 1px solid var(--accent-line);
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; flex-shrink: 0;
-  box-shadow: 0 0 12px rgba(0,255,200,0.4), 0 0 24px rgba(0,255,200,0.2);
 }
 .app-icon { font-size: 20px; }
-.app-title { font-size: 15px; font-weight: 700; letter-spacing: -.2px; color: var(--neon-text); }
-.app-subtitle { font-size: 10.5px; color: var(--neon-dim); margin-top: 1px; letter-spacing: .3px; }
-.winctrls { display: flex; gap: 6px; -webkit-app-region: no-drag; }
-.winctrls button {
-  width: 28px; height: 28px; border-radius: 6px; border: none;
-  background: transparent; color: var(--neon-dim); font-size: 13px;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background .15s, color .15s;
+.app-title {
+  font-size: var(--fs-lg); font-weight: var(--fw-semi);
+  letter-spacing: -.2px; color: var(--fg-1); line-height: 1.2;
 }
-.winctrls button:hover { background: var(--bg-hover); color: var(--neon-cyan); }
-.winctrls .close:hover { background: var(--neon-pink); color: white; }
+.app-subtitle {
+  font-size: 10.5px; color: var(--fg-3); margin-top: 1px; letter-spacing: .3px;
+}
+.winctrls { display: flex; gap: var(--sp-1); -webkit-app-region: no-drag; }
+.winctrls button {
+  width: 30px; height: 30px; border-radius: var(--r-sm); border: none;
+  background: transparent; color: var(--fg-3); font-size: var(--fs-md);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.winctrls button:hover { background: var(--elev-2); color: var(--fg-1); }
+.winctrls .close:hover { background: #e5484d; color: #fff; }
 
 /* ── 主体 ───────────────────────────────────────────── */
 .main {
-  display: flex; flex: 1; overflow: hidden;
-  gap: 0;
+  display: flex; flex: 1; overflow: hidden; gap: 0;
+  position: relative;   /* 侧栏 overlay 的定位上下文 */
 }
 
-/* ── 侧边栏 ─────────────────────────────────────────── */
+/* ══ 侧栏：64px 图标轨，悬停浮出 ══════════════════════════════════
+   绝对定位 + 悬停变宽 = 展开时覆盖而非推挤主区，避免内容重排跳动。
+   窄态用 font-size:0 收起裸文本节点（nav-item 文字没有包裹 span，
+   这是本仓 DOM 的现实约束，改 HTML 前只能这样收）。 */
 .sidebar {
-  width: 210px; flex-shrink: 0;
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 64px;
+  z-index: var(--z-side);
   background: var(--bg-card);
-  border-right: 1px solid var(--neon-blue-dim);
-  display: flex; flex-direction: column; padding: 16px 12px;
+  border-right: 1px solid var(--stroke-1);
+  display: flex; flex-direction: column;
+  padding: var(--sp-3) 10px;
   gap: 2px;
+  overflow: hidden;
+  transition: width var(--dur-2) var(--ease-out),
+              box-shadow var(--dur-2) var(--ease-out);
 }
+.sidebar:hover {
+  width: 216px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* 分区标题：窄态收起（高度归零，不留空隙） */
 .sidebar-title {
-  font-size: 10px; color: var(--neon-cyan); text-transform: uppercase;
-  letter-spacing: 1.2px; padding: 0 8px; margin: 14px 0 6px;
-  opacity: 0.7;
+  font-size: 10px; color: var(--fg-3); text-transform: uppercase;
+  letter-spacing: 1.1px; padding: 0 var(--sp-2); margin: 14px 0 6px;
+  white-space: nowrap;
+  transition: opacity var(--dur-1) var(--ease);
 }
 .sidebar-title:first-child { margin-top: 0; }
+.sidebar:not(:hover) .sidebar-title {
+  opacity: 0; height: 0; margin: 0; padding: 0; pointer-events: none;
+}
+
+/* 导航项：40px 高 / 圆角 8px / 激活靠「淡底 + 左侧指示条」 */
 .nav-item {
+  position: relative;
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: 8px;
-  cursor: pointer; color: var(--neon-dim);
-  transition: background .15s, color .15s, border-color .15s;
-  font-size: 13px; font-weight: 500;
-  border: 1px solid transparent;
-  background: transparent; width: 100%; text-align: left;
+  height: 38px; padding: 0 10px;
+  border-radius: var(--r-md);
+  cursor: pointer; color: var(--fg-2);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  font-size: var(--fs-md); font-weight: var(--fw-med);
+  border: none; background: transparent; width: 100%; text-align: left;
+  white-space: nowrap; flex-shrink: 0;
 }
-.nav-item:hover {
-  background: var(--bg-hover);
-  color: var(--neon-text);
-  border-color: var(--neon-blue-dim);
+.nav-item:hover { background: var(--elev-1); color: var(--fg-1); }
+.nav-item.active { background: var(--accent-soft); color: var(--accent-ui); }
+/* 激活指示条：贴侧栏左边缘，只在展开态出现 */
+.nav-item.active::before {
+  content: '';
+  position: absolute; left: -10px; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 17px; border-radius: 0 3px 3px 0;
+  background: var(--accent-ui);
+  opacity: 0; transition: opacity var(--dur-2) var(--ease);
 }
-.nav-item.active {
-  background: rgba(0,255,200,0.08);
-  color: var(--neon-cyan);
-  border-color: rgba(0,255,200,0.25);
-  box-shadow: 0 0 8px rgba(0,255,200,0.1);
+.sidebar:hover .nav-item.active::before { opacity: 1; }
+.nav-item .icon {
+  font-size: 15px; width: 20px; text-align: center; flex-shrink: 0;
+  line-height: 1;
 }
-.nav-item .icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
 .nav-item .nav-badge {
-  margin-left: auto; font-size: 10px; padding: 1px 6px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue));
-  color: #07090f; font-weight: 700;
+  margin-left: auto; font-size: 10px; padding: 1px 7px;
+  border-radius: var(--r-full);
+  background: var(--accent-ui); color: var(--on-accent);
+  font-weight: var(--fw-bold);
 }
+/* 窄态：收起文字与徽标，图标居中 */
+.sidebar:not(:hover) .nav-item {
+  font-size: 0; gap: 0; padding: 0; justify-content: center;
+}
+.sidebar:not(:hover) .nav-item .icon { font-size: 17px; width: auto; }
+.sidebar:not(:hover) .nav-item .nav-badge { display: none; }
 
 /* 平台状态指示器 */
 .platform-status-list {
-  margin: 8px 0 4px; display: flex; flex-direction: column; gap: 3px;
+  margin: var(--sp-2) 0 var(--sp-1); display: flex; flex-direction: column; gap: 3px;
 }
 .platform-status-row {
   display: flex; align-items: center; gap: 7px;
-  padding: 5px 10px; border-radius: 7px;
-  font-size: 11.5px; color: var(--neon-dim);
+  padding: 5px 10px; border-radius: var(--r-sm);
+  font-size: 11.5px; color: var(--fg-3); white-space: nowrap;
 }
 .platform-dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  background: var(--neon-dim); opacity: .4;
-  transition: background .3s, opacity .3s;
+  background: var(--fg-3); opacity: .45;
+  transition: background var(--dur-3) var(--ease), opacity var(--dur-3) var(--ease);
 }
-.platform-dot.active { background: var(--neon-green); opacity: 1; box-shadow: 0 0 6px var(--neon-green); }
-.platform-dot.cookie { background: var(--gold); opacity: 1; box-shadow: 0 0 6px var(--gold); }
+.platform-dot.active { background: var(--c-ok); opacity: 1; }
+.platform-dot.cookie { background: var(--c-warn); opacity: 1; }
 .platform-name-s { flex: 1; }
+/* 窄态整块收起：否则 6 行文字被 64px 边框裁成竖排残字 */
+.sidebar:not(:hover) .platform-status-list { display: none; }
 
-/* 下载目录 */
+/* 下载目录块（贴底）：窄态整体隐去 */
 .save-dir {
   margin-top: auto; padding: 10px;
-  background: var(--bg-deep); border-radius: 8px;
-  border: 1px solid var(--neon-blue-dim);
+  background: var(--elev-1); border-radius: var(--r-md);
+  border: 1px solid var(--stroke-1);
+  white-space: nowrap;
+  transition: opacity var(--dur-1) var(--ease);
 }
+.sidebar:not(:hover) .save-dir { opacity: 0; pointer-events: none; }
 .save-dir label {
-  font-size: 10px; color: var(--neon-cyan); display: block;
-  margin-bottom: 5px; text-transform: uppercase;
-  letter-spacing: .8px; opacity: 0.7;
+  font-size: 10px; color: var(--fg-3); display: block;
+  margin-bottom: 5px; text-transform: uppercase; letter-spacing: .8px;
 }
 .save-dir-path {
-  font-size: 11px; color: var(--neon-dim); word-break: break-all;
+  font-size: var(--fs-xs); color: var(--fg-2); word-break: break-all;
   margin-bottom: 6px; line-height: 1.4;
 }
-.btn-sm {
-  font-size: 11px; padding: 4px 10px; border-radius: 6px;
-  border: 1px solid var(--neon-blue-dim); background: var(--bg-hover);
-  color: var(--neon-dim); cursor: pointer; transition: all .15s;
-}
-.btn-sm:hover {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  box-shadow: 0 0 6px rgba(0,255,200,0.2);
-}
 
-/* ── 内容区 ─────────────────────────────────────────── */
+/* 侧栏内的紧凑按钮（.btn-sm 主定义在 base.css，此处只做侧栏内的尺寸适配） */
+.sidebar .btn-sm { width: 100%; }
+
+/* ── 内容区（左侧留出图标轨宽度） ───────────────────── */
 .content {
   flex: 1; display: flex; flex-direction: row;
-  overflow: hidden; padding: 20px 16px 20px 20px;
-  gap: 16px;
+  overflow: hidden;
+  padding: var(--sp-5);
+  padding-left: calc(64px + var(--sp-5));
+  gap: var(--sp-4);
   min-width: 0;
 }
 .content-main {
   flex: 1; display: flex; flex-direction: column;
-  overflow: hidden; gap: 16px; min-width: 0;
-  height: 100%;
-  min-height: 0;
+  overflow: hidden; gap: var(--sp-4); min-width: 0;
+  height: 100%; min-height: 0;
 }
 
 /* ── 右侧播放器面板 ───────────────────────────────── */
 .side-panel {
-  width: 300px; flex-shrink: 0;
+  width: 320px; flex-shrink: 0;
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
-  padding: 20px 20px 20px 0;
   gap: 0;
 }
 .side-panel .player-card {
   flex: 1 1 0;
   min-height: 0;
   display: flex; flex-direction: column;
-  border-radius: 0;
-  border-right: none;
   overflow: hidden;
 }
 /* 队列面板展开时，播放器卡片不占满全部空间 */

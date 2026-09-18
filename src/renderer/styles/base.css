@@ -1,21 +1,38 @@
-/* ── 变量 & 重置 ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   MusicDL · Design Tokens & Base
+   ──────────────────────────────────────────────────────────────────
+   分层约定（改样式前先确认该动哪一层，避免又来一次「两套外壳并存」）
+
+     tokens   本文件 :root / [data-theme]    只放值，不放样式
+     base     本文件下半                     重置 + 通用组件（按钮/通知/空态/骨架）
+     shell    layout.css                     标题栏 · 侧栏 · 内容区骨架
+     views    content.css / player.css       各视图内部
+     overlays overlays.css                   设置面板 / 弹层
+
+   两条铁律
+     1. 主题跟着令牌走 —— 外壳与组件一律引用 var()，禁止再写死色值，
+        否则切 light / forest 主题时只有一半界面在变色（历史 bug）。
+     2. 语义优先于色相 —— 写「成功色」而不是「绿色」，用 --c-ok。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 重置 ───────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* 深色背景 */
-  --bg-deep:   #07090f;
-  --bg-card:   #0d1120;
-  --bg-hover:  #141828;
-  --bg-input:  #111525;
-  --border:    #1c2135;
+  /* ── 基础色（深色默认主题） ──────────────────────── */
+  --bg-deep:   #0b0c0e;
+  --bg-card:   #131417;
+  --bg-hover:  #1b1d21;
+  --bg-input:  #16171b;
+  --border:    #262930;
 
   /* 主题色 */
-  --accent:    #6c63ff;
-  --accent2:   #a78bfa;
-  --accent-glow: rgba(108,99,255,.35);
-  --text:      #e8e6ff;
-  --text-dim:  #8b89a8;
-  --text-muted:#4a4869;
+  --accent:    #00ffc8;
+  --accent2:   #6ee7d0;
+  --accent-glow: rgba(0,255,200,0);
+  --text:      #ecedef;
+  --text-dim:  #9aa0a8;
+  --text-muted:#6b7280;
   --green:     #4ade80;
   --red:       #f87171;
   --orange:    #fb923c;
@@ -24,84 +41,110 @@
   --shadow:    0 4px 24px rgba(0,0,0,.5);
   --font:      'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 
-  /* ── CYBERPUNK NEON 色板 ──────────────────────────── */
-  /* 霓虹青（主色） */
+  /* ── 霓虹色板（保留：被各视图大量引用，逐轮收敛中） ── */
   --neon-cyan:       #00ffc8;
   --neon-cyan-dim:   rgba(0,255,200,0.15);
-  /* 霓虹紫（辅色） */
   --neon-purple:     #a78bfa;
   --neon-purple-dim: rgba(167,139,250,0.15);
-  /* 霓虹蓝（边框/装饰） */
   --neon-blue:       #38bdf8;
   --neon-blue-dim:   rgba(56,189,248,0.18);
-  /* 霓虹粉（警示/高亮） */
   --neon-pink:       #f472b6;
-  /* 霓虹绿（完成/成功） */
   --neon-green:      #34d399;
-  /* 文字色 */
-  --neon-text:       #e2f1ff;
-  --neon-dim:        rgba(226,241,255,0.45);
+  --neon-text:       #ecedef;
+  --neon-dim:        rgba(236,237,239,0.55);
 
-  /* ══ 设计刻度 ══════════════════════════════════════════
-     用途：消灭散落的魔法数字（padding 24/14/10、radius 20/14/10/8、
-     字号 17/15/13/12/11）。这些值本该来自同一把尺子。
-     刻度跨主题不变，只有下面的色值随主题走。 */
+  /* ══ 设计刻度 ══════════════════════════════════════════════════
+     刻度跨主题不变，只有色值随主题走。 */
   /* 间距（4px 基准） */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
   /* 圆角 */
   --r-xs: 4px;  --r-sm: 6px;  --r-md: 10px; --r-lg: 14px; --r-xl: 20px;
+  --r-full: 999px;
   /* 字号 */
   --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 15px; --fs-xl: 17px;
+  --fs-2xl: 22px; --fs-3xl: 28px;
+  /* 字重 / 行高 */
+  --fw-normal: 400; --fw-med: 500; --fw-semi: 600; --fw-bold: 700;
+  --lh-tight: 1.25;  --lh-base: 1.5;
+  /* 动效（统一曲线，避免每处各写一个 ease） */
+  --dur-1: .12s; --dur-2: .2s; --dur-3: .32s;
+  --ease:     cubic-bezier(.4, 0, .2, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  /* 层级 */
+  --z-side: 60; --z-sticky: 80; --z-overlay: 1000; --z-toast: 9999;
 
-  /* ══ 语义色 ════════════════════════════════════════════
-     一律引用主题基色，**不要硬编码色值**，否则换主题不跟着变。
-     值写的是 var(--xxx)，运行时解析 —— 所以 light / cyber / aurora 等
-     主题覆盖 --green/--red/--gold 时，这里自动跟随。
-     为什么需要这层别名：设置面板里出现的是「这个色表示成功/危险」
-     的语义，而不是「我要绿色」。语义层让换色不影响含义。 */
+  /* ══ 语义色 ════════════════════════════════════════════════════
+     一律引用主题基色，写 var() 而非色值 —— 换主题自动跟随。
+     语义层让「成功」与「绿色」解耦：换配色不影响含义。 */
   --c-ok:     var(--green);
   --c-warn:   var(--gold);
   --c-danger: var(--red);
   --c-info:   var(--neon-blue);
 
-  /* ══ 容器表面 ══════════════════════════════════════════
-     设置面板原先写死 rgba(7,9,15,.6) / rgba(22,33,62,.6) 这类**暗色**，
-     在 light 主题下必然发脏（黑底压白底）。改为从各主题的表面基色
-     用 color-mix 派生，7 套主题通用。
-     Chromium 111+ 支持 color-mix（Electron 28 = Chromium 120）。 */
-  --surface-1: color-mix(in srgb, var(--bg-deep) 88%, transparent);
-  --surface-2: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  /* ══ 表面与描边（跨 7 套主题自适应） ═══════════════════════════
+     派生方式：与 --text 混色。深色主题下 --text 是浅色 → 表面变亮；
+     浅色主题下 --text 是深色 → 表面变深。一套定义双向通用，
+     不必为 7 套主题各写一遍（这是 color-mix 的价值）。 */
+  --elev-1: color-mix(in srgb, var(--bg-card) 94%, var(--text) 6%);
+  --elev-2: color-mix(in srgb, var(--bg-card) 86%, var(--text) 14%);
+  --glass:  color-mix(in srgb, var(--bg-card) 80%, transparent);
+  --stroke-1: color-mix(in srgb, var(--text) 9%, transparent);
+  --stroke-2: color-mix(in srgb, var(--text) 17%, transparent);
+
+  /* 文字层级（旧 --text-dim/-muted 保留兼容，新代码用 --fg-*） */
+  --fg-1: var(--text);
+  --fg-2: color-mix(in srgb, var(--text) 66%, var(--bg-deep));
+  --fg-3: color-mix(in srgb, var(--text) 46%, var(--bg-deep));
+
+  /* ══ UI 强调色 ═════════════════════════════════════════════════
+     全应用只允许存在「一个」UI 强调色，就是它。
+     想整体换色 → 只改这一行（默认跟随主题主色 --neon-cyan）。
+     历史问题：--accent(紫) 与 --neon-cyan(青) 双色系并存，
+     按钮/徽标/激活态各用各的。新增样式一律用 --accent-ui。 */
+  --accent-ui:   var(--neon-cyan);
+  --accent-soft: color-mix(in srgb, var(--accent-ui) 12%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent-ui) 34%, transparent);
+  --on-accent:   #0b0c0e;
+
+  /* ══ 阴影 / 焦点 ═══════════════════════════════════════════════
+     用 --bg-deep 混色生成阴影 → 浅色主题自动得到淡影，不会压脏。
+     现代播放器风格：阴影克制，层次主要靠 1px 描边 + 表面明度差。 */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--bg-deep) 60%, transparent);
+  --shadow-md: 0 4px 14px -4px color-mix(in srgb, var(--bg-deep) 70%, transparent);
+  --shadow-lg: 0 16px 40px -12px color-mix(in srgb, var(--bg-deep) 85%, transparent);
+  --focus-ring: color-mix(in srgb, var(--accent-ui) 70%, transparent);
 }
 
 /* ── 浅色主题 ─────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-deep:   #f0f2f5;
+  --bg-deep:   #f4f5f7;
   --bg-card:   #ffffff;
-  --bg-hover:  #e8eaed;
-  --bg-input:  #f5f5f5;
-  --border:    #d0d5dd;
-  --accent:    #5b4cd4;
-  --accent2:   #7c6ddb;
-  --accent-glow: rgba(91,76,212,.2);
-  --text:      #1a1a2e;
-  --text-dim:  #5f6368;
-  --text-muted:#9aa0a6;
+  --bg-hover:  #eceef1;
+  --bg-input:  #f7f8f9;
+  --border:    #dfe2e7;
+  --accent:    #0d9488;
+  --accent2:   #14b8a6;
+  --accent-glow: rgba(13,148,136,0);
+  --text:      #14161a;
+  --text-dim:  #5c636e;
+  --text-muted:#8a919c;
   --green:     #16a34a;
   --red:       #dc2626;
   --orange:    #ea580c;
   --gold:      #d97706;
   --shadow:    0 2px 12px rgba(0,0,0,.08);
-  --neon-cyan:       #0891b2;
-  --neon-cyan-dim:   rgba(8,145,178,0.1);
+  --neon-cyan:       #0d9488;
+  --neon-cyan-dim:   rgba(13,148,136,0.1);
   --neon-purple:     #7c3aed;
   --neon-purple-dim: rgba(124,58,237,0.1);
   --neon-blue:       #2563eb;
   --neon-blue-dim:   rgba(37,99,235,0.1);
   --neon-pink:       #db2777;
   --neon-green:      #059669;
-  --neon-text:       #1a1a2e;
-  --neon-dim:        rgba(26,26,46,0.5);
+  --neon-text:       #14161a;
+  --neon-dim:        rgba(20,22,26,0.55);
+  --on-accent:       #ffffff;
 }
 
 /* ── Cyber 赛博主题 ─────────────────────────────── */
@@ -113,10 +156,10 @@
   --border:    #00ffff30;
   --accent:    #00ffff;
   --accent2:   #ff00ff;
-  --accent-glow: rgba(0,255,255,.25);
+  --accent-glow: rgba(0,255,255,0);
   --text:      #e0e0e0;
-  --text-dim:  #888;
-  --text-muted:#555;
+  --text-dim:  #9a9aa4;
+  --text-muted:#6b6b75;
   --green:     #00ff88;
   --red:       #ff3366;
   --orange:    #ff9900;
@@ -131,7 +174,7 @@
   --neon-pink:       #ff0088;
   --neon-green:      #00ff88;
   --neon-text:       #e0e0e0;
-  --neon-dim:        rgba(224,224,224,0.4);
+  --neon-dim:        rgba(224,224,224,0.5);
 }
 
 /* ── Aurora 极光主题 ───────────────────────────── */
@@ -141,12 +184,12 @@
   --bg-hover:  #243447;
   --bg-input:  #162032;
   --border:    #415a7730;
-  --accent:    #7b68ee;
-  --accent2:   #00d4aa;
-  --accent-glow: rgba(123,104,238,.25);
+  --accent:    #00d4aa;
+  --accent2:   #7b68ee;
+  --accent-glow: rgba(0,212,170,0);
   --text:      #e0e1dd;
-  --text-dim:  #778da9;
-  --text-muted:#415a77;
+  --text-dim:  #93a4bb;
+  --text-muted:#6b7c93;
   --green:     #06d6a0;
   --red:       #ef476f;
   --orange:    #ffd166;
@@ -161,7 +204,7 @@
   --neon-pink:       #ef476f;
   --neon-green:      #06d6a0;
   --neon-text:       #e0e1dd;
-  --neon-dim:        rgba(224,225,221,0.4);
+  --neon-dim:        rgba(224,225,221,0.5);
 }
 
 /* ── Sunset 日落主题 ────────────────────────────── */
@@ -173,15 +216,15 @@
   --border:    #ff6b6b30;
   --accent:    #ff6b6b;
   --accent2:   #ffa500;
-  --accent-glow: rgba(255,107,107,.25);
+  --accent-glow: rgba(255,107,107,0);
   --text:      #ffe4e1;
-  --text-dim:  #d4a5a5;
-  --text-muted:#8b6b6b;
+  --text-dim:  #d9b3b3;
+  --text-muted:#a38080;
   --green:     #98d8a0;
   --red:       #ff4757;
   --orange:    #ffa500;
   --gold:      #ffd700;
-  --shadow:    0 4px 20px rgba(255,107,107,.15);
+  --shadow:    0 4px 20px rgba(0,0,0,.35);
   --neon-cyan:       #ff6b6b;
   --neon-cyan-dim:   rgba(255,107,107,0.15);
   --neon-purple:     #ffa500;
@@ -191,7 +234,7 @@
   --neon-pink:       #ff6b6b;
   --neon-green:      #98d8a0;
   --neon-text:       #ffe4e1;
-  --neon-dim:        rgba(255,228,225,0.4);
+  --neon-dim:        rgba(255,228,225,0.5);
 }
 
 /* ── Forest 森林主题 ───────────────────────────── */
@@ -201,19 +244,19 @@
   --bg-hover:  #1f351f;
   --bg-input:  #122012;
   --border:    #228b2220;
-  --accent:    #228b22;
+  --accent:    #32cd32;
   --accent2:   #90ee90;
-  --accent-glow: rgba(34,139,34,.2);
+  --accent-glow: rgba(50,205,50,0);
   --text:      #e8f5e8;
-  --text-dim:  #90b890;
-  --text-muted:#5a7a5a;
+  --text-dim:  #a6c9a6;
+  --text-muted:#7c9c7c;
   --green:     #32cd32;
   --red:       #cd5c5c;
   --orange:    #ffa500;
   --gold:      #daa520;
-  --shadow:    0 4px 20px rgba(34,139,34,.15);
-  --neon-cyan:       #228b22;
-  --neon-cyan-dim:   rgba(34,139,34,0.15);
+  --shadow:    0 4px 20px rgba(0,0,0,.35);
+  --neon-cyan:       #32cd32;
+  --neon-cyan-dim:   rgba(50,205,50,0.15);
   --neon-purple:     #90ee90;
   --neon-purple-dim: rgba(144,238,144,0.15);
   --neon-blue:       #3cb371;
@@ -221,89 +264,195 @@
   --neon-pink:       #98fb98;
   --neon-green:      #32cd32;
   --neon-text:       #e8f5e8;
-  --neon-dim:        rgba(232,245,232,0.4);
+  --neon-dim:        rgba(232,245,232,0.5);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   全局元素
+   ══════════════════════════════════════════════════════════════════ */
 html, body {
   width: 100%; height: 100%;
   background: var(--bg-deep);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
+  line-height: var(--lh-base);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ── 滚动条 ─────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::selection { background: var(--accent-soft); color: var(--fg-1); }
+
+/* ── 滚动条（细、无轨道、悬停加深） ─────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--neon-blue-dim); }
+::-webkit-scrollbar-thumb {
+  background: var(--stroke-2);
+  border-radius: var(--r-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fg-3); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
 
-/* ── 布局 ───────────────────────────────────────────── */
-.app { display: flex; flex-direction: column; height: 100vh; }
+/* ── 键盘焦点可见（可访问性：鼠标点击不显示，Tab 才显示） ── */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
 
-/* ── 按钮基础 ───────────────────────────────────────── */
-button { cursor: pointer; font-family: inherit; }
-button:disabled { cursor: not-allowed; opacity: 0.5; }
-input, textarea, select { font-family: inherit; }
+/* ── 表单元素基础 ───────────────────────────────────── */
+button { cursor: pointer; font-family: inherit; color: inherit; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
 
-/* ── 标题栏 ─────────────────────────────────────────── */
-.titlebar { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: linear-gradient(90deg, #1a1a2e, #16213e); color: #fff; -webkit-app-region: drag; user-select: none; }
-.titlebar-left { display: flex; align-items: center; gap: 12px; }
-.app-logo { font-size: 22px; }
-.app-title { font-size: 14px; font-weight: 600; }
-.app-subtitle { font-size: 11px; color: #888; }
-.winctrls { display: flex; gap: 4px; -webkit-app-region: no-drag; }
-.winctrls button { background: transparent; border: none; color: #fff; font-size: 16px; padding: 6px 10px; border-radius: 4px; }
-.winctrls button:hover { background: rgba(255,255,255,0.1); }
-.winctrls button.close:hover { background: #e74c3c; }
-
-/* ── 侧边栏 ─────────────────────────────────────────── */
-.main { flex: 1; display: flex; overflow: hidden; }
-.sidebar { width: 200px; background: #16213e; padding: 12px; overflow-y: auto; flex-shrink: 0; }
-.sidebar-title { font-size: 11px; color: #888; margin: 12px 0 6px; text-transform: uppercase; }
-.nav-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; margin: 2px 0; background: transparent; color: #e6e6f0; border: none; border-radius: 6px; text-align: left; font-size: 14px; }
-.nav-item:hover { background: rgba(255,255,255,0.08); }
-.nav-item.active { background: linear-gradient(90deg, #00ffc8, #a78bfa); color: #1a1a2e; font-weight: 600; }
-.nav-item .icon { font-size: 16px; }
-.platform-status-list { margin-bottom: 12px; }
-.platform-status-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: #ccc; }
-.platform-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-.platform-dot.cookie { background: #00ffc8; box-shadow: 0 0 6px #00ffc8; }
-.platform-name-s { flex: 1; }
-
-/* ── 内容区 ─────────────────────────────────────────── */
-.content { flex: 1; display: flex; overflow: hidden; min-width: 0; }
-
-/* ── Toast 通知 ─────────────────────────────────────── */
-.toast-container { position: fixed; top: 60px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.toast { padding: 10px 16px; border-radius: 6px; background: #1a1a2e; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: toast-in .25s ease; pointer-events: auto; max-width: 360px; font-size: 13px; }
-.toast-info { background: #1e1b4b; border: 1px solid #6c63ff; }
-.toast-success { background: #166534; border: 1px solid #4ade80; }
-.toast-warn { background: #f39c12; }
-.toast-error { background: #7f1d1d; border: 1px solid #f87171; }
-/* 重复下载确认 toast：文案+按钮横排，按钮不换行挤压文本 */
-.toast-redownload { display: flex; align-items: center; gap: 12px; max-width: 420px; }
-.toast-redownload-text { flex: 1; min-width: 0; }
-.toast-redownload-btn { flex-shrink: 0; border: none; border-radius: 4px; padding: 5px 12px; background: #1a1a2e; color: #f39c12; font-size: 12px; font-weight: 600; cursor: pointer; }
-.toast-redownload-btn:hover { background: #2a2a4e; }
-@keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-@keyframes toast-out { to { transform: translateX(20px); opacity: 0; } }
-
-/* ── 弹层 ───────────────────────────────────────────── */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.playlist-modal { position: fixed; z-index: 1001; }
-.overlay.hidden { display: none; }
-
-/* ── 按钮组件 ───────────────────────────────────────── */
-.btn { background: #00ffc8; color: #1a1a2e; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; }
-.btn:hover { filter: brightness(1.1); }
-.btn-sm { background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; }
-.btn-sm:hover { background: rgba(255,255,255,0.2); }
-
-/* ── 按钮可点击兜底 ─────────────────────────────────── */
+/* ── 可点击兜底（历史坑：拖动区/层叠导致点击穿透失效） ── */
 .nav-item, .titlebar button, .winctrls button, .btn, .btn-sm, .action-btn {
   pointer-events: auto !important;
   user-select: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   通用组件 · Buttons
+   三档：.btn（主操作·实心强调） / .btn-ghost（次操作·描边）
+        .btn-sm（紧凑·表格与工具条里用）
+   ══════════════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--sp-2);
+  background: var(--accent-ui); color: var(--on-accent);
+  border: 1px solid transparent;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  font-weight: var(--fw-semi); font-size: var(--fs-md);
+  transition: background var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
+}
+.btn:hover { background: color-mix(in srgb, var(--accent-ui) 86%, var(--fg-1)); }
+.btn:active { opacity: .85; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--sp-2);
+  background: transparent; color: var(--fg-2);
+  border: 1px solid var(--stroke-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  font-weight: var(--fw-med); font-size: var(--fs-md);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+}
+.btn-ghost:hover { background: var(--elev-1); color: var(--fg-1); border-color: var(--stroke-2); }
+
+.btn-ghost-danger:hover { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 45%, transparent); }
+
+.btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-sm); padding: 5px var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--stroke-2);
+  background: var(--elev-1); color: var(--fg-2);
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+}
+.btn-sm:hover { background: var(--elev-2); color: var(--fg-1); border-color: var(--accent-line); }
+
+/* ══════════════════════════════════════════════════════════════════
+   通用组件 · Toast
+   现代风格：中性玻璃面 + 左侧语义色条，不用大块彩色背景
+   （彩色底在白/浅色主题下会与主题冲突，且信息密度低）。
+   ══════════════════════════════════════════════════════════════════ */
+.toast-container {
+  position: fixed; top: 64px; right: var(--sp-5);
+  z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  pointer-events: none;
+}
+.toast {
+  padding: 10px var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(140%);
+  color: var(--fg-1);
+  border: 1px solid var(--stroke-1);
+  border-left: 3px solid var(--fg-3);
+  box-shadow: var(--shadow-lg);
+  animation: toast-in var(--dur-2) var(--ease-out);
+  pointer-events: auto;
+  max-width: 360px;
+  font-size: var(--fs-md);
+}
+.toast-info    { border-left-color: var(--c-info); }
+.toast-success { border-left-color: var(--c-ok); }
+.toast-warn    { border-left-color: var(--c-warn); }
+.toast-error   { border-left-color: var(--c-danger); }
+/* 重复下载确认 toast：文案+按钮横排，按钮不换行挤压文本 */
+.toast-redownload { display: flex; align-items: center; gap: var(--sp-3); max-width: 420px; }
+.toast-redownload-text { flex: 1; min-width: 0; }
+.toast-redownload-btn {
+  flex-shrink: 0; border: 1px solid var(--stroke-2); border-radius: var(--r-sm);
+  padding: 5px var(--sp-3); background: var(--elev-1); color: var(--c-warn);
+  font-size: var(--fs-sm); font-weight: var(--fw-semi); cursor: pointer;
+  transition: background var(--dur-1) var(--ease);
+}
+.toast-redownload-btn:hover { background: var(--elev-2); }
+@keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toast-out { to { transform: translateX(20px); opacity: 0; } }
+
+/* ══════════════════════════════════════════════════════════════════
+   通用组件 · Overlay / 空态 / 骨架 / 分隔
+   ══════════════════════════════════════════════════════════════════ */
+.overlay {
+  position: fixed; inset: 0;
+  background: color-mix(in srgb, var(--bg-deep) 72%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: var(--z-overlay);
+}
+.overlay.hidden { display: none; }
+.playlist-modal { position: fixed; z-index: calc(var(--z-overlay) + 1); }
+
+/* 空态：图标 + 主文案 + 提示 + 可选操作，居中一列 */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--sp-2); padding: var(--sp-8) var(--sp-5);
+  color: var(--fg-3); text-align: center;
+}
+.empty-state-icon { font-size: 34px; opacity: .5; }
+.empty-state-title { font-size: var(--fs-lg); color: var(--fg-2); font-weight: var(--fw-med); }
+.empty-state-hint { font-size: var(--fs-md); color: var(--fg-3); }
+
+/* 骨架屏：加载占位，避免白屏跳变 */
+.skeleton {
+  background: linear-gradient(90deg, var(--elev-1) 25%, var(--elev-2) 37%, var(--elev-1) 63%);
+  background-size: 400% 100%;
+  border-radius: var(--r-sm);
+  animation: skeleton-sweep 1.4s ease infinite;
+}
+@keyframes skeleton-sweep { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+/* 分区标题（视图内通用） */
+.section-title {
+  font-size: var(--fs-lg); font-weight: var(--fw-semi); color: var(--fg-1);
+  display: flex; align-items: center; gap: var(--sp-2);
+}
+.section-hint { font-size: var(--fs-md); color: var(--fg-3); }
+
+/* 描边卡片：现代风格靠 1px 描边 + 表面明度差建立层次，不用发光 */
+.surface-card {
+  background: var(--elev-1);
+  border: 1px solid var(--stroke-1);
+  border-radius: var(--r-lg);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   可访问性 · 尊重系统「减少动态效果」
+   ══════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

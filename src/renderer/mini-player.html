@@ -3,135 +3,177 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; media-src 'self' data: blob: file: http: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: ws:;">
+  <title>迷你播放器</title>
+  <!-- 复用主窗口的令牌与事件
+       ⚠️ 本文件不再放行 base.css 里的 html,body 规则：body 里显式覆盖 -->
+  <link rel="stylesheet" href="./styles/base.css">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       width: 360px; height: 80px;
-      background: linear-gradient(135deg, #0d1120 0%, #1a1a2e 100%);
-      color: #e8e6ff;
-      font-family: 'Segoe UI', 'PingFang SC', sans-serif;
-      font-size: 13px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 0 12px;
+      gap: var(--sp-3);
+      padding: 0 var(--sp-3);
+      background: var(--bg-card);
+      border: 1px solid var(--stroke-1);
       -webkit-app-region: drag;
-      overflow: hidden;
       user-select: none;
     }
-    .mini-cover {
-      width: 52px; height: 52px; border-radius: 8px;
-      background: #1c2135;
-      object-fit: cover;
+
+    /* ── 封面（圆角方形，与主面板一致）───────────────── */
+    .mp-cover, .mp-cover-ph {
+      width: 48px; height: 48px;
+      border-radius: var(--r-sm);
       flex-shrink: 0;
       -webkit-app-region: no-drag;
-      transition: transform 0.3s;
     }
-    .mini-cover.playing {
-      animation: mini-disc-spin 8s linear infinite;
+    .mp-cover { object-fit: cover; background: var(--elev-2); display: block; }
+    /* 方形封面不做 360° 旋转，改为缓慢轻摆（与主面板 animation-rotate 同语义） */
+    .mp-cover.playing { animation: mp-sway 9s var(--ease) infinite; }
+    @keyframes mp-sway {
+      0%, 100% { transform: perspective(700px) rotateY(0deg); }
+      50%      { transform: perspective(700px) rotateY(-7deg); }
     }
-    @keyframes mini-disc-spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    .mini-cover-ph {
-      width: 52px; height: 52px; border-radius: 8px;
-      background: #1c2135;
+    .mp-cover-ph {
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
-      flex-shrink: 0;
+      background: var(--elev-2);
+      color: var(--fg-3);
     }
-    .mini-info {
-      flex: 1; min-width: 80px; max-width: 120px;
+
+    /* ── 信息 ─────────────────────────────────────────── */
+    .mp-info {
+      flex: 1;
+      min-width: 0;
+      max-width: 150px;
       -webkit-app-region: no-drag;
     }
-    .mini-title {
-      font-size: 13px; font-weight: 600;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      color: #e8e6ff;
+    .mp-title {
+      font-size: var(--fs-md);
+      font-weight: var(--fw-med);
+      color: var(--fg-1);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    /* 超长标题跑马灯（同主窗口逻辑：JS 测溢出写 --marquee-shift） */
-    .mini-title.marquee {
+    .mp-title.marquee {
       text-overflow: clip;
       --marquee-shift: -80px;
-      animation: mini-marquee 10s linear infinite;
+      animation: mp-marquee 10s linear infinite;
     }
-    .mini-title.marquee:hover { animation-play-state: paused; }
-    @keyframes mini-marquee {
+    .mp-title.marquee:hover { animation-play-state: paused; }
+    @keyframes mp-marquee {
       0%, 10% { transform: translateX(0); }
       90%, 100% { transform: translateX(var(--marquee-shift)); }
     }
-    .mini-artist {
-      font-size: 11px; color: #8b89a8;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      margin-top: 2px;
+    .mp-artist {
+      margin-top: 1px;
+      font-size: var(--fs-xs);
+      color: var(--fg-3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .mini-lyric {
-      font-size: 10px; color: #00ffc8;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      margin-top: 3px;
-      opacity: 0.8;
+    .mp-lyric {
+      margin-top: 1px;
+      font-size: var(--fs-xs);
+      color: var(--accent-ui);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .mini-controls {
-      display: flex; gap: 4px;
-      -webkit-app-region: no-drag;
+
+    /* ── 控制 ─────────────────────────────────────────── */
+    .mp-controls {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
       flex-shrink: 0;
-    }
-    .mini-btn {
-      width: 32px; height: 32px; border-radius: 6px; border: none;
-      background: transparent; color: #e8e6ff;
-      font-size: 16px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s;
-    }
-    .mini-btn:hover { background: rgba(255,255,255,0.08); }
-    .mini-btn.play { color: #00ffc8; }
-    .mini-progress {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      height: 3px; background: #1c2135;
-    }
-    .mini-progress-fill {
-      height: 100%; background: linear-gradient(90deg, #00ffc8, #a78bfa);
-      width: 0%; transition: width 0.3s;
-    }
-    .mini-time {
-      position: absolute; bottom: 6px; right: 50px;
-      font-size: 10px; color: #4a4869;
       -webkit-app-region: no-drag;
     }
-    .mini-close {
-      position: absolute; top: 2px; right: 4px;
-      width: 18px; height: 18px; border-radius: 4px; border: none;
-      background: transparent; color: #4a4869;
-      font-size: 12px; cursor: pointer;
+    .mp-btn {
+      width: 30px; height: 30px;
       display: flex; align-items: center; justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--r-sm);
+      color: var(--fg-2);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+    }
+    .mp-btn:hover { color: var(--fg-1); background: var(--elev-1); }
+    .mp-btn.mp-play { color: var(--accent-ui); }
+    .mp-btn.mp-play:hover { background: var(--accent-soft); }
+
+    .mp-time {
+      flex-shrink: 0;
+      font-size: var(--fs-xs);
+      color: var(--fg-3);
+      font-variant-numeric: tabular-nums;
       -webkit-app-region: no-drag;
     }
-    .mini-close:hover { color: #f87171; background: rgba(255,0,0,0.1); }
+    .mp-close {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: var(--r-xs);
+      color: var(--fg-3);
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-app-region: no-drag;
+      transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+    }
+    .mp-close:hover { color: var(--c-danger); background: var(--elev-1); }
+
+    /* ── 底部进度 ─────────────────────────────────────── */
+    .mp-progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      background: var(--elev-2);
+    }
+    .mp-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent-ui);
+      transition: width var(--dur-3) linear;
+    }
   </style>
 </head>
 <body>
-  <img class="mini-cover" id="miniCover" style="display:none" src="" alt="专辑封面">
-  <div class="mini-cover-ph" id="miniCoverPh">🎵</div>
-  <div class="mini-info">
-    <div class="mini-title" id="miniTitle" data-i18n="player.playing">未在播放</div>
-    <div class="mini-artist" id="miniArtist" data-i18n="player.artist">—</div>
-    <div class="mini-lyric" id="miniLyric"></div>
+  <img class="mp-cover" id="miniCover" style="display:none" src="" alt="专辑封面">
+  <div class="mp-cover-ph" id="miniCoverPh">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 19a3 3 0 1 1-2-2.83V7l10-2v7.17A3 3 0 1 0 19 15V3L7 5v12.17Z"/></svg>
   </div>
-  <div class="mini-controls">
-    <button class="mini-btn" onclick="send('mini-prev')" title="上一首">⏮</button>
-    <button class="mini-btn play" id="miniPlayBtn" onclick="send('mini-toggle-play')" title="播放/暂停">▶</button>
-    <button class="mini-btn" onclick="send('mini-next')" title="下一首">⏭</button>
+  <div class="mp-info">
+    <div class="mp-title" id="miniTitle" data-i18n="player.playing">未在播放</div>
+    <div class="mp-artist" id="miniArtist" data-i18n="player.artist">—</div>
+    <div class="mp-lyric" id="miniLyric"></div>
   </div>
-  <span class="mini-time" id="miniTime">0:00 / 0:00</span>
-  <button class="mini-close" onclick="send('mini-close')" title="关闭">✕</button>
-  <div class="mini-progress">
-    <div class="mini-progress-fill" id="miniProgressFill"></div>
+  <div class="mp-controls">
+    <button class="mp-btn" onclick="send('mini-prev')" title="上一首" aria-label="上一首">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+    </button>
+    <button class="mp-btn mp-play" id="miniPlayBtn" onclick="send('mini-toggle-play')" title="播放/暂停" aria-label="播放或暂停">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="mp-btn" onclick="send('mini-next')" title="下一首" aria-label="下一首">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+    </button>
+  </div>
+  <span class="mp-time" id="miniTime">0:00 / 0:00</span>
+  <button class="mp-close" onclick="send('mini-close')" title="关闭" aria-label="关闭迷你播放器">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <div class="mp-progress">
+    <div class="mp-progress-fill" id="miniProgressFill"></div>
   </div>
 
   <script>
-    // C3 fix: use contextBridge preload API instead of require('electron')
     function send(channel) { window.miniAPI.send(channel); }
+
+    const ICON_PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
 
     window.miniAPI.on('mini-player-update', (data) => {
       const title = document.getElementById('miniTitle');
@@ -149,7 +191,7 @@
         title.classList.remove('marquee');
         const overflow = title.scrollWidth - title.parentElement.clientWidth;
         if (overflow > 2) {
-          title.style.setProperty('--marquee-shift', `-${overflow + 12}px`);
+          title.style.setProperty('--marquee-shift', '-' + (overflow + 12) + 'px');
           title.classList.add('marquee');
         }
       }
@@ -164,7 +206,8 @@
         coverPh.style.display = 'flex';
         cover.classList.remove('playing');
       }
-      playBtn.textContent = data.playing ? '⏸' : '▶';
+      playBtn.innerHTML = data.playing ? ICON_PAUSE : ICON_PLAY;
+      playBtn.title = data.playing ? '暂停' : '播放';
       if (typeof data.progress === 'number') {
         progress.style.width = data.progress + '%';
       }

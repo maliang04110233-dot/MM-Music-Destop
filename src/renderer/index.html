@@ -161,16 +161,12 @@
 
           <!-- 搜索栏 -->
           <div class="search-bar" style="position:relative;">
+            <!-- 平台选项由 renderSourceSelect() 运行时生成（v3）。
+                 清单来自主进程 IPC get-platforms → 平台 manifest 是唯一来源，
+                 新增平台无需改动本文件。此处只保留「全部」。
+                 ⚠️ 生成必须在 applyTranslations() 之前 —— 否则新插入的节点拿不到翻译。 -->
             <select class="quality-select source-select" id="sourceSelect" onchange="switchSource(this.value)">
               <option value="all" data-i18n="search.all">全部</option>
-              <option value="netease" data-i18n="home.neteaseTab">网易云</option>
-              <option value="qq" data-i18n="home.qqTab">QQ音乐</option>
-              <option value="kugou" data-i18n="search.kugou">酷狗</option>
-              <option value="kuwo" data-i18n="search.kuwo">酷我</option>
-              <option value="migu" data-i18n="search.migu">咪咕</option>
-              <option value="fivesing" data-i18n="search.fivesing">5sing</option>
-              <option value="soda" data-i18n="search.soda">汽水</option>
-              <option value="bilibili" data-i18n="home.biliTab">B站</option>
             </select>
             <div class="search-type-tabs">
                           <button class="tab active" data-type="song" onclick="switchSearchType('song',this)" data-i18n="search.single">🎵 单曲</button>
@@ -423,7 +419,7 @@
     <div class="player-card" id="playerCard">
 
       <div class="pc-topbar">
-        <span class="pc-state">正在播放</span>
+        <span class="pc-state" id="pcState">未在播放</span>
         <div class="pc-top-actions">
           <button class="icon-btn" id="btnLyricsToggle" title="显示/隐藏歌词" aria-label="显示或隐藏歌词" aria-pressed="false" onclick="toggleLyricsArea()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5h16M4 10h10M4 15h13M4 20h7"/></svg>
@@ -827,7 +823,7 @@
           <div class="settings-card">
             <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.language">界面语言</label>
-              <select class="setting-select" id="settingLanguage" onchange="window.i18n &amp;&amp; window.i18n.loadLanguage(this.value); window.i18n &amp;&amp; window.i18n.applyTranslations();">
+              <select class="setting-select" id="settingLanguage" onchange="window.i18n &amp;&amp; window.i18n.setLanguage(this.value);">
                 <option value="zh">中文</option>
                 <option value="en">English</option>
               </select>
