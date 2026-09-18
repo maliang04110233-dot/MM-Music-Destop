@@ -45,3 +45,11 @@ C:*Users*
 .preview/
 .backup/
 .git-rescue/
+
+# ── 误入仓库的构建日志 ─────────────────────────────────
+# 这两条是 Windows 下 `some-cmd > C:/Users/.../x.js` 被 shell 吞掉反斜杠后
+# 在仓库根目录**字面创建**的文件（文件名成为 `C:Users59443AppData...`）。
+# 内容是别的机器上 asar 解包的报错输出，无任何代码引用。
+# 用通配形式兜住同类问题，避免再靠人工发现。
+C:Users*
+npm-debug.log*
