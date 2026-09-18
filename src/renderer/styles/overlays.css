@@ -392,12 +392,49 @@
 .eq-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 
 /* ── 账号卡片 ────────────────────────────────────────── */
+/* 卡片数量由主进程平台能力派生，不再写死列数；宽度够就并排，不够就折行 */
 .accounts-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--sp-3);
 }
 @media (max-width: 900px) { .accounts-grid { grid-template-columns: 1fr; } }
+
+/* 音源总数与登录能力分布 */
+.accounts-summary {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--neon-blue-dim);
+  font-size: var(--fs-sm);
+  color: var(--neon-dim);
+}
+.accounts-summary b { color: var(--neon-cyan); font-weight: 600; }
+
+/* 免登录音源：只有展示，没有登录入口 */
+.accounts-anonymous { margin-top: var(--sp-3); }
+.accounts-anon-title {
+  font-size: var(--fs-sm);
+  color: var(--neon-dim);
+  margin-bottom: var(--sp-2);
+}
+.accounts-anon-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.accounts-anon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--sp-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--neon-blue-dim);
+  background: var(--surface-1);
+  font-size: var(--fs-xs);
+  color: var(--neon-text);
+  line-height: 1.2;
+}
 
 .account-card {
   background: var(--surface-1);

@@ -4,12 +4,25 @@
 
 /* @module */
 import { logger } from '../logger.js';
-// ── 平台配置 ──────────────────────────────────────────
-const PLATFORMS = [
-  { id: 'netease', name: '网易云音乐', shortName: '网易云', loginUrl: 'https://music.163.com' },
-  { id: 'qq', name: 'QQ 音乐', shortName: 'QQ音乐', loginUrl: 'https://y.qq.com' },
-  { id: 'bilibili', name: '哔哩哔哩', shortName: 'B站', loginUrl: 'https://www.bilibili.com' },
-];
+import {
+  accountPlatforms,
+  hasLoginWindow,
+  cookiePlaceholder,
+  cookieHint,
+} from '../accountPlatforms.js';
+
+// ── 平台账号清单 ─────────────────────────────────────
+// 账号页不再持有平台字面量：清单从主进程插件能力派生（插件实现 verifyCookie
+// ⇒ capabilities.cookie，见 api/pluginRegistry.js）。加平台后这里自动跟着长，
+// 不用再改这份文件。见 accountPlatforms.js。
+let _accountPlatforms = { cookie: [], anonymous: [] };
+
+/** 手动粘贴 Cookie 的分平台提示；未定制的平台走通用文案 */
+const ACCOUNT_COOKIE_HINTS = {
+  netease: '在浏览器登录后 → F12 → Network → 复制请求头 <code>Cookie:</code> 字段',
+  qq: '需含 <code>uin=</code> 字段，否则无法识别',
+  bilibili: '需含 <code>SESSDATA=</code> 字段',
+};
 
 // ── Cookie 字段分析配置 ──────────────────────────────
 const COOKIE_FIELDS = {
@@ -39,8 +52,16 @@ const _settingsDom = {
 function _cacheSettingsDom() {
   _settingsDom.overlay = document.getElementById('settingsOverlay');
   _settingsDom.cacheSize = document.getElementById('cacheSize');
-  // 缓存每个平台的 DOM 元素
-  PLATFORMS.forEach(p => {
+}
+
+/**
+ * 缓存账号卡片 DOM
+ * 卡片是 loadAccountPlatforms() 动态生成的，必须在那之后缓存；
+ * 模块加载时 accountsGrid 还是空的，所以不能合并进 _cacheSettingsDom()。
+ */
+function _cacheAccountDom() {
+  _settingsDom.platforms = {};
+  _accountPlatforms.cookie.forEach(p => {
     _settingsDom.platforms[p.id] = {
       statusEl: document.getElementById(p.id + 'StatusText'),
       dotEl: document.getElementById(p.id + 'Dot'),
@@ -66,9 +87,11 @@ function openSettings() {
   if (_settingsDom.overlay) _settingsDom.overlay.classList.remove('hidden');
   const firstNav = document.querySelector('.settings-nav-item');
   if (firstNav) switchSettingsTab('accounts', firstNav);
+  // 账号卡片按主进程平台清单动态渲染；同步渲染完再读状态，避免读到空卡片
+  loadAccountPlatforms();
   // 并行加载所有设置
   Promise.all([
-    ...PLATFORMS.map(p => loadAccountCardStatus(p.id)),
+    ..._accountPlatforms.cookie.map(p => loadAccountCardStatus(p.id)),
     loadGeneralSettings(),
     loadQualityBySource(),
     updateCacheSize(),
@@ -85,6 +108,91 @@ function closeSettingsOnBg(e) {
   if (e.target === _settingsDom.overlay) closeSettings();
 }
 
+// ── 账号卡片渲染 ──────────────────────────────────────
+/**
+ * 按主进程平台清单重新渲染账号卡片
+ * 每次打开设置页都重跑：平台增删、能力变化即时反映到界面。
+ */
+function loadAccountPlatforms() {
+  const split = accountPlatforms();
+  _accountPlatforms = split;
+  renderAccountSummary(split);
+  renderAccountCards(split.cookie);
+  renderAnonymousPlatforms(split.anonymous);
+  _cacheAccountDom();
+}
+
+function renderAccountSummary(split) {
+  const el = document.getElementById('accountsSummary');
+  if (!el) return;
+  el.innerHTML = '共 ' + esc(split.cookie.length + split.anonymous.length) + ' 个音源：' +
+    '<b>' + esc(split.cookie.length) + '</b> 个支持登录（VIP / 高品质下载），' +
+    '<b>' + esc(split.anonymous.length) + '</b> 个免登录可用';
+}
+
+/**
+ * 单张账号卡片
+ * onclick 的调用参数由 escQ 负责转义并带上引号，其余属性值用 escAttr、
+ * 文本节点用 esc。
+ */
+function _accountCardHtml(p) {
+  const arg = "'" + escQ(p.id) + "'";
+  const hint = esc(cookieHint(p.id, ACCOUNT_COOKIE_HINTS));
+  const placeholder = escAttr(cookiePlaceholder(COOKIE_FIELDS[p.id]));
+  const btn = (handler) =>
+    '<button class="' + handler.cls + '" onclick="' + handler.fn + '(' + arg + ')">' +
+    esc(handler.text) + '</button>';
+  return '<div class="account-card" data-platform="' + escAttr(p.id) + '">' +
+    '<div class="account-head">' +
+      '<span class="account-icon" aria-hidden="true">' + esc(p.icon || '') + '</span>' +
+      '<div class="account-info">' +
+        '<div class="account-name">' + esc(p.name || p.id) + '</div>' +
+        '<div class="account-status" id="' + escAttr(p.id) + 'StatusText">未登录</div>' +
+      '</div>' +
+      '<span class="account-dot" id="' + escAttr(p.id) + 'Dot"></span>' +
+    '</div>' +
+    '<button class="account-primary-btn" id="' + escAttr(p.id) + 'LoginBtn"' +
+      ' onclick="openLoginWindowUI(' + arg + ', this)">🔑 一键登录</button>' +
+    '<details class="account-advanced">' +
+      '<summary>高级（手动粘贴 Cookie）</summary>' +
+      '<div class="settings-hint-box">' + hint + '</div>' +
+      '<textarea class="cookie-textarea" id="' + escAttr(p.id) + 'Cookie"' +
+        ' placeholder="' + placeholder + '"></textarea>' +
+      '<div class="cookie-actions">' +
+        btn({ cls: 'cookie-btn-save',    fn: 'saveCookie',      text: '保存' }) +
+        btn({ cls: 'cookie-btn-verify',  fn: 'verifyCookieUI',  text: '验证' }) +
+        btn({ cls: 'cookie-btn-verify',  fn: 'analyzeCookieUI', text: '分析' }) +
+        btn({ cls: 'cookie-btn-clear',   fn: 'clearCookie',     text: '清除' }) +
+      '</div>' +
+      '<div class="cookie-verify-result" id="' + escAttr(p.id) + 'VerifyResult"></div>' +
+      '<div class="cookie-analyze" id="' + escAttr(p.id) + 'Analyze"></div>' +
+    '</details>' +
+  '</div>';
+}
+
+function renderAccountCards(list) {
+  const grid = document.getElementById('accountsGrid');
+  if (!grid) return;
+  grid.innerHTML = list.map(_accountCardHtml).join('');
+}
+
+/** 免登录音源只展示可用性，不给登录入口（避免点了无反应的按钮） */
+function renderAnonymousPlatforms(list) {
+  const wrap = document.getElementById('accountsAnonymous');
+  if (!wrap) return;
+  if (!list.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML =
+    '<div class="accounts-anon-title">' +
+      esc(list.length + ' 个音源免登录直接下载') +
+    '</div>' +
+    '<div class="accounts-anon-chips">' +
+      list.map(p =>
+        '<span class="accounts-anon-chip" title="' + escAttr(p.name || p.id) + '">' +
+          esc(p.icon || '') + ' ' + esc(p.name || p.id) +
+        '</span>').join('') +
+    '</div>';
+}
+
 // ── 账号状态 ──────────────────────────────────────────
 async function loadAccountCardStatus(platform) {
   const dom = _settingsDom.platforms[platform];
@@ -97,9 +205,13 @@ async function loadAccountCardStatus(platform) {
   } catch (e) {
     logger.warn('[loadAccountCardStatus] 读 cookies 失败:', e.message);
   }
-  if (dom.textarea) dom.textarea.value = cookie || '';
-
-  const isLoggedIn = cookie && cookie.length > 0;
+  const isLoggedIn = !!cookie;
+  if (dom.textarea) {
+    dom.textarea.value = cookie || '';
+    dom.textarea.placeholder = isLoggedIn
+      ? '已保存（粘贴新值覆盖）'
+      : cookiePlaceholder(COOKIE_FIELDS[platform]);
+  }
   if (dom.statusEl) {
     dom.statusEl.textContent = isLoggedIn ? '已登录' : '未登录';
     dom.statusEl.className = 'account-status' + (isLoggedIn ? ' ok' : '');
@@ -114,42 +226,17 @@ async function loadAccountCardStatus(platform) {
   }
 }
 
+/**
+ * 刷新所有账号卡片的状态
+ * 原先这里还更新侧栏的 dotNetease/dotQQ/dotBili 状态点，
+ * 但那几个元素早已不在 HTML 里，是死代码，已删。
+ */
 async function loadCookieStatus() {
   try {
-    const cookies = await api.getCookies();
-    PLATFORMS.forEach(p => {
-      const hasVal = cookies[p.id] && cookies[p.id].length > 0;
-      const statusEl = document.getElementById(p.id + 'Status');
-      if (statusEl) {
-        statusEl.textContent = hasVal ? '已设置' : '未设置';
-        statusEl.className = 'cookie-status' + (hasVal ? ' ok' : ' none');
-      }
-      const dom = _settingsDom.platforms[p.id];
-      if (dom?.textarea && hasVal) {
-        dom.textarea.placeholder = '已保存（粘贴新值覆盖）';
-      }
-    });
-    updateSidebarPlatformStatus(cookies);
+    await Promise.all(_accountPlatforms.cookie.map(p => loadAccountCardStatus(p.id)));
   } catch (e) {
     logger.error('加载 Cookie 状态失败:', e);
   }
-}
-
-function updateSidebarPlatformStatus(cookies) {
-  const sidebarMap = {
-    netease: { dot: 'dotNetease', label: 'labelNetease' },
-    qq:      { dot: 'dotQQ',      label: 'labelQQ' },
-    bilibili:{ dot: 'dotBili',    label: 'labelBili' },
-  };
-  Object.entries(sidebarMap).forEach(([platform, ids]) => {
-    const dotEl = document.getElementById(ids.dot);
-    const labelEl = document.getElementById(ids.label);
-    if (!dotEl || !labelEl) return;
-    const hasCookie = cookies && cookies[platform] && cookies[platform].length > 0;
-    dotEl.className = 'platform-dot' + (hasCookie ? ' cookie' : '');
-    labelEl.textContent = hasCookie ? '已登录' : '未登录';
-    labelEl.style.color = hasCookie ? 'var(--gold)' : 'var(--text-muted)';
-  });
 }
 
 // ── 源可用性探针（P2）─────────────────────────────────
@@ -254,14 +341,9 @@ async function clearCookie(platform) {
     showToast('清除失败：' + e.message, 'error');
     return;
   }
-  const dom = _settingsDom.platforms[platform];
-  if (dom?.textarea) dom.textarea.value = '';
-  const statusEl = document.getElementById(platform + 'Status');
-  if (statusEl) {
-    statusEl.textContent = '未设置';
-    statusEl.className = 'cookie-status none';
-  }
   clearVerifyResult(platform);
+  // 状态从主进程重新读取，不在本地硬改成「未设置」
+  await loadAccountCardStatus(platform);
   showToast('Cookie 已清除', 'info');
 }
 
@@ -297,10 +379,9 @@ function showVerifyResult(platform, result) {
     if (result.message) line += '\n' + result.message;
     el.textContent = line;
     el.className = 'cookie-verify-result ok';
-    const statusEl = document.getElementById(platform + 'Status');
-    if (statusEl) {
-      statusEl.textContent = '已登录 ✓';
-      statusEl.className = 'cookie-status ok';
+    if (dom.statusEl) {
+      dom.statusEl.textContent = '已登录 ✓';
+      dom.statusEl.className = 'account-status ok';
     }
   } else {
     let line = `❌ 验证失败：${result.reason || 'Cookie 无效或已过期'}`;
@@ -358,17 +439,15 @@ function analyzeCookieUI(platform) {
 }
 
 // ── 辅助工具 ──────────────────────────────────────────
-function openLoginPage(platformId) {
-  const platform = PLATFORMS.find(p => p.id === platformId);
-  if (!platform) return;
-  api.openExternal(platform.loginUrl);
-  showToast('已在浏览器中打开 ' + platform.loginUrl + '，请登录后获取 Cookie', 'info');
-}
-
 async function openLoginWindowUI(platformId, btn) {
   if (!btn) btn = event.target;
-  const platform = PLATFORMS.find(p => p.id === platformId);
-  const name = platform?.shortName || platformId;
+  if (!hasLoginWindow(platformId)) {
+    // 免登录音源没有登录入口，卡片也不会渲染这个按钮；这里兜底提示
+    showToast(platformName(platformId) + ' 免登录，不需要 Cookie', 'info');
+    return;
+  }
+  const platform = _accountPlatforms.cookie.find(p => p.id === platformId);
+  const name = platform?.shortName || platform?.name || platformName(platformId) || platformId;
   const originalText = btn ? btn.textContent : '🔑 一键登录';
 
   if (btn) { btn.disabled = true; btn.textContent = '🔄 打开登录窗口...'; }
@@ -844,10 +923,10 @@ export {
   closeSettingsOnBg,
   switchSettingsTab,
   loadCookieStatus,
+  loadAccountPlatforms,
   saveCookie,
   clearCookie,
   verifyCookieUI,
-  openLoginPage,
   openLoginWindowUI,
   analyzeCookieUI,
   clearPlayCache,
@@ -859,7 +938,6 @@ export {
   loadSourceHealth,
   probeSourcesUI,
   applyTheme,
-  PLATFORMS,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -872,10 +950,10 @@ window.onQualityBySourceChange = onQualityBySourceChange;
 window.resetQualityBySource = resetQualityBySource;
 window.selectTheme = selectTheme;
 window.loadCookieStatus = loadCookieStatus;
+window.loadAccountPlatforms = loadAccountPlatforms;
 window.saveCookie = saveCookie;
 window.clearCookie = clearCookie;
 window.verifyCookieUI = verifyCookieUI;
-window.openLoginPage = openLoginPage;
 window.openLoginWindowUI = openLoginWindowUI;
 window.analyzeCookieUI = analyzeCookieUI;
 window.clearPlayCache = clearPlayCache;
@@ -893,7 +971,6 @@ window.saveDlTemplate = saveDlTemplate;
 window.setActiveTemplate = setActiveTemplate;
 window.deleteDlTemplate = deleteDlTemplate;
 window.applyTheme = applyTheme;
-window.PLATFORMS = PLATFORMS;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheSettingsDom();

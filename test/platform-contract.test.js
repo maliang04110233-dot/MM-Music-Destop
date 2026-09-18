@@ -530,18 +530,41 @@ test('守卫：registry 能力表覆盖 gateway 暴露的全部推荐域方法',
   }
 });
 
-test('守卫：settings.js 的 Cookie 账号卡 == registry 的 cookie 能力平台 == index.html 的卡片', () => {
+test('守卫：账号页平台清单由 registry 能力派生，无第二份平台字面量', () => {
   const declared = sorted(reg.getAll().filter(p => p._caps.cookie).map(p => p.id));
   assert.deepStrictEqual(declared, sorted(['netease', 'qq', 'bilibili']),
-    '支持 Cookie 登录的平台发生变化，请同步更新设置页与 index.html');
+    '支持 Cookie 登录的平台发生变化，请同步更新 loginWindow.js 的 LOGIN_CONFIGS');
 
-  const jsIds = sorted([...read('src/renderer/js/views/settings.js')
-    .matchAll(/\{\s*id:\s*'([a-z0-9]+)',\s*name:/g)].map(m => m[1]));
-  assert.deepStrictEqual(jsIds, declared, 'settings.js 的 PLATFORMS 与 registry 不一致');
+  const html = read('src/renderer/index.html');
+  const settingsJs = read('src/renderer/js/views/settings.js');
+  const accountJs = read('src/renderer/js/accountPlatforms.js');
 
-  const htmlIds = sorted([...read('src/renderer/index.html')
-    .matchAll(/data-platform="([a-z0-9]+)"/g)].map(m => m[1]));
-  assert.deepStrictEqual(htmlIds, declared, 'index.html 的账号卡与 registry 不一致');
+  // ① 设置页不再持有平台字面量清单 —— 那份手写 3 平台数组正是漂移源
+  assert.doesNotMatch(settingsJs, /\{\s*id:\s*'[a-z0-9]+',\s*name:/,
+    'settings.js 又出现平台字面量：账号页必须从主进程能力派生平台清单');
+  assert.match(settingsJs, /accountPlatforms\s*\(/,
+    'settings.js 应通过 accountPlatforms() 派生平台清单');
+
+  // ② index.html 不再静态写账号卡，只留容器交给 JS 填充
+  assert.doesNotMatch(html, /data-platform="/,
+    'index.html 又出现静态账号卡：卡片必须由 JS 按平台清单渲染');
+  for (const id of ['accountsSummary', 'accountsGrid', 'accountsAnonymous']) {
+    assert.ok(new RegExp('id="' + id + '"').test(html), 'index.html 缺少账号页容器 #' + id);
+  }
+
+  // ③ 渲染端「可一键登录」集合必须 == registry 能力集合 == 主进程登录窗口配置，
+  //    否则会出现「点了登录却没有窗口配置」的按钮。
+  const uiBlock = /MAIN_PROCESS_LOGIN_PLATFORMS\s*=\s*new Set\(\[([\s\S]*?)\]\)/.exec(accountJs);
+  assert.ok(uiBlock, 'accountPlatforms.js 应声明 MAIN_PROCESS_LOGIN_PLATFORMS');
+  const uiLoginSet = sorted([...uiBlock[1].matchAll(/'([a-z0-9]+)'/g)].map(m => m[1]));
+  assert.deepStrictEqual(uiLoginSet, declared,
+    'accountPlatforms.js 的登录平台集合与 registry 的 cookie 能力不一致');
+
+  // LOGIN_CONFIGS 直接 require，比正则抠源码更稳
+  const { LOGIN_CONFIGS } = require('../src/main/loginWindow');
+  const mainLoginSet = sorted(Object.keys(LOGIN_CONFIGS));
+  assert.deepStrictEqual(uiLoginSet, mainLoginSet,
+    '渲染端 hasLoginWindow 集合与主进程 LOGIN_CONFIGS 不一致');
 });
 
 test('IPC：get-platforms 三处登记齐全（漏一处静默失效）', () => {

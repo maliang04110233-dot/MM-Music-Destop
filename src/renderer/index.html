@@ -623,87 +623,9 @@
 
         <!-- ══ 账号 ══════════════════════════════════════ -->
         <div class="settings-page" id="settingsPageAccounts">
-          <div class="settings-section-title" data-i18n="settings.accounts.sectionTitle">平台账号（解锁 VIP / 高品质下载）</div>
-          <div class="accounts-grid">
-            <!-- 网易云 -->
-            <div class="account-card" data-platform="netease">
-              <div class="account-head">
-                <span class="account-icon" aria-hidden="true">🎵</span>
-                <div class="account-info">
-                  <div class="account-name">网易云音乐</div>
-                  <div class="account-status" id="neteaseStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
-                </div>
-                <span class="account-dot" id="neteaseDot"></span>
-              </div>
-              <button class="account-primary-btn" id="neteaseLoginBtn" onclick="openLoginWindowUI('netease', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
-              <details class="account-advanced">
-                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" data-i18n="settings.accounts.neteaseHint">在浏览器登录后 → F12 → Network → 复制请求头 <code>Cookie:</code> 字段</div>
-                <textarea class="cookie-textarea" id="neteaseCookie" placeholder="MUSIC_U=xxxx; __csrf=xxxx; ..."></textarea>
-                <div class="cookie-actions">
-                  <button class="cookie-btn-save" onclick="saveCookie('netease')" data-i18n="settings.accounts.save">保存</button>
-                  <button class="cookie-btn-verify" onclick="verifyCookieUI('netease')" data-i18n="settings.accounts.verify">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('netease')" data-i18n="settings.accounts.analyze">分析</button>
-                  <button class="cookie-btn-clear" onclick="clearCookie('netease')" data-i18n="settings.accounts.clear">清除</button>
-                </div>
-                <div class="cookie-verify-result" id="neteaseVerifyResult"></div>
-                <div class="cookie-analyze" id="neteaseAnalyze"></div>
-              </details>
-            </div>
-
-            <!-- QQ -->
-            <div class="account-card" data-platform="qq">
-              <div class="account-head">
-                <span class="account-icon" aria-hidden="true">🎶</span>
-                <div class="account-info">
-                  <div class="account-name">QQ 音乐</div>
-                  <div class="account-status" id="qqStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
-                </div>
-                <span class="account-dot" id="qqDot"></span>
-              </div>
-              <button class="account-primary-btn" id="qqLoginBtn" onclick="openLoginWindowUI('qq', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
-              <details class="account-advanced">
-                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" data-i18n="settings.accounts.qqHint">需含 <code>uin=</code> 字段，否则无法识别</div>
-                <textarea class="cookie-textarea" id="qqCookie" placeholder="uin=xxxx; qm_keyst=xxxx; ..."></textarea>
-                <div class="cookie-actions">
-                  <button class="cookie-btn-save" onclick="saveCookie('qq')" data-i18n="settings.accounts.save">保存</button>
-                  <button class="cookie-btn-verify" onclick="verifyCookieUI('qq')" data-i18n="settings.accounts.verify">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('qq')" data-i18n="settings.accounts.analyze">分析</button>
-                  <button class="cookie-btn-clear" onclick="clearCookie('qq')" data-i18n="settings.accounts.clear">清除</button>
-                </div>
-                <div class="cookie-verify-result" id="qqVerifyResult"></div>
-                <div class="cookie-analyze" id="qqAnalyze"></div>
-              </details>
-            </div>
-
-            <!-- B 站 -->
-            <div class="account-card" data-platform="bilibili">
-              <div class="account-head">
-                <span class="account-icon" aria-hidden="true">📺</span>
-                <div class="account-info">
-                  <div class="account-name">哔哩哔哩</div>
-                  <div class="account-status" id="bilibiliStatusText" data-i18n="settings.accounts.notLoggedIn">未登录</div>
-                </div>
-                <span class="account-dot" id="bilibiliDot"></span>
-              </div>
-              <button class="account-primary-btn" id="bilibiliLoginBtn" onclick="openLoginWindowUI('bilibili', this)" data-i18n="settings.accounts.oneClickLogin">一键登录</button>
-              <details class="account-advanced">
-                <summary data-i18n="settings.accounts.advanced">高级（手动粘贴 Cookie）</summary>
-                <div class="settings-hint-box" data-i18n="settings.accounts.bilibiliHint">需含 <code>SESSDATA=</code> 字段</div>
-                <textarea class="cookie-textarea" id="bilibiliCookie" placeholder="SESSDATA=xxxx; bili_jct=xxxx; ..."></textarea>
-                <div class="cookie-actions">
-                  <button class="cookie-btn-save" onclick="saveCookie('bilibili')" data-i18n="settings.accounts.save">保存</button>
-                  <button class="cookie-btn-verify" onclick="verifyCookieUI('bilibili')" data-i18n="settings.accounts.verify">验证</button>
-                  <button class="cookie-btn-verify" onclick="analyzeCookieUI('bilibili')" data-i18n="settings.accounts.analyze">分析</button>
-                  <button class="cookie-btn-clear" onclick="clearCookie('bilibili')" data-i18n="settings.accounts.clear">清除</button>
-                </div>
-                <div class="cookie-verify-result" id="bilibiliVerifyResult"></div>
-                <div class="cookie-analyze" id="bilibiliAnalyze"></div>
-              </details>
-            </div>
-          </div>
-
+          <div class="settings-section-title" data-i18n="settings.accounts.sectionTitle">平台账号（解锁 VIP / 高品质下载）</div>          <div class="accounts-summary" id="accountsSummary"></div>
+          <div class="accounts-grid" id="accountsGrid"></div>
+          <div class="accounts-anonymous" id="accountsAnonymous"></div>
           <div class="settings-section-title" data-i18n="settings.sources.probeTitle">源可用性</div>
           <div class="settings-card">
             <p class="settings-note" data-i18n="settings.sources.probeHint">检测各音源当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。</p>
