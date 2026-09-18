@@ -1,0 +1,211 @@
+/**
+ * 取流解析服务（ResolveTrackService）
+ *
+ * 架构定位（见 docs/REFACTOR_PLAN_2026-09-17.md 阶段 1 / Sprint B）：
+ *   本服务回答一个业务问题：**「给定一首歌，怎么拿到能播/能下的 URL」**。
+ *   它是「换源机制」的唯一实现处 —— 在此之前，这段策略混在 api/index.js 里，
+ *   与搜索、歌词、链接识别等无关逻辑挤在同一个文件，且难以单测
+ *   （依赖真实的 gateway / 匹配器 / 健康度三个模块的模块级单例）。
+ *
+ * 职责边界（明确划清，避免又变成一个万能类）：
+ *   ✅ 负责：本源取流 → 判定是否值得换源 → 跨源找候选 → 逐个尝试 → 记账健康度
+ *   ❌ 不负责：下载落盘、队列管理、ID3、进度推送（属 main/ 下载链路）
+ *   ❌ 不负责：搜索接口本身（通过注入的 searchFn 调用，本服务不管平台协议）
+ *   ❌ 不负责：候选怎么匹配（通过注入的 findCandidates 调用 matchMusic 纯逻辑）
+ *
+ * 依赖注入（四个依赖全部显式传入，无处藏单例）：
+ *   - getUrl(id, source, quality)      取单曲直链（生产实现 = gateway.getUrl）
+ *   - searchFn(platformId, keyword)    跨源搜索（生产实现 = gateway.search 适配）
+ *   - hasCookie(platformId)            是否已配置该平台 Cookie（影响付费候选排序）
+ *   - findCandidates(deps, song)       跨源同曲候选匹配（生产实现 = matchMusic）
+ *   - sourceHealth                     { recordResult, rankByHealth }（可注入桩）
+ *
+ * 为什么用注入而不是直接 require：
+ *   1. 可测 —— 单测用桩就能覆盖「本源失败→换源成功／全失败／记忆命中」全部分支，
+ *      不触网、不加载 8 个平台；
+ *   2. 无环 —— 本模块不 require gateway / matchMusic，避免再造一处循环依赖；
+ *   3. 可换 —— 将来取流策略变化（如加缓存层）只需换注入实现。
+ */
+
+const logger = require('../../utils/logger');
+const { ERROR_CODES } = require('../../shared/errors');
+const { normalizeSong, normalizeTrackResult, isTrackSuccess } = require('../../shared/dto');
+
+/**
+ * 触发换源的错误码集合。
+ *
+ * 判定原则：**「换个平台有救」才换源**。
+ *   - VIP / 需登录 / 版权 / 下架 / 无音频流 / CDN 空 —— 换源可能拿到别家的免费流 ⇒ 换；
+ *   - 网络类错误（超时/断网）不换 —— 整体网络问题换源同样失败，只白费请求；
+ *   - 未知平台不换 —— 歌本身可能不存在，换源无意义。
+ */
+const FALLBACK_CODES = Object.freeze(new Set([
+  ERROR_CODES.VIP_REQUIRED,
+  ERROR_CODES.LOGIN_REQUIRED,
+  ERROR_CODES.AUTH_EXPIRED,
+  ERROR_CODES.COOKIE_INVALID,
+  ERROR_CODES.COPYRIGHT_RESTRICTED,
+  ERROR_CODES.UNAVAILABLE,
+  ERROR_CODES.NO_AUDIO_STREAM,
+  ERROR_CODES.CDN_EMPTY,
+]));
+
+/** CDN 签名过期类 HTTP 错误：无 code 但也值得换源（直链临时失效，换源常能拿到新链） */
+const FALLBACK_HTTP_RE = /HTTP\s*(403|404|410)/i;
+
+/**
+ * 判定一次失败的取流结果是否值得跨源重试。
+ *
+ * 抽成导出的纯函数是刻意的：这是换源机制的**核心决策**，
+ * 也是历史上最容易改错的地方（多换一次白费请求 / 少换一次用户听不了）。
+ * 让它可被单独断言，比埋在长函数里安全。
+ *
+ * @param {import('../../shared/dto').TrackResult} result
+ * @returns {boolean}
+ */
+function shouldFallbackToOtherSource(result) {
+  if (isTrackSuccess(result)) return false;
+  if (result && result.code && FALLBACK_CODES.has(result.code)) return true;
+  // 无 code 的失败（如 HTTP 403/404/410 CDN 签名过期）也换源重试
+  if (result && FALLBACK_HTTP_RE.test(String(result.error || ''))) return true;
+  // 未知数据源（B 站 id 传错等）不换——歌本身可能不存在
+  return false;
+}
+
+/**
+ * 创建取流解析服务实例。
+ *
+ * @param {Object} deps
+ * @param {(id:string, source:string, quality:string) => Promise<Object>} deps.getUrl
+ * @param {(platformId:string, keyword:string, page?:number) => Promise<Array>} deps.searchFn
+ * @param {(platformId:string) => boolean} deps.hasCookie
+ * @param {(deps:Object, song:Object) => Promise<Array>} deps.findCandidates
+ * @param {{recordResult:(s:string,ok:boolean)=>void, rankByHealth:(a:Array)=>Array}} deps.sourceHealth
+ * @returns {Object} 冻结的服务实例
+ */
+function createResolveTrackService({
+  getUrl,
+  searchFn,
+  hasCookie = () => false,
+  findCandidates,
+  sourceHealth,
+} = {}) {
+  if (typeof getUrl !== 'function') throw new Error('[ResolveTrack] 必须注入 getUrl');
+  if (typeof findCandidates !== 'function') throw new Error('[ResolveTrack] 必须注入 findCandidates');
+  if (!sourceHealth || typeof sourceHealth.recordResult !== 'function') {
+    throw new Error('[ResolveTrack] 必须注入 sourceHealth.recordResult');
+  }
+
+  /** 安全记账：健康度统计失败绝不该影响取流主流程 */
+  function record(source, ok) {
+    try {
+      sourceHealth.recordResult(source, !!ok);
+    } catch (_e) { /* 统计不可用不影响取流 */ }
+  }
+
+  /**
+   * 尝试单个源的取流，并记账健康度。
+   * @returns {Promise<Object|null>} 成功返回结果，失败返回 null（错误由调用方从 result 取）
+   */
+  async function trySource(id, source, quality) {
+    try {
+      const r = await getUrl(id, source, quality);
+      record(source, isTrackSuccess(r));
+      return r;
+    } catch (e) {
+      record(source, false);
+      // gateway 已做错误收敛，此处仅兜底注入实现直接抛错的情况
+      logger.warn(`[ResolveTrack] ${source} 取流异常:`, (e && e.message) || e);
+      return { error: (e && e.message) || '取流异常', code: 'INTERNAL_ERROR' };
+    }
+  }
+
+  /**
+   * 解析一首歌的取流地址（换源机制）。
+   *
+   * 流程（顺序即优先级）：
+   *   1. `_altSource` 记忆命中 —— 上次换源成功的源先试（lx toggleMusicInfo 模式），
+   *      避免每次都在已知失败的源上浪费一次请求；
+   *   2. 本源取流；
+   *   3. 失败且**值得换源** ⇒ 跨源找同曲候选 → 按健康度重排（好源先试）→ 逐个尝试；
+   *   4. 全失败 ⇒ **返回本源原始错误**（保证 UI 文案与「没换源时」一致）。
+   *
+   * @param {import('../../shared/dto').Song} rawSong
+   * @param {string} [quality]
+   * @returns {Promise<import('../../shared/dto').TrackResult>}
+   */
+  async function resolve(rawSong, quality) {
+    const song = normalizeSong(rawSong);
+    if (!song.id || !song.source) {
+      return normalizeTrackResult({ error: '参数无效：缺少歌曲 id/source', code: 'INVALID_ARGS' });
+    }
+
+    // 1. _altSource 记忆：上次换源成功的源先试
+    const alt = rawSong && rawSong._altSource;
+    if (alt && alt.source && alt.id && alt.source !== song.source) {
+      const r = await trySource(String(alt.id), alt.source, quality);
+      if (isTrackSuccess(r)) {
+        return normalizeTrackResult({
+          ...r, source: alt.source, matchedFrom: song.source, fromAltMemory: true,
+        });
+      }
+      // 记忆失效则继续走正常流程（不返回，不记日志噪声）
+    }
+
+    // 2. 本源
+    const result = await trySource(song.id, song.source, quality);
+    if (isTrackSuccess(result)) {
+      return normalizeTrackResult(result);
+    }
+
+    // 3. 失败且可换源 ⇒ 跨源候选逐个尝试
+    if (!shouldFallbackToOtherSource(result)) {
+      return normalizeTrackResult(result);
+    }
+
+    let candidates = [];
+    try {
+      candidates = await findCandidates({
+        searchFn: (platformId, keyword) => searchFn(platformId, keyword, 1),
+        hasCookie,
+      }, song);
+    } catch (e) {
+      logger.warn('[ResolveTrack] 跨源匹配失败:', (e && e.message) || e);
+    }
+
+    // 源可用性自动降级：候选按健康度重排（好源先试）。稳定排序保住匹配分序。
+    if (Array.isArray(candidates) && candidates.length > 1
+        && typeof sourceHealth.rankByHealth === 'function') {
+      try {
+        candidates = sourceHealth.rankByHealth(candidates);
+      } catch (_e) { /* 重排失败则用原序，不影响流程 */ }
+    }
+
+    for (const cand of (Array.isArray(candidates) ? candidates : [])) {
+      if (!cand || !cand.id || !cand.source) continue;
+      const r = await trySource(String(cand.id), cand.source, quality);
+      if (isTrackSuccess(r)) {
+        logger.log(`[ResolveTrack] 换源成功: "${song.title}" ${song.source} → ${cand.source}`);
+        return normalizeTrackResult({
+          ...r, source: cand.source, matchedSong: cand, matchedFrom: song.source,
+        });
+      }
+    }
+
+    // 4. 全失败：返回本源原始错误（UI 文案与未换源时一致）
+    return normalizeTrackResult(result);
+  }
+
+  return Object.freeze({
+    resolve,
+    // 导出决策函数便于消费方/测试直接断言（与模块级导出同源）
+    shouldFallbackToOtherSource,
+    FALLBACK_CODES,
+  });
+}
+
+module.exports = {
+  createResolveTrackService,
+  shouldFallbackToOtherSource,
+  FALLBACK_CODES,
+};

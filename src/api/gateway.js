@@ -274,63 +274,49 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
 
   // ── 首页推荐域 ────────────────────────────────────────────
   //
-  // ⚠️ 这一组方法当前**尚未纳入 manifest 能力推导**：8 个平台里只有
-  //    netease / qq / bilibili 实现了它们，且是以"老式具名导出"的形式
-  //    （如 neteaseGetTopList）挂在平台模块上，没有映射到 manifest 的
-  //    标准方法名（search / getUrl / getLyrics …）。
+  // 这一组方法已**正式纳入 manifest**：平台在 manifest 上以标准方法名
+  // （getTopList / getRecommendPlaylists / …）声明实现，registry 的
+  // CAPABILITY_METHODS 由此推导出 topList / recommendPlaylists / …
+  // 能力位。gateway 不再持有任何平台→实现名的映射字典，
+  // 只按**方法名**直接调用 —— 「平台能做什么」完全由 manifest 推导。
   //
-  //    按 v3 的分层原则，「平台能做什么」应由 manifest 的方法存在性推导。
-  //    本组是**过渡实现**：gateway 统一按名字调用 + 统一空值退化，
-  //    先消灭消费方（recommendations.js）的平台直连与手写分派；
-  //    待后续把这些方法正式纳入 manifest（阶段 1 收尾），
-  //    只需把下面的字典改成从 registry 派生即可，消费方无需再改。
+  // 空值约定与历史行为一致：推荐类接口失败 / 平台无此能力 ⇒ []。
   //
-  //    空值约定与历史行为一致：推荐类接口失败 / 平台无此能力 ⇒ []。
+  // 参数约定（与各平台 manifest 实现的形参顺序一致）：
+  //   除 getRanking 外，推荐域方法都**不需要 cookie**；
+  //   getRanking（B 站排行）历史上需要 cookie，故末位注入。
+  //   这是本域唯一的 cookie 差异，用 WITH_COOKIE_METHODS 显式记录，
+  //   避免"哪个方法要 cookie"再次散落进调用点。
 
   /**
-   * 推荐域方法名 → 平台模块上的实现名。
-   * 键是 gateway 的稳定接口，值是该平台模块的老式导出名。
+   * 需要把 cookie 作为**末位参数**注入的推荐域方法。
+   * 仅 B 站排行 —— 其余推荐接口均无需登录态。
    */
-  const RECOMMEND_METHODS = Object.freeze({
-    netease: {
-      getTopList: 'neteaseGetTopList',
-      getRecommendPlaylists: 'neteaseGetRecommendPlaylists',
-    },
-    qq: {
-      getRecommendPlaylists: 'qqGetRecommendPlaylists',
-      getCategoryPlaylists: 'qqGetCategoryPlaylists',
-      getTopList: 'qqGetTopList',
-      getNewSongs: 'qqGetNewSongs',
-      getRadioStations: 'qqGetRadioStations',
-      getHotSingers: 'qqGetHotSingers',
-    },
-    bilibili: {
-      getRanking: 'bilibiliGetRanking',
-    },
-  });
+  const WITH_COOKIE_METHODS = Object.freeze(new Set(['getRanking']));
 
   /**
    * 调用推荐域方法。
    *
+   * 能力判定走 registry 推导的 `_caps`（经 supports），而非 gateway 自带清单：
+   * 新增平台只要在 manifest 上实现同名方法，这里立刻可用，无需改本文件。
+   *
    * @param {string} platformId
-   * @param {string} method    gateway 标准名（见 RECOMMEND_METHODS 的键）
+   * @param {string} method    manifest 标准方法名（getTopList / getRanking …）
    * @param {Array}  args      透传给平台实现的参数
-   * @param {Object} [opts]
-   * @param {boolean} [opts.withCookie=false] 是否把 cookie 作为**末位**参数注入
-   *        （B 站排行历史上需要 cookie；网易云/QQ 的推荐接口不需要）
    * @returns {Promise<Array>} 失败 / 无能力 ⇒ []
    */
-  async function recommendCall(platformId, method, args = [], opts = {}) {
+  async function recommendCall(platformId, method, args = []) {
     const plugin = pluginOf(platformId);
-    const implName = RECOMMEND_METHODS[platformId] && RECOMMEND_METHODS[platformId][method];
-    if (!plugin || !implName || typeof plugin[implName] !== 'function') {
+    if (!plugin || typeof plugin[method] !== 'function') {
       logger.warn(`[gateway] ${platformId}.${method}: 平台未实现该推荐能力`);
       return EMPTY.list();
     }
-    const finalArgs = opts.withCookie ? [...args, cookieFor(platformId)] : args;
+    const finalArgs = WITH_COOKIE_METHODS.has(method)
+      ? [...args, cookieFor(platformId)]
+      : args;
     const r = await safeRun(
       `${platformId}.${method}`,
-      () => plugin[implName](...finalArgs),
+      () => plugin[method](...finalArgs),
       EMPTY.list(),
     );
     return Array.isArray(r) ? r : EMPTY.list();
@@ -366,9 +352,9 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
     return recommendCall(platformId, 'getHotSingers', [limit]);
   }
 
-  /** 排行榜（B 站）。历史上需要 cookie，故末位注入。 */
+  /** 排行榜（B 站）。需要 cookie，由 recommendCall 按 WITH_COOKIE_METHODS 末位注入。 */
   function getRanking(platformId, limit) {
-    return recommendCall(platformId, 'getRanking', [limit], { withCookie: true });
+    return recommendCall(platformId, 'getRanking', [limit]);
   }
 
   // ── 跨平台批量 ────────────────────────────────────────────
