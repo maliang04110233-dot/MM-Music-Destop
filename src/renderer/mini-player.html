@@ -196,18 +196,24 @@
         }
       }
       if (data.artist !== undefined) artist.textContent = data.artist || '未知艺术家';
-      if (data.cover) {
-        cover.src = data.cover;
-        cover.style.display = 'block';
-        coverPh.style.display = 'none';
-        cover.classList.toggle('playing', data.playing);
-      } else {
-        cover.style.display = 'none';
-        coverPh.style.display = 'flex';
-        cover.classList.remove('playing');
+      // M13: 元信息（title/artist/cover）只在换曲时推送，进度帧不带——
+      // 未提供时保持上一次渲染，不能用 falsy 分支误清封面
+      if (data.cover !== undefined) {
+        if (data.cover) {
+          cover.src = data.cover;
+          cover.style.display = 'block';
+          coverPh.style.display = 'none';
+        } else {
+          cover.style.display = 'none';
+          coverPh.style.display = 'flex';
+          cover.classList.remove('playing');
+        }
       }
-      playBtn.innerHTML = data.playing ? ICON_PAUSE : ICON_PLAY;
-      playBtn.title = data.playing ? '暂停' : '播放';
+      if (data.playing !== undefined) {
+        cover.classList.toggle('playing', !!data.playing);
+        playBtn.innerHTML = data.playing ? ICON_PAUSE : ICON_PLAY;
+        playBtn.title = data.playing ? '暂停' : '播放';
+      }
       if (typeof data.progress === 'number') {
         progress.style.width = data.progress + '%';
       }

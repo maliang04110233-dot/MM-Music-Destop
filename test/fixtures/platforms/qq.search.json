@@ -1,0 +1,26 @@
+{
+  "code": 0,
+  "list": [
+    {
+      "songmid": "003OUlho2HcRHF",
+      "songid": 401174374,
+      "songname": "晴天",
+      "singer": [{ "mid": "0025NhlN2yWrP4", "name": "周杰伦" }],
+      "albumname": "叶惠美",
+      "albummid": "002MThns1dBR5U",
+      "interval": 269,
+      "pay": { "paymiddle": 0 }
+    },
+    {
+      "songmid": "001z9s452kKpZG",
+      "songid": 111,
+      "songname": "稻香",
+      "singer": [{ "mid": "0025NhlN2yWrP4", "name": "周杰伦" }],
+      "albumname": "魔杰座",
+      "albummid": "0045O4YA1mmKtt",
+      "interval": 223,
+      "pay": { "paymiddle": 1 }
+    }
+  ],
+  "totalmid": 200
+}

@@ -399,17 +399,20 @@ async function qqGetUrl(id, quality, cookie = '') {
       authst: qqmusicKey,    // 新版 QQ 鉴权签名（VIP/FLAC 必备）
     },
   };
-  const data = encodeURIComponent(JSON.stringify(dataObj));
-  const url = `https://u.y.qq.com/cgi-bin/musicu.fcg?-=getplaysongvkey${Date.now()}&g_tk=5381&loginUin=${encodeURIComponent(uin)}&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0&data=${data}`;
+  // M6: 登录态 authst 不再进 GET 查询串（会落进平台/代理访问日志），
+  // musicu.fcg 同样接受 POST 表单，data 放 body
+  const bodyStr = 'data=' + encodeURIComponent(JSON.stringify(dataObj));
+  const url = `https://u.y.qq.com/cgi-bin/musicu.fcg?-=getplaysongvkey${Date.now()}&g_tk=5381&loginUin=${encodeURIComponent(uin)}&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0`;
 
   try {
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Referer': 'https://y.qq.com/',
+      'Content-Type': 'application/x-www-form-urlencoded',
     };
     if (cookie) headers['Cookie'] = cookie;
 
-    const result = await request(url, { headers, timeout: 15000 });
+    const result = await request(url, { method: 'POST', body: bodyStr, headers, timeout: 15000 });
     const midurlinfo = result?.req_0?.data?.midurlinfo || [];
     const sip = result?.req_0?.data?.sip || [];
     const info = midurlinfo.find(m => m.songmid === id) || midurlinfo[0];

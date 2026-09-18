@@ -162,26 +162,27 @@ function renderQueue(queue) {
     return `
     <div class="queue-item queue-status-${s.status}${selected && _dlSelectionMode ? ' selected' : ''}">
       ${_dlSelectionMode ? `
-      <div class="queue-item-cb" onclick="event.stopPropagation();toggleDlSelect('${escAttr(s.taskId)}')">
-        <input type="checkbox" id="dlcb_${escAttr(s.taskId)}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleDlSelect('${escAttr(s.taskId)}')">
+      <div class="queue-item-cb" onclick="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
+        <input type="checkbox" id="dlcb_${escAttr(s.taskId)}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
       </div>` : ''}
       ${s.cover
         ? `<img class="queue-cover" src="${escAttr(s.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
         : ''}
       <div class="queue-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
-      <div class="queue-info" onclick="event.stopPropagation();toggleQueueDetail('${escAttr(s.taskId)}')" style="cursor:pointer;">
+      <div class="queue-info" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" style="cursor:pointer;">
         <div class="queue-title">${esc(s.title || '未知')}</div>
         <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${errorTag(s.errorCode)}</div>
         ${s.status === 'downloading' ? `
         <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>` : ''}
       </div>
-      <button class="queue-detail-toggle" onclick="event.stopPropagation();toggleQueueDetail('${escAttr(s.taskId)}')" title="${isExpanded ? '收起详情' : '展开详情'}">${isExpanded ? '▾' : '▸'}</button>
-      ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escAttr(s.taskId)}')" title="取消">✕</button>` : ''}
-      ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escAttr(getState('saveDir') || '')}')">📂</button>` : ''}
-      ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="转换格式" onclick="event.stopPropagation();showConvertModal('${escAttr(s.savePath || '')}', '${escAttr(s.title || '')}')">🔄</button>` : ''}
+      <button class="queue-detail-toggle" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" title="${isExpanded ? '收起详情' : '展开详情'}">${isExpanded ? '▾' : '▸'}</button>
+      ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消">✕</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'downloading') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消下载（中断传输并清理临时文件）">✕</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(getState('saveDir') || '')}')">📂</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="转换格式" onclick="event.stopPropagation();showConvertModal('${escQ(s.savePath || '')}', '${escQ(s.title || '')}')">🔄</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'error') ? `
-        <button class="queue-cancel" style="color:var(--neon-orange)" title="重试下载" onclick="event.stopPropagation();retryQueueItem('${escAttr(s.taskId)}')">🔄</button>
-        <button class="queue-cancel" title="移除" onclick="event.stopPropagation();removeQueueItem('${escAttr(s.taskId)}')">✕</button>
+        <button class="queue-cancel" style="color:var(--neon-orange)" title="重试下载" onclick="event.stopPropagation();retryQueueItem('${escQ(s.taskId)}')">🔄</button>
+        <button class="queue-cancel" title="移除" onclick="event.stopPropagation();removeQueueItem('${escQ(s.taskId)}')">✕</button>
       ` : ''}
     </div>
     ${isExpanded ? `

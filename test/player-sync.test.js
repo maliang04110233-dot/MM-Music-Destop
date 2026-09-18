@@ -53,8 +53,8 @@ function exportsOf(src) {
 }
 
 const PUBLIC = [
-  'applyRestoredPlayMode', 'resetDesktopLyricSong', 'restorePlayQueueFromSaved',
-  'syncToDesktopLyric', 'syncToMiniPlayer', 'syncToTray',
+  'applyRestoredPlayMode', 'resetDesktopLyricSong', 'resetMiniPlayerSong',
+  'restorePlayQueueFromSaved', 'syncToDesktopLyric', 'syncToMiniPlayer', 'syncToTray',
 ];
 
 // ── A. 迁移完整性 ─────────────────────────────────────────────
@@ -70,7 +70,7 @@ test('app.js: 四个函数已不在 init() 内定义（外提完成，无残留�
   assert.deepEqual(leaked, [], `app.js 仍残留已外提的实现：${leaked.join(', ')}`);
 });
 
-test('player-sync.js: 公开面恰为 6 个函数', () => {
+test('player-sync.js: 公开面恰为 7 个函数', () => {
   assert.deepEqual(exportsOf(SYNC_CODE), PUBLIC, 'player-sync.js 的 export 面发生了变化');
 });
 
@@ -116,17 +116,38 @@ test('player-sync.js: 三个外发函数都保留了 !audio 的提前返回（�
 });
 
 // ── C. 原始行为逐条保留（防搬错逻辑） ──────────────────────────
-test('player-sync.js: syncToMiniPlayer 仍推全 7 个字段', () => {
+test('player-sync.js: syncToMiniPlayer 换曲时推全 7 字段、同曲后续帧节流', () => {
   const start = SYNC_CODE.indexOf('export function syncToMiniPlayer');
   const body = SYNC_CODE.slice(start, SYNC_CODE.indexOf('\n}', start));
-  for (const key of ['title', 'artist', 'cover', 'playing', 'progress', 'lyric', 'time']) {
-    // 兼容两种写法：`key: value` 与简写属性 `key,`（progress 就是简写）
+  // 每帧恒定推送的 4 个字段（播放态/进度/歌词行/时间串）
+  for (const key of ['playing', 'progress', 'lyric', 'time']) {
     assert.ok(
       new RegExp(`\\b${key}\\s*[,:]`).test(body),
-      `syncMiniPlayer 载荷丢了字段: ${key}`
+      `syncMiniPlayer 每帧载荷丢了字段: ${key}`
+    );
+  }
+  // M13 节流：封面大图每帧序列化是浪费。现改为「仅换曲（songKey 变化）时
+  // 才补推 title/artist/cover」，同曲后续帧不再重推。这条节流判据必须守住，
+  // 否则会静默回退成每帧全量序列化（迷你窗口首帧空白的同类隐患）。
+  assert.ok(/_mpLastSongKey/.test(body), '丢失了换曲节流标记 → 会每帧重推元信息');
+  const branch = body.slice(body.indexOf('_mpLastSongKey = null') + 22);
+  for (const key of ['title', 'artist', 'cover']) {
+    // 换曲分支是 `payload.xxx = ...` 赋值写法，不是对象字面量 `xxx:` 简写
+    assert.ok(
+      new RegExp(`payload\\.${key}\\s*=`).test(branch),
+      `换曲分支丢了字段: ${key}`
     );
   }
   assert.ok(/fmtTime\(/.test(body), 'syncToMiniPlayer 丢了 fmtTime 时间格式化');
+});
+
+test('player-sync.js: resetMiniPlayerSong 重置换曲标记（迷你窗口首帧强制重推）', () => {
+  // app.js 在 onSyncMiniPlayer 回调里先调 resetMiniPlayerSong 再 syncToMiniPlayer(_audio)，
+  // 解决「迷你窗口刚打开首帧永远空白」——_mpLastSongKey 若已等于当前曲，
+  // 不重置则新开的迷你窗口收不到 title/cover。
+  const start = SYNC_CODE.indexOf('export function resetMiniPlayerSong');
+  const body = SYNC_CODE.slice(start, SYNC_CODE.indexOf('\n}', start));
+  assert.ok(/_mpLastSongKey\s*=\s*null/.test(body), 'resetMiniPlayerSong 未清空换曲标记');
 });
 
 test('player-sync.js: syncToDesktopLyric 仍保留「换歌才推整份歌词」的节流', () => {
@@ -174,10 +195,11 @@ test('app.js: 从 player-sync.js import 的恰好是实际用到的那些', () =
   const m = APP_CODE.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/player-sync\.js'/);
   assert.ok(m, 'app.js 未从 ./player-sync.js import');
   const imported = m[1].split(',').map(s => s.trim()).filter(Boolean).sort();
-  // applyRestoredPlayMode 由 restorePlayQueueFromSaved 内部调用，app.js 不需要
+  // applyRestoredPlayMode 由 restorePlayQueueFromSaved 内部调用，app.js 不需要；
+  // resetMiniPlayerSong 由 app.js 的 onSyncMiniPlayer 回调调用（M13 迷你窗口首帧修复）
   assert.deepEqual(
     imported,
-    ['resetDesktopLyricSong', 'restorePlayQueueFromSaved', 'syncToDesktopLyric', 'syncToMiniPlayer', 'syncToTray'],
+    ['resetDesktopLyricSong', 'resetMiniPlayerSong', 'restorePlayQueueFromSaved', 'syncToDesktopLyric', 'syncToMiniPlayer', 'syncToTray'],
     'import 名单变化了 —— 请确认没有引入未使用的符号或被删掉必要符号'
   );
 });

@@ -1,0 +1,25 @@
+{
+  "body": {
+    "result": {
+      "songCount": 2,
+      "songs": [
+        {
+          "id": 186016,
+          "name": "晴天",
+          "artists": [{ "id": 7912, "name": "周杰伦" }],
+          "album": { "id": 186017, "name": "叶惠美", "picUrl": "https://p1.music.126.net/2E0mZQ.jpg" },
+          "duration": 269733,
+          "fee": 0
+        },
+        {
+          "id": 186018,
+          "name": "稻香",
+          "artists": [{ "id": 7912, "name": "周杰伦" }, { "id": 1, "name": "杨瑞代" }],
+          "album": { "id": 186019, "name": "魔杰座", "picUrl": "https://p1.music.126.net/Q9ab.jpg" },
+          "duration": 223866,
+          "fee": 1
+        }
+      ]
+    }
+  }
+}

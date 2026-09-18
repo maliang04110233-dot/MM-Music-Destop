@@ -47,7 +47,7 @@ function renderPlaylistList(playlists) {
   }
 
   container.innerHTML = playlists.map(pl => `
-    <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escAttr(pl.id)}')">
+    <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escQ(pl.id)}')">
       <div class="playlist-card-cover">
         ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : `<div class="playlist-card-placeholder">${pl.system ? HEART_ON : '📋'}</div>`}
         <div class="playlist-card-overlay">
@@ -61,8 +61,8 @@ function renderPlaylistList(playlists) {
       <div class="playlist-card-actions" onclick="event.stopPropagation()">
         ${pl.system
           ? ''
-          : `<button class="action-btn" onclick="editPlaylist('${escAttr(pl.id)}')" title="编辑">✏️</button>
-        <button class="action-btn" onclick="deletePlaylist('${escAttr(pl.id)}')" title="删除">🗑️</button>`}
+          : `<button class="action-btn" onclick="editPlaylist('${escQ(pl.id)}')" title="编辑">✏️</button>
+        <button class="action-btn" onclick="deletePlaylist('${escQ(pl.id)}')" title="删除">🗑️</button>`}
       </div>
     </div>
   `).join('');
@@ -318,7 +318,7 @@ function showPlaylistSelectModal(song, playlists) {
     if (!modal || !list) return;
 
     list.innerHTML = playlists.map(pl => `
-      <div class="playlist-select-item" onclick="addToSelectedPlaylist('${escAttr(pl.id)}')">
+      <div class="playlist-select-item" onclick="addToSelectedPlaylist('${escQ(pl.id)}')">
         <span class="playlist-select-icon">🎼</span>
         <span class="playlist-select-name">${esc(pl.name)}</span>
         <span class="playlist-select-count" style="font-size:11px;color:var(--neon-dim);">${pl.songs?.length || 0} 首</span>

@@ -1,0 +1,23 @@
+{
+  "msg": "success",
+  "list": [
+    {
+      "songId": "26571775",
+      "typeEname": "fczx",
+      "songName": "<b>晴天</b>",
+      "singer": "周杰伦"
+    },
+    {
+      "songId": "x1",
+      "typeEname": "fczx",
+      "songName": "songId 非法的脏条目",
+      "singer": "某人"
+    },
+    {
+      "songId": "26571776",
+      "typeEname": "gfyx",
+      "songName": "稻香&nbsp;",
+      "singer": "null"
+    }
+  ]
+}

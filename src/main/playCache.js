@@ -156,14 +156,35 @@ async function proxyDownloadOnce(targetUrl, referer, filePath, maxRedirects = 5)
         return resolve(proxyDownloadOnce(next, nextReferer, filePath, maxRedirects - 1));
       }
       if (res.statusCode !== 200) {
+        // Minor: 不消费的响应体会挂住 socket，drain 掉再返回
+        res.resume();
         return resolve({ error: 'HTTP ' + res.statusCode });
       }
+      // Minor: 播放缓存加体积上限（200MB），防止恶意/异常超长响应撑爆磁盘
+      const MAX_BYTES = 200 * 1024 * 1024;
+      const clen = parseInt(res.headers['content-length'] || '0', 10);
+      if (clen > MAX_BYTES) {
+        res.resume();
+        return resolve({ error: '文件过大' });
+      }
+      let settled = false;
+      const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
       const file = fs.createWriteStream(filePath);
+      let received = 0;
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        if (received > MAX_BYTES) {
+          res.destroy();
+          file.destroy();
+          safeUnlink(filePath);
+          finish({ error: '下载超出大小上限' });
+        }
+      });
       res.pipe(file);
       // safeUnlink 内部吞错，此处无需 await
-      res.on('error', (e) => { file.destroy(); safeUnlink(filePath); resolve({ error: e.message }); });
-      file.on('finish', () => file.close(() => resolve({ ok: true })));
-      file.on('error', (e) => { safeUnlink(filePath); resolve({ error: e.message }); });
+      res.on('error', (e) => { file.destroy(); safeUnlink(filePath); finish({ error: e.message }); });
+      file.on('finish', () => file.close(() => finish({ ok: true })));
+      file.on('error', (e) => { safeUnlink(filePath); finish({ error: e.message }); });
     });
     req.on('error', (e) => resolve({ error: e.message }));
     req.setTimeout(30000, () => { req.destroy(); resolve({ error: 'timeout' }); });

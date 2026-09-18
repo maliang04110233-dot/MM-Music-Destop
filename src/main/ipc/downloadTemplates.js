@@ -7,7 +7,7 @@
  * 模板格式: { artist } / { album } / { title } / { source } / { year }
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const path = require('path');
 const prefs = require('../../utils/prefs');
 
@@ -15,13 +15,13 @@ const TEMPLATE_KEY = 'downloadTemplates';
 const ACTIVE_KEY = 'activeDownloadTemplate';
 
 function register() {
-  ipcMain.handle('get-download-templates', () => {
+  handle('get-download-templates', () => {
     const templates = prefs.get(TEMPLATE_KEY) || [];
     const active = prefs.get(ACTIVE_KEY) || null;
     return { templates, active };
   });
 
-  ipcMain.handle('save-download-template', (_, template) => {
+  handle('save-download-template', (_, template) => {
     if (!template || !template.name || !template.path) {
       return { success: false, error: '名称和路径不能为空' };
     }
@@ -55,7 +55,7 @@ function register() {
     return { success: true, template: newTpl };
   });
 
-  ipcMain.handle('delete-download-template', (_, templateId) => {
+  handle('delete-download-template', (_, templateId) => {
     if (!templateId) return { success: false, error: '缺少ID' };
     const templates = prefs.get(TEMPLATE_KEY) || [];
     const filtered = templates.filter(t => t.id !== templateId);
@@ -69,14 +69,14 @@ function register() {
     return { success: true };
   });
 
-  ipcMain.handle('set-active-template', (_, templateId) => {
+  handle('set-active-template', (_, templateId) => {
     prefs.set(ACTIVE_KEY, templateId || null);
     return { success: true, active: templateId };
   });
 
   // 文件名模板预览：renderFileName 依赖 src/utils/naming，renderer 无法直接 require，
   // 预览必须在主进程算。顺带返回未知变量列表，设置页据此提示拼写错误。
-  ipcMain.handle('preview-naming-template', (_, template) => {
+  handle('preview-naming-template', (_, template) => {
     const naming = require('../../utils/naming');
     const src = typeof template === 'string' && template.trim() ? template : naming.DEFAULT_TEMPLATE;
     return {
@@ -85,26 +85,8 @@ function register() {
     };
   });
 
-  // 应用模板路径（替换变量）
-  ipcMain.handle('apply-path-template', (_, { templateId, song }) => {
-    const templates = prefs.get(TEMPLATE_KEY) || [];
-    const tpl = templateId ? templates.find(t => t.id === templateId) : null;
-    if (!tpl) return { path: null };
-
-    const path = tpl.path
-      .replace(/\{artist\}/gi, sanitizeFileName(song.artist || '未知艺术家'))
-      .replace(/\{album\}/gi, sanitizeFileName(song.album || '未知专辑'))
-      .replace(/\{title\}/gi, sanitizeFileName(song.title || '未知标题'))
-      .replace(/\{source\}/gi, sanitizeFileName(song.source || ''))
-      .replace(/\{year\}/gi, (song.year || '').toString().slice(0, 4))
-      .replace(/\{track\}/gi, String(song.trackNumber || song.track || '').padStart(2, '0'));
-
-    return { path, template: tpl };
-  });
-}
-
-function sanitizeFileName(name) {
-  return String(name).replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80);
+  // （原 'apply-path-template' handler 已删除：不在 preload 白名单，渲染层
+  //   零引用，属死代码 —— 队列下载的路径生成走 downloadQueue + naming）
 }
 
 /**

@@ -74,37 +74,24 @@ async function searchMusic(keyword, source, page = 1) {
   if (!keyword || typeof keyword !== 'string' || !keyword.trim()) {
     return { songs: [], source: source || 'all', error: '搜索关键词不能为空' };
   }
-  const errors = [];
-
-  // 单平台搜索
-  if (source !== 'all') {
-    if (!_registry.has(source)) return { songs: [], source, error: `未知平台: ${source}` };
-    try {
-      const songs = await gateway.search(source, keyword, page);
-      return { songs, source, error: null };
-    } catch (e) {
-      return { songs: [], source, error: `${source}: ${e.message || e}` };
-    }
+  // M11: gateway.search 内部 safeRun 已吞异常并回退 []，永不 throw——
+  // 原先这里的 try/catch 与 errors 收集是死代码，删除后行为不变
+  if (source === 'all') {
+    // all: 并行搜索所有平台，按 manifest 的 policies.aggregateLimit 截断
+    const allPlugins = _registry.getAll();
+    const results = await gateway.fanOut(allPlugins.map(p => p.id), (id) => gateway.search(id, keyword, 1));
+    // 聚合条数由 manifest 的 policies.aggregateLimit 显式声明。
+    // 原先是按数组下标硬编码 10/10/5 —— 在中间插入新平台会静默改变
+    // 后面所有平台的聚合条数，且没有任何测试盯着。
+    const songs = results.flatMap((r, i) => {
+      if (!r.ok) return [];
+      return (r.value || []).slice(0, allPlugins[i]._policies.aggregateLimit);
+    });
+    return { songs, source: 'all', error: null };
   }
-
-  // all: 并行搜索所有平台，按 manifest 的 policies.aggregateLimit 截断
-  const allPlugins = _registry.getAll();
-  const results = await gateway.fanOut(allPlugins.map(p => p.id), async (id) => {
-    try {
-      return await gateway.search(id, keyword, 1);
-    } catch (e) {
-      errors.push(`${id}: ${e.message || e}`);
-      return [];
-    }
-  });
-  // 聚合条数由 manifest 的 policies.aggregateLimit 显式声明。
-  // 原先是按数组下标硬编码 10/10/5 —— 在中间插入新平台会静默改变
-  // 后面所有平台的聚合条数，且没有任何测试盯着。
-  const songs = results.flatMap((r, i) => {
-    if (!r.ok) return [];
-    return r.value.slice(0, allPlugins[i]._policies.aggregateLimit);
-  });
-  return { songs, source: 'all', error: errors.length ? errors.join(' / ') : null };
+  if (!_registry.has(source)) return { songs: [], source, error: `未知平台: ${source}` };
+  const songs = await gateway.search(source, keyword, page);
+  return { songs, source, error: null };
 }
 
 // ─── 专辑搜索（插件架构版）─────────────────────────────────

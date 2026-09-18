@@ -1,0 +1,23 @@
+{
+  "ST": 12,
+  "SID": 0,
+  "rt": "6004",
+  "total": 1,
+  "abslist": [
+    {
+      "MUSICRID": "MUSIC_91234567",
+      "SONGNAME": "<em>晴天</em>",
+      "ARTIST": "周杰伦&amp;杨瑞代",
+      "ALBUM": "叶惠美",
+      "hts_MVPIC": "",
+      "web_albumpic_short": "albumcover/17/89/3a1b.jpg",
+      "DURATION": "269",
+      "N_MUSICRID": "91234567"
+    },
+    {
+      "SONGNAME": "缺 rid 的脏条目",
+      "ARTIST": "某人",
+      "DURATION": "100"
+    }
+  ]
+}

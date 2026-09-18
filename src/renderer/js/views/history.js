@@ -60,16 +60,16 @@ function renderHistory(items, stats) {
         <div class="history-title">${esc(s.title)}</div>
         <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}</div>
       </div>
-      <span class="source-badge badge-${s.source}">${srcLabel(s.source)}</span>
-      <span class="history-quality">${s.quality || 'standard'}</span>
+      <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
+      <span class="history-quality">${esc(s.quality || 'standard')}</span>
       <span class="history-size">${formatBytes(s.size)}</span>
       <span class="history-time">${fmtDate(s.finishedAt)}</span>
       <div class="history-actions">
         ${s.status === 'done' && s.savePath
-          ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escAttr(s.savePath)}')">📂</button>`
+          ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escQ(s.savePath)}')">📂</button>`
           : ''}
         ${s.status === 'error'
-          ? `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escAttr(s.id)}', '${escAttr(s.source)}', '${escAttr(s.title)}', '${escAttr(s.artist)}', '${escAttr(s.album || '')}', '${escAttr(s.quality || 'standard')}')">🔄</button>`
+          ? `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escQ(s.id)}', '${escQ(s.source)}', '${escQ(s.title)}', '${escQ(s.artist)}', '${escQ(s.album || '')}', '${escQ(s.quality || 'standard')}')">🔄</button>`
           : ''}
       </div>
     </div>

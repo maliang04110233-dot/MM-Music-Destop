@@ -150,11 +150,19 @@
       elNext.textContent = n ? n.text : '';
       elSub.textContent = c && c.subText ? c.subText : '';
 
-      // 当前行：逐字 span（卡拉 OK）
+      // 当前行：逐字 span（卡拉 OK）。C4：歌词来自远端 LRC，必须走
+      // textContent 建节点 —— 原 innerHTML 拼接允许 <img onerror> 直接执行
       if (c && c.words && c.words.length) {
-        elCur.innerHTML = c.words.map((w, j) =>
-          `<span class="w" data-j="${j}">${w === ' ' ? '&nbsp;' : w}</span>`
-        ).join('');
+        elCur.textContent = '';
+        const frag = document.createDocumentFragment();
+        c.words.forEach((w, j) => {
+          const span = document.createElement('span');
+          span.className = 'w';
+          span.dataset.j = String(j);
+          span.textContent = w === ' ' ? '\u00a0' : String(w ?? '');
+          frag.appendChild(span);
+        });
+        elCur.appendChild(frag);
       } else {
         elCur.textContent = c ? c.text : '';
       }

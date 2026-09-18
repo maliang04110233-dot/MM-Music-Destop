@@ -9,8 +9,20 @@ function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-/** 转义单引号（用于 inline onclick 属性） */
-function escQ(s) { return (s || '').replace(/'/g, "\\'"); }
+/**
+ * 转义用于「双引号包裹的 inline 事件属性内的 JS 字符串字面量」的值。
+ * 两层都要防：先反斜杠再单引号（JS 字面量层），再双引号/尖括号
+ * （HTML 属性层 —— 值里的 " 会直接闭合 onclick="..." 并注入新属性）。
+ * 注意顺序：必须先转义 \，否则 foo\ 会把后面的 \' 变义。
+ */
+function escQ(s) {
+  return String(s ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /** 转义用于 HTML 属性和 onclick 上下文的值（防 DOM XSS） */
 function escAttr(s) {
@@ -98,10 +110,31 @@ function platformIcon(id) {
 const BADGE_STYLE_ID = 'platformBadgeTheme';
 
 /**
- * 把 manifest.badge 注入为 `.badge-<id>` 的 CSS 变量。
+ * Minor(XSS): source/平台 id 会拼进 class 名与 CSS 选择器，
+ * 白名单钳制为标识符字符集，异常值归为 unknown。
+ */
+function badgeCls(id) {
+  const s = String(id || '');
+  return /^[a-zA-Z0-9_-]{1,32}$/.test(s) ? s : 'unknown';
+}
+
+/**
+ * 把 manifest.badge 注入为 `.badge-<id>` 的 CSS 变量，**并**为每个平台补一个
+ * `--plat-c`（该平台的代表色，供 `.plat-dot` 平台圆点用）。
  *
  * 原来 content.css 手写 8 条 `.badge-<id>` 规则：新增平台忘了补 CSS **不报错**，
  * 只静默掉回默认色。改为变量注入后，这一漏洞从"不可见"变成"契约测试可断言"。
+ *
+ * `--plat-c` 直接复用 `badge.fg`（manifest 里本就是"该平台的语义色令牌"，
+ * 如 netease→var(--c-danger)、qq→var(--c-warn)、bilibili→var(--accent-ui)）。
+ * 这样平台圆点不再需要 content.css 手写 `#31c27c` / `#fb7299` 这类写死色值
+ * ——那是本仓明确禁止的（主题共 7 套，写死 hex 在浅色主题下对比度不达标），
+ * 且原先只覆盖 3 个平台，另外 5 个平台的圆点会静默变透明。
+ *
+ * ⚠️ 这里**不**校验 badge.fg 是否是合法 CSS 颜色。manifest 是唯一来源，
+ *    写错色值属于 manifest 的契约问题（test/platform-contract.test.js 覆盖），
+ *    在渲染层做二次校验只会把问题藏起来。
+ *
  * 幂等：重复调用只覆盖同一个 <style> 的内容。
  * @param {Array} list
  */
@@ -113,9 +146,17 @@ function applyPlatformBadgeTheme(list) {
     el.id = BADGE_STYLE_ID;
     (document.head || document.documentElement).appendChild(el);
   }
+  // ⚠️ 选择器必须**同时**命中圆点 `.plat-dot[data-plat=id]`。
+  //    只写 `.badge-<id>` 时，--plat-c 挂在徽标元素上，而圆点是徽标的
+  //    **兄弟节点**（见 views/home.js 的 .plat-block-head），CSS 变量
+  //    只向下继承，兄弟拿不到 —— 表现是 8 个平台圆点**全部**回落灰色，
+  //    且不报任何错。这个 bug 实际发生过一次（删掉 content.css 的
+  //    逐平台色值规则时没验证变量能否到达）。
   el.textContent = (list || [])
-    .filter(p => p && p.id && p.badge)
-    .map(p => `.badge-${p.id}{--badge-bg:${p.badge.bg};--badge-fg:${p.badge.fg};--badge-border:${p.badge.border};}`)
+    .filter(p => p && p.id && p.badge && /^[a-zA-Z0-9_-]{1,32}$/.test(String(p.id)))
+    .map(p => `.badge-${p.id},.plat-dot[data-plat="${p.id}"]{`
+            + `--badge-bg:${p.badge.bg};--badge-fg:${p.badge.fg};--badge-border:${p.badge.border};`
+            + `--plat-c:${p.badge.fg};}`)
     .join('');
 }
 
@@ -195,6 +236,7 @@ export {
   setPlatforms,
   fallbackPlatformIds,
   applyPlatformBadgeTheme,
+  badgeCls,
   statusLabel,
   formatPlayCount,
   fmtHistoryTime,
@@ -215,6 +257,7 @@ window.getPlatforms = getPlatforms;
 window.setPlatforms = setPlatforms;
 window.fallbackPlatformIds = fallbackPlatformIds;
 window.applyPlatformBadgeTheme = applyPlatformBadgeTheme;
+window.badgeCls = badgeCls;
 window.statusLabel = statusLabel;
 window.formatPlayCount = formatPlayCount;
 window.fmtHistoryTime = fmtHistoryTime;

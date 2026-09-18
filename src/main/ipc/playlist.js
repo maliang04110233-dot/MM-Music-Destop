@@ -7,8 +7,8 @@
  * 持久化到 userData/prefs.json
  */
 
-const { ipcMain } = require('electron');
 const prefs = require('../../utils/prefs');
+const { handle } = require('./register');
 
 // ── 收藏歌单（红心）──────────────────────────────────────
 // 收藏不是独立的存储，而是 userPlaylists 里 id 固定的系统歌单：
@@ -42,12 +42,12 @@ function ensureFavorites() {
 
 function register() {
   // 获取所有用户歌单
-  ipcMain.handle('get-user-playlists', () => {
+  handle('get-user-playlists', () => {
     return ensureFavorites();
   });
 
   // 保存歌单（新建或更新）
-  ipcMain.handle('save-user-playlist', (_, playlist) => {
+  handle('save-user-playlist', (_, playlist) => {
     if (!playlist || !playlist.name) return { success: false, error: '歌单名称不能为空' };
     const playlists = ensureFavorites();
     const now = Date.now();
@@ -77,7 +77,7 @@ function register() {
   });
 
   // 删除歌单
-  ipcMain.handle('delete-user-playlist', (_, playlistId) => {
+  handle('delete-user-playlist', (_, playlistId) => {
     if (!playlistId) return { success: false, error: '缺少歌单ID' };
     const playlists = ensureFavorites();
     const pl = playlists.find(p => p.id === playlistId);
@@ -89,7 +89,7 @@ function register() {
 
   // 添加歌曲到歌单
   // 参数为位置参数（renderer 侧 api.addToUserPlaylist(playlistId, song)）
-  ipcMain.handle('add-to-user-playlist', (_, playlistId, song) => {
+  handle('add-to-user-playlist', (_, playlistId, song) => {
     if (!playlistId || !song) return { success: false, error: '参数不完整' };
     const playlists = prefs.get('userPlaylists') || [];
     const idx = playlists.findIndex(p => p.id === playlistId);
@@ -108,7 +108,7 @@ function register() {
   });
 
   // 从歌单移除歌曲（位置参数，同上）
-  ipcMain.handle('remove-from-user-playlist', (_, playlistId, songId, source) => {
+  handle('remove-from-user-playlist', (_, playlistId, songId, source) => {
     if (!playlistId || !songId) return { success: false, error: '参数不完整' };
     const playlists = ensureFavorites();
     const pl = playlists.find(p => p.id === playlistId);
@@ -128,7 +128,7 @@ function register() {
 
   // 红心收藏：在收藏歌单中按 source+id 增删切换
   // 参数为位置参数（renderer 侧 api.toggleFavorite(source, id, song)）
-  ipcMain.handle('toggle-favorite', (_, source, songId, song) => {
+  handle('toggle-favorite', (_, source, songId, song) => {
     if (!songId || !song || typeof song !== 'object') {
       return { success: false, error: '参数不完整' };
     }

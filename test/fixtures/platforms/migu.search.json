@@ -1,0 +1,22 @@
+{
+  "hcode": "00000",
+  "songResultData": {
+    "total": 2,
+    "result": [
+      {
+        "contentId": "600577OHmn",
+        "name": "晴天",
+        "singers": [{ "singerCode": "1", "name": "周杰伦" }, { "singerCode": "2", "name": "杨瑞代" }],
+        "albums": [{ "albumName": "", "name": "叶惠美" }],
+        "imgItems": [{ "img": "http://m.sgxw.cn/pic/1/600/577/600577OHmn_a0.jpg" }],
+        "tryBeginMillis": 0,
+        "tryEndMillis": 59000
+      },
+      {
+        "contentId": "",
+        "name": "缺 contentId 的脏条目",
+        "singers": []
+      }
+    ]
+  }
+}

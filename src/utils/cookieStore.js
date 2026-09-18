@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const secret = require('./secretStore');
 
 let _userDataPath = null;
 // 内存缓存：null = 未加载；Object = 已加载
@@ -53,41 +54,26 @@ function _ensureLoaded() {
     const parsed = JSON.parse(raw);
     // 防御：必须是普通对象（攻击者/旧版本写入数组等异常结构）
     _cache = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    // M4: 历史明文 cookie 首次加载即升级为加密形态并回写
+    if (secret.canEncrypt()) {
+      let upgraded = false;
+      for (const k of Object.keys(_cache)) {
+        const v = _cache[k];
+        if (typeof v === 'string' && v && !v.startsWith(secret.PREFIX)) {
+          _cache[k] = secret.encrypt(v);
+          upgraded = true;
+        }
+      }
+      if (upgraded) _persist();
+    }
   } catch (e) {
     logger.warn('[cookieStore] 加载失败，使用空对象:', e.message);
     _cache = {};
   }
 }
 
-/**
- * 获取全量 Cookie 对象（O(1)，命中内存缓存）
- */
-function loadAll() {
-  _ensureLoaded();
-  // 返回浅拷贝防止外部 mutate 内部缓存
-  return { ..._cache };
-}
-
-/**
- * 获取单个平台的 Cookie（O(1) 内存查找）
- */
-function get(platform) {
-  _ensureLoaded();
-  return _cache[platform] || '';
-}
-
-/**
- * 保存单个平台的 Cookie
- * 空字符串视为删除（避免保存空 Cookie 占位）
- */
-function set(platform, cookie) {
-  _ensureLoaded();
-  if (cookie) {
-    _cache[platform] = cookie;
-  } else {
-    delete _cache[platform];
-  }
-  // 同步写盘
+/** 同步写盘（内容已是加密形态） */
+function _persist() {
   try {
     const fp = getFilePath();
     if (!fp) return false;
@@ -97,6 +83,40 @@ function set(platform, cookie) {
     logger.warn('[cookieStore] 写入失败:', e.message);
     return false;
   }
+}
+
+/**
+ * 获取全量 Cookie 对象（O(1)，命中内存缓存）
+ */
+function loadAll() {
+  _ensureLoaded();
+  // 返回浅拷贝防止外部 mutate 内部缓存；密文在此解回明文给调用方
+  const out = {};
+  for (const k of Object.keys(_cache)) out[k] = secret.decrypt(_cache[k]) || '';
+  return out;
+}
+
+/**
+ * 获取单个平台的 Cookie（O(1) 内存查找）
+ */
+function get(platform) {
+  _ensureLoaded();
+  return secret.decrypt(_cache[platform] || '') || '';
+}
+
+/**
+ * 保存单个平台的 Cookie
+ * 空字符串视为删除（避免保存空 Cookie 占位）
+ */
+function set(platform, cookie) {
+  _ensureLoaded();
+  if (cookie) {
+    _cache[platform] = secret.encrypt(cookie);
+  } else {
+    delete _cache[platform];
+  }
+  // 同步写盘（M4：落盘形态为 safeStorage 密文）
+  return _persist();
 }
 
 function getAll() {

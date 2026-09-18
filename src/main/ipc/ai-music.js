@@ -5,7 +5,7 @@
  *      ai-history / ai-clear-history
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const { app } = require('electron');
 const path = require('path');
 const aiMusic = require('../../api/ai-music');
@@ -114,7 +114,7 @@ function register() {
   aiMusic.setHistoryPath(app.getPath('userData'));
 
   // 生成歌词
-  ipcMain.handle('ai-generate-lyrics', async (_, params) => {
+  handle('ai-generate-lyrics', async (_, params) => {
     try {
       return await aiMusic.generateLyrics(params);
     } catch (e) {
@@ -123,7 +123,7 @@ function register() {
   });
 
   // 生成音乐（同步返回 hex 数据）
-  ipcMain.handle('ai-generate-music', async (_, params) => {
+  handle('ai-generate-music', async (_, params) => {
     try {
       const result = await aiMusic.generateMusic(params);
 
@@ -171,7 +171,7 @@ function register() {
   });
 
   // 获取生成历史
-  ipcMain.handle('ai-history', async () => {
+  handle('ai-history', async () => {
     try {
       return await aiMusic.loadHistory();
     } catch (e) {
@@ -180,7 +180,7 @@ function register() {
   });
 
   // 添加到历史
-  ipcMain.handle('ai-add-history', async (_, item) => {
+  handle('ai-add-history', async (_, item) => {
     try {
       return await aiMusic.addToHistory(item);
     } catch (e) {
@@ -189,7 +189,7 @@ function register() {
   });
 
   // 清空历史
-  ipcMain.handle('ai-clear-history', async () => {
+  handle('ai-clear-history', async () => {
     try {
       aiMusic.clearHistory();
       return { success: true };
@@ -199,7 +199,7 @@ function register() {
   });
 
   // 歌词翻译
-  ipcMain.handle('ai-translate-lyrics', async (_, params) => {
+  handle('ai-translate-lyrics', async (_, params) => {
     try {
       return await aiMusic.translateLyrics(params);
     } catch (e) {

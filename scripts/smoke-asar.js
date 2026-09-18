@@ -289,6 +289,98 @@ if (iconInAsar) {
     watermark ? '发现水印，会随安装包发给用户' : '无水印');
 }
 
+// 10) 生产依赖树完整性 —— 防「打包机 lockfile 过期 → 传递依赖静默缺失」。
+//     真实事故：某台构建机的 asar 里 NeteaseCloudMusicApi 在、它的依赖 axios 不在，
+//     安装后主进程启动即 Cannot find module 'axios'，而构建全程无警告。
+//     遍历必须按 **package-lock v3 的路径规则**做版本感知解析：
+//     同名包可能根装+嵌套各一版（readable-stream v2/v4 就是两回事），
+//     只按名字去 node_modules 查图会把 v2 的依赖算到 v4 头上，制造假缺失。
+const buildCfg = require(path.join(ROOT, 'build', 'config.cjs'));
+const excludedPkgs = new Set((buildCfg.files || [])
+  .map((f) => /^!node_modules\/([^/]+)\/\*\*$/.exec(f))
+  .filter(Boolean)
+  .map((m) => m[1]));
+
+const lockPath = path.join(ROOT, 'package-lock.json');
+let lockPkgs = null;
+try {
+  const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+  if (lock.lockfileVersion >= 2) lockPkgs = lock.packages;
+} catch (_e) { /* 无 lock 退化为跳过本项 */ }
+
+if (lockPkgs) {
+  /** npm 解析规则：从声明方路径逐级向上找 <ancestor>/node_modules/<name> */
+  const resolveDepPath = (fromPkgPath, name) => {
+    let prefix = fromPkgPath;
+    for (;;) {
+      const cand = prefix + '/node_modules/' + name;
+      if (lockPkgs[cand]) return cand;
+      const cut = prefix.lastIndexOf('/node_modules/');
+      if (cut <= 0) break;
+      prefix = prefix.slice(0, cut);
+    }
+    const rootCand = 'node_modules/' + name;
+    return lockPkgs[rootCand] ? rootCand : null;
+  };
+  const pkgNameOf = (p) => {
+    const m = /node_modules\/((?:@[^/]+\/)?[^/]+)$/.exec(p);
+    return m ? m[1] : p;
+  };
+
+  // builder 的 node_modules 收集器会**提升扁平化**（嵌套副本可能落在根），
+  // 所以不能按 lock 路径比对，只能按「同名同版本在包内任意层级存在」判定。
+  const asarNameVersions = new Map(); // name → Set<version>
+  for (const p of set) {
+    const m = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/.exec(p);
+    if (!m) continue;
+    let ver = '';
+    try { ver = JSON.parse(read(p) || '{}').version || ''; } catch (_e) { /* 坏 JSON 视作缺席 */ }
+    if (!asarNameVersions.has(m[1])) asarNameVersions.set(m[1], new Set());
+    asarNameVersions.get(m[1]).add(ver);
+  }
+
+  const walkedPaths = new Set(['']);
+  const missingPaths = [];
+  const queue = [''];
+  while (queue.length) {
+    const p = queue.shift();
+    const entry = lockPkgs[p];
+    if (!p) {
+      // 根：只走生产 dependencies（devDependencies 不进包，也不遍历）
+      for (const name of Object.keys(entry.dependencies || {})) {
+        if (entry.optionalDependencies && entry.optionalDependencies[name]) continue;
+        const child = resolveDepPath('', name);
+        if (child) queue.push(child);
+        else missingPaths.push(`node_modules/${name}(未安装/lock缺失)`);
+      }
+      continue;
+    }
+    const name = pkgNameOf(p);
+    if (excludedPkgs.has(name)) continue; // 有意剔除，不检查也不下钻
+    const versions = asarNameVersions.get(name);
+    if (!versions || !versions.has(entry.version)) {
+      missingPaths.push(`${name}@${entry.version}（lock: ${p}）`);
+    }
+    for (const dep of Object.keys(entry.dependencies || {})) {
+      if (entry.optionalDependencies && entry.optionalDependencies[dep]) continue; // 平台相关可选依赖，缺失属正常
+      const child = resolveDepPath(p, dep);
+      if (child && !walkedPaths.has(child)) {
+        walkedPaths.add(child);
+        queue.push(child);
+      } else if (!child && !excludedPkgs.has(dep)) {
+        missingPaths.push(`${p} → ${dep}(lock 中无此解析)`);
+      }
+    }
+  }
+  check(`生产依赖树 ${walkedPaths.size} 个包按 lock 解析全部在 asar 中（排除项 ${excludedPkgs.size} 个除外）`,
+    missingPaths.length === 0,
+    missingPaths.length
+      ? '缺: ' + [...new Set(missingPaths)].slice(0, 8).join(', ') + (missingPaths.length > 8 ? ` …共${missingPaths.length}项` : '') + ' —— 构建机 lockfile 可能过期，先 npm install 再打包'
+      : '无缺失');
+} else {
+  console.log('SKIP  生产依赖树完整性 —— package-lock.json 不可用');
+}
+
 // ── 汇总 ────────────────────────────────────────────────
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 通过`);

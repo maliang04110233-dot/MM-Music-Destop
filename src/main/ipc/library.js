@@ -5,7 +5,7 @@
  *      update-id3-tags / update-id3-cover
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const path = require('path');
 const { app } = require('electron');
 const {
@@ -21,6 +21,7 @@ const logger = require('../../utils/logger');
 const { scheduleOnlineLrcFetch } = require('../../utils/onlineLrc');
 const { safeSend } = require('../context');
 const prefs = require('../../utils/prefs');
+const approvedDirs = require('../approvedDirs');
 const { convertAudioFile, normalizeFormat, formatExtension } = require('../../utils/audioConvert');
 // 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
 const fsa = require('../../utils/fsAsync');
@@ -51,6 +52,8 @@ function isInsideDir(base, target) {
 function isInAllowedDir(filePath) {
   try {
     const resolved = path.resolve(filePath);
+    // C1: 任何用户经原生选器批准过的目录（含子目录）同样在沙箱内
+    if (approvedDirs.isApprovedDir(resolved)) return true;
     const localDir = prefs.get('localDirPath') || '';
     if (localDir && isInsideDir(localDir, resolved)) return true;
     const saveDir = prefs.get('saveDir') || '';
@@ -61,9 +64,11 @@ function isInAllowedDir(filePath) {
 
 function register() {
   // 扫描本地目录（增量扫描：缓存索引 + 只处理变更文件）
-  ipcMain.handle('scan-local-library', async (_, dirPath) => {
+  handle('scan-local-library', async (_, dirPath) => {
     try {
       if (!isValidPath(dirPath)) return { error: '非法路径', songs: [] };
+      // C1: 未批准/未配置目录不可枚举（原实现可扫全盘任意目录）
+      if (!isInAllowedDir(dirPath)) return { error: '路径不可访问', songs: [] };
       if (!await fsa.exists(dirPath)) return { error: '目录不存在', songs: [] };
 
       // 尝试增量扫描
@@ -102,7 +107,7 @@ function register() {
   });
 
   // 读取缓存索引（启动时秒加载）
-  ipcMain.handle('load-library-index', async () => {
+  handle('load-library-index', async () => {
     try {
       const index = await loadIndex();
       return { songs: index.songs || [], dirPath: index.dirPath, lastScan: index.lastScan };
@@ -112,7 +117,7 @@ function register() {
   });
 
   // 读取单首歌曲元数据
-  ipcMain.handle('read-local-metadata', async (_, filePath) => {
+  handle('read-local-metadata', async (_, filePath) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { error: '路径不可访问' };
       return await readAudioMetadata(filePath);
@@ -122,7 +127,7 @@ function register() {
   });
 
   // 读取本地 LRC 歌词
-  ipcMain.handle('read-local-lrc', async (_, filePath) => {
+  handle('read-local-lrc', async (_, filePath) => {
     try {
       if (!filePath || typeof filePath !== 'string') return { lrc: '', source: '' };
       if (!/\.(mp3|flac|m4a|aac|ogg|wav)$/i.test(filePath)) return { lrc: '', source: '' };
@@ -158,8 +163,7 @@ function register() {
   });
 
   // 更新 ID3 标签（渲染层位置参数：api.updateId3Tags(filePath, tags)）
-  ipcMain.handle('update-id3-tags', async (_, ...a) => {
-    const [filePath, tags] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('update-id3-tags', async (_, filePath, tags) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       return await writeAudioMetadata(filePath, tags);
@@ -169,8 +173,7 @@ function register() {
   });
 
   // 更新封面（渲染层位置参数：api.updateId3Cover(filePath, imageBase64)）
-  ipcMain.handle('update-id3-cover', async (_, ...a) => {
-    const [filePath, imageBase64] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('update-id3-cover', async (_, filePath, imageBase64) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       if (typeof imageBase64 !== 'string' || !imageBase64.trim()) {
@@ -185,8 +188,7 @@ function register() {
   });
 
   // 在线拉取封面（渲染层位置参数：api.fetchOnlineCover(title, artist)）
-  ipcMain.handle('fetch-online-cover', async (_, ...a) => {
-    const [title, artist] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('fetch-online-cover', async (_, title, artist) => {
     try {
       const result = await fetchOnlineCover(title || '', artist || '');
       if (!result) return { success: false, error: '未找到匹配的封面' };
@@ -197,8 +199,7 @@ function register() {
   });
 
   // 写入 LRC 歌词到同目录 sidecar 文件（渲染层位置参数：api.writeLocalLrc(filePath, lrc)）
-  ipcMain.handle('write-local-lrc', async (_, ...a) => {
-    const [filePath, lrc] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('write-local-lrc', async (_, filePath, lrc) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       const lrcPath = path.parse(filePath).ext
@@ -214,10 +215,16 @@ function register() {
   });
 
   // 批量获取歌词（按 title/artist 搜索网易云，写入 sidecar）
-  ipcMain.handle('batch-fetch-lyrics', async (_, songs) => {
+  handle('batch-fetch-lyrics', async (_, songs) => {
     const results = [];
     for (const s of songs) {
       try {
+        // C1: 该通道会在 filePath 旁写 .lrc sidecar —— 必须先过沙箱，
+        // 否则等于绕过同文件其余 handler 的 C9 校验往任意路径写文件
+        if (!s || !isValidPath(s.filePath) || !isInAllowedDir(s.filePath)) {
+          results.push({ filePath: s && s.filePath, ok: false, error: '路径不可访问' });
+          continue;
+        }
         await scheduleOnlineLrcFetch(s.filePath, { readAudioMetadata, getLyrics: require('../../api').getLyrics });
         results.push({ filePath: s.filePath, ok: true });
       } catch (e) {
@@ -228,7 +235,7 @@ function register() {
   });
 
   // 删除文件（回收站或永久删除）
-  ipcMain.handle('delete-file', async (_, filePath) => {
+  handle('delete-file', async (_, filePath) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
       if (!await fsa.exists(filePath)) {
@@ -244,7 +251,7 @@ function register() {
   });
 
   // 重命名文件
-  ipcMain.handle('rename-file', async (_, oldPath, newPath) => {
+  handle('rename-file', async (_, oldPath, newPath) => {
     try {
       if (!isValidPath(oldPath) || !isValidPath(newPath)) return { success: false, error: '非法路径' };
       if (!isInAllowedDir(oldPath) || !isInAllowedDir(newPath)) return { success: false, error: '路径不可访问' };
@@ -269,7 +276,7 @@ function register() {
   // 需要 electron 的分支。
   // 注意：IPC 走 structured clone，函数无法跨进程传递——进度与中止不能从
   // params 带进来，必须由主进程自己构造闭包。
-  ipcMain.handle('convert-audio', async (_, params) => {
+  handle('convert-audio', async (_, params) => {
     const { dialog, shell } = require('electron');
 
     try {
@@ -310,6 +317,8 @@ function register() {
         });
         if (result.canceled) return { canceled: true };
         resolvedOutputDir = path.dirname(result.filePath);
+        // 用户在原生保存对话框当场确认的目录 = 批准目录
+        approvedDirs.approve(resolvedOutputDir);
       }
 
       _cancelRequested = false;
@@ -330,7 +339,7 @@ function register() {
   });
 
   // 中止当前正在进行的转码（渲染层点「取消」）
-  ipcMain.handle('cancel-convert-audio', () => {
+  handle('cancel-convert-audio', () => {
     _cancelRequested = true;
     return { success: true };
   });

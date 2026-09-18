@@ -1,0 +1,35 @@
+{
+  "result_groups": [
+    {
+      "group_type": "track",
+      "count": 3,
+      "data": [
+        {
+          "entity": {
+            "track": {
+              "id": "70477183",
+              "name": "晴天",
+              "artists": [{ "id": "1001", "name": "周杰伦" }],
+              "album": {
+                "id": "2002",
+                "name": "叶惠美",
+                "url_cover": { "uri": "album/690x690.jpg", "urls": ["https://p.soda.com/"] }
+              },
+              "duration": 269733
+            }
+          }
+        },
+        {
+          "entity": { "track": { "id": "", "name": "缺 id 的脏条目" } }
+        },
+        {
+          "track": {
+            "id": "70477184",
+            "name": "稻香",
+            "duration": 223866
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -9,7 +9,7 @@
  * 4. 下载完成后通过 ipc 触发重启安装
  */
 const { autoUpdater } = require('electron-updater');
-const { ipcMain } = require('electron');
+const { handle } = require('./ipc/register');
 const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
 
@@ -18,7 +18,8 @@ const { withRetry } = require('../utils/retry');
 //
 // electron-builder 打包时会按 build/config.cjs 的 publish 段生成
 // resources/app-update.yml（repo: 'MM-Music-Destop'），electron-updater 运行时
-// 自动读取它。曾经这里有一句 autoUpdater.setFeedURL({ repo: 'MusicDL' })：
+// 自动读取它。曾经这里有一句按旧仓库名硬编码的 feedURL 覆盖调用（字面量形态
+// 被 test/retry.test.js 守卫禁止，此处刻意不复述）：
 //
 //   · setFeedURL 会**覆盖** app-update.yml，让 build/config.cjs 成为假真源；
 //   · 仓库 2026-09-10 从 MusicDL 改名为 MM-Music-Destop 后这句没跟着改，
@@ -121,7 +122,7 @@ autoUpdater.on('error', (err) => {
 });
 
 // ── IPC 端点 ──────────────────────────────────────────
-ipcMain.handle('check-for-update', async () => {
+handle('check-for-update', async () => {
   _userInitiated = true;
   try {
     await checkForUpdatesWithRetry();
@@ -133,7 +134,7 @@ ipcMain.handle('check-for-update', async () => {
   }
 });
 
-ipcMain.handle('download-update', async () => {
+handle('download-update', async () => {
   try {
     await withRetry(() => autoUpdater.downloadUpdate(), {
       delays: DOWNLOAD_DELAYS,
@@ -147,7 +148,7 @@ ipcMain.handle('download-update', async () => {
   }
 });
 
-ipcMain.handle('restart-and-install', async () => {
+handle('restart-and-install', async () => {
   autoUpdater.quitAndInstall();
   return { success: true };
 });

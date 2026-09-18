@@ -20,9 +20,11 @@
  *   - 本文件不再出现任何平台 id 的 require 或硬编码清单
  *
  * 保留的历史行为（刻意，非疏漏）：
- *   - 首页分区仍只覆盖 netease / qq / bilibili 三家：它们的榜单与歌单
+ *   - 首页分区覆盖 netease / qq / bilibili / kugou 四家：它们的榜单与歌单
  *     是**产品配置**（哪个平台有「飙升榜」这类板块），不是平台能力，
  *     故不能由 registry 推导，只能在此显式声明。
+ *     （酷狗于 2026-09-18 补齐 getTopList / getRecommendPlaylists 后加入；
+ *      酷我 / 咪咕 / 5sing / 汽水仍只有 search 三件套，暂无推荐域数据可放。）
  *   - getPlaylistSongs / getAlbumSongs 的平台集合受各平台实现决定；
  *     原先 netease 走的是 neteaseGetPlaylistDetail（非 getPlaylistSongs），
  *     该差异在下方按能力探测处理，保持行为等价。
@@ -123,6 +125,16 @@ const HOME_SECTIONS = Object.freeze({
   'qq.singers':   (g) => g.getHotSingers('qq', 30),
 
   'bilibili.ranking': (g) => g.getRanking('bilibili', 100),
+
+  // 酷狗（2026-09-18 补齐）。此前首页只有 3 家，因为酷狗/酷我/咪咕等
+  // 只实现了 search 三件套、没有推荐域方法。酷狗的榜单与歌单广场
+  // 现已接入 manifest，故出现在此。
+  // 4 个榜单与 netease 的「飙升/热歌/新歌/原创」四榜口径对齐，便于横向比较。
+  'kugou.tops':      (g) => g.getTopList('kugou', '飙升榜', 100),
+  'kugou.hot':       (g) => g.getTopList('kugou', '网络热歌榜', 100),
+  'kugou.short':     (g) => g.getTopList('kugou', '短视频热歌榜', 100),
+  'kugou.top500':    (g) => g.getTopList('kugou', 'TOP500', 100),
+  'kugou.playlists': (g) => g.getRecommendPlaylists('kugou', 30),
 });
 
 /**
@@ -132,6 +144,7 @@ const HOME_SECTIONS = Object.freeze({
  *   netease.tops / netease.hot / netease.new / netease.original / netease.playlists
  *   qq.recommend / qq.official / qq.classic / qq.love / qq.ktv / qq.top / qq.new / qq.radio / qq.singers
  *   bilibili.ranking
+ *   kugou.tops / kugou.hot / kugou.short / kugou.top500 / kugou.playlists
  *
  * 返回统一结构：
  *   { ok: true, section, data: [] }
@@ -184,6 +197,7 @@ async function getHomeRecommendations() {
     qqRecommend, qqOfficial, qqClassic, qqLove, qqKTV,
     qqTop, qqNew, qqRadio, qqSingers,
     biliRanking,
+    kugouTops, kugouHot, kugouShort, kugouTop500, kugouPlaylists,
   ] = (
     await Promise.allSettled([
       safeCall('网易云推荐歌单', () => g.getRecommendPlaylists('netease', 30)),
@@ -197,6 +211,11 @@ async function getHomeRecommendations() {
       safeCall('QQ热门电台',     () => g.getRadioStations('qq', 30)),
       safeCall('QQ热门歌手',     () => g.getHotSingers('qq', 30)),
       safeCall('B站排行',        () => g.getRanking('bilibili', 100)),
+      safeCall('酷狗飙升榜',     () => g.getTopList('kugou', '飙升榜', 100)),
+      safeCall('酷狗网络热歌榜', () => g.getTopList('kugou', '网络热歌榜', 100)),
+      safeCall('酷狗短视频热歌榜', () => g.getTopList('kugou', '短视频热歌榜', 100)),
+      safeCall('酷狗TOP500',     () => g.getTopList('kugou', 'TOP500', 100)),
+      safeCall('酷狗推荐歌单',   () => g.getRecommendPlaylists('kugou', 30)),
     ])
   ).map((r) => (r.status === 'fulfilled' ? arr(r.value) : []));
 
@@ -221,6 +240,13 @@ async function getHomeRecommendations() {
     },
     bilibili: {
       ranking: biliRanking,
+    },
+    kugou: {
+      tops:      kugouTops,
+      hot:       kugouHot,
+      short:     kugouShort,
+      top500:    kugouTop500,
+      playlists: kugouPlaylists,
     },
   };
 }

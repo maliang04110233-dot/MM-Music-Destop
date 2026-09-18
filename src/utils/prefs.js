@@ -18,7 +18,12 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const secret = require('./secretStore');
 const { atomicWriteJson, safeReadJson } = require('./atomicFile');
+
+// M4: 这些键是凭证级数据（AI 服务计费 key），落盘必须走 safeStorage 加密；
+// get 时透明解回明文，解密不可用（换机导入的备份）按未配置处理
+const SECRET_KEYS = new Set(['aiMusicApiKey']);
 
 let _userDataPath = null;
 let _cache = null;        // 内存缓存，避免每次都读盘
@@ -59,7 +64,9 @@ function _load() {
 
 function get(key, defaultValue) {
   const data = _load();
-  return data[key] !== undefined ? data[key] : defaultValue;
+  const v = data[key] !== undefined ? data[key] : defaultValue;
+  if (SECRET_KEYS.has(key) && typeof v === 'string') return secret.decrypt(v) || '';
+  return v;
 }
 
 function set(key, value) {
@@ -67,7 +74,7 @@ function set(key, value) {
   if (value === undefined || value === null) {
     delete _cache[key];
   } else {
-    _cache[key] = value;
+    _cache[key] = SECRET_KEYS.has(key) && typeof value === 'string' ? secret.encrypt(value) : value;
   }
   // 防抖 300ms 写盘（避免短时间内多次改）
   if (_writeTimer) clearTimeout(_writeTimer);

@@ -1,4 +1,6 @@
-const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, Notification, globalShortcut } = require('electron');
+const { app, BrowserWindow, session, Menu, Tray, nativeImage, Notification, globalShortcut } = require('electron');
+const { handle: ipcHandle, on: ipcOn, assertContractCoverage } = require('./ipc/register');
+const { buildContractArg } = require('../shared/ipcContract');
 const path = require('path');
 const { setCookieStore } = require('../api');
 const logger = require('../utils/logger');
@@ -9,6 +11,7 @@ const { getDownloadUrlSmart, getLyrics } = require('../api');
 const { init: initContext, safeSend: ctxSafeSend } = require('./context');
 const { createDownloadQueueEngine } = require('./downloadQueue');
 const playCache = require('./playCache');
+const approvedDirs = require('./approvedDirs');
 const history = require('../utils/history');
 const prefs = require('../utils/prefs');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
@@ -26,6 +29,8 @@ const ipcAiMusic = require('./ipc/ai-music');
 const ipcPlaylist = require('./ipc/playlist');
 const ipcDownloadTemplates = require('./ipc/downloadTemplates');
 const ipcCloudSync = require('./ipc/cloudSync');
+const ipcSubscriptions = require('./ipc/subscriptions');
+const subscriptions = require('./subscriptions');
 
 // 修复 B15：使用 context.js 提供的统一 safeSend，避免代码漂移
 const safeSend = ctxSafeSend;
@@ -136,6 +141,8 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true, // 启用安全策略，CORS 通过 session.defaultSession.webRequest 头部处理
       preload: path.join(__dirname, '../preload/preload.js'),
+      // sandbox preload 不能 require 应用文件：IPC 契约经 argv 序列化注入
+      additionalArguments: [buildContractArg('main')],
     },
     titleBarStyle: 'hidden',
     icon: path.join(__dirname, '../../assets/icon.png'),
@@ -163,8 +170,28 @@ function createWindow() {
   };
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const u = (() => { try { return new URL(url); } catch (_) { return null; } })();
-    const isLocal = u && (u.protocol === 'file:');
-    if (!isLocal) {
+    if (!u) { denyNav(url); event.preventDefault(); return; }
+    // M1: file: 导航只放行应用自身包内文件 —— 原先任意本机 HTML 都能载入
+    // 这个挂着全量特权 IPC 的窗口（与下载目录写入组合即完整攻击链）
+    const { fileURLToPath } = require('url');
+    const isLocal = (() => {
+      if (u.protocol !== 'file:') return false;
+      try {
+        const fp = fileURLToPath(u);
+        const rel = path.relative(path.resolve(app.getAppPath()), path.resolve(fp));
+        return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+      } catch (_) { return false; }
+    })();
+    // 同源 http(s) 导航放行（dev 模式下 vite 服务器整页刷新）。
+    // 不能直接比 u.origin === current.origin：file: 页的 origin 恒为
+    // 字符串 'null'，会把所有 file: 导航误判成同源。
+    const cur = (() => {
+      try { return new URL(mainWindow.webContents.getURL()); } catch (_) { return null; }
+    })();
+    const sameHttpOrigin = !!cur
+      && (cur.protocol === 'http:' || cur.protocol === 'https:')
+      && u.protocol === cur.protocol && u.host === cur.host;
+    if (!isLocal && !sameHttpOrigin) {
       denyNav(url);
       event.preventDefault();
     }
@@ -430,6 +457,15 @@ app.whenReady().then(async () => {
   // 初始化 prefs（用户偏好持久化）
   prefs.init(app.getPath('userData'));
 
+  // C1: seed 目录授权注册表 —— prefs 里的目录键是历史会话经原生选器
+  // 选定的结果，默认音乐子目录随应用始终可用
+  for (const k of approvedDirs.DIR_PREF_KEYS) {
+    const v = prefs.get(k);
+    if (v) approvedDirs.approve(v);
+  }
+  approvedDirs.approve(path.join(app.getPath('music'), 'MusicDownloader'));
+  approvedDirs.approve(path.join(app.getPath('userData'), 'MusicDownloader'));
+
   // 初始化下载历史持久化
   history.init(app.getPath('userData'));
 
@@ -441,6 +477,8 @@ app.whenReady().then(async () => {
     safeSend,
     getDownloadUrlSmart,
     getLyrics,
+    // C1: 渲染层传入的 saveDir 必须在用户批准目录内，否则回落默认目录
+    isSaveDirAllowed: (p) => approvedDirs.isApprovedDir(p),
     onQueueChanged: () => {
       // 队列变更时同步托盘菜单（下载进度/数量展示）
       try { updateTrayMenu(); } catch (_e) { /* 托盘未就绪可忽略 */ }
@@ -512,12 +550,20 @@ app.whenReady().then(async () => {
     logger.warn('[Updater] init failed:', _e.message);
   }
 
+  // 契约 ↔ 注册对账：契约声明却无人注册的通道在此现形（update-* 由上面的 updater 注册）
+  try { assertContractCoverage(); } catch (e) {
+    logger.warn('[ipc] 契约覆盖检查失败:', e.message);
+  }
+
   // 定期 GC play_cache（10 分钟一次，.unref() 不阻塞进程退出）
   // cleanupExpired 是异步的：setInterval 不接收返回值，需自带 catch 防未处理拒绝
   const gcTimer = setInterval(() => {
     playCache.cleanupExpired().catch((e) => logger.warn('[playCache] GC 失败:', e.message));
   }, playCache.PLAY_CACHE_GC_INTERVAL);
   if (gcTimer.unref) gcTimer.unref();
+
+  // 订阅更新周期检查（同为 unref 定时器；首查延迟 30s 避开启动峰值）
+  subscriptions.startScheduler();
 
   // 安装自定义应用菜单（屏蔽开发者工具菜单项及其加速键）
   buildAppMenu();
@@ -536,17 +582,25 @@ app.whenReady().then(async () => {
   const ALLOWED_ORIGIN_SUFFIXES = [...platformSuffixes];
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
-    const origin = details.url ? new URL(details.url).origin : '';
-    const isAllowed = ALLOWED_ORIGINS.has(origin)
-      || ALLOWED_ORIGIN_SUFFIXES.some((sfx) => origin.endsWith(sfx));
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Access-Control-Allow-Origin': [isAllowed ? origin : 'null'],
-        'Access-Control-Allow-Methods': ['GET', 'HEAD', 'OPTIONS'],
-        'Access-Control-Allow-Headers': ['Range', 'Referer'],
-      },
-    });
+    // M5 修正：原实现拿 details.url 自身的 origin 判定并回填，等于给每个
+    // 响应写上"它自己"，对本应用（file:// 页 origin 为 null）完全无效，
+    // 还会覆盖上游正确的 ACAO。正确语义：目标是白名单平台源时，把
+    // 「发起方」反射回去 —— 打包后发起方是 file://（null），dev 是本地端口。
+    let targetOrigin = '';
+    try { targetOrigin = new URL(details.url).origin; } catch (_e) { /* noop */ }
+    const isAllowed = ALLOWED_ORIGINS.has(targetOrigin)
+      || ALLOWED_ORIGIN_SUFFIXES.some((sfx) => targetOrigin.endsWith(sfx));
+    const headers = { ...details.responseHeaders };
+    const hasACAO = Object.keys(headers).some(k => k.toLowerCase() === 'access-control-allow-origin');
+    if (isAllowed && !hasACAO) {
+      const initiator = details.initiator && /^https?:\/\//.test(details.initiator)
+        ? new URL(details.initiator).origin
+        : 'null';
+      headers['Access-Control-Allow-Origin'] = [initiator];
+      headers['Access-Control-Allow-Methods'] = ['GET', 'HEAD', 'OPTIONS'];
+      headers['Access-Control-Allow-Headers'] = ['Range', 'Referer'];
+    }
+    callback({ responseHeaders: headers });
   });
 
   createWindow();
@@ -560,6 +614,7 @@ app.on('window-all-closed', () => {
     logger.warn('[index] 队列引擎清理失败:', e.message);
   }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
+  subscriptions.stopScheduler();
   unregisterGlobalShortcuts();
   try { prefs.flush(); } catch (e) { logger.warn('prefs.flush 失败:', e.message); }
   try { history.flush(); } catch (e) { logger.warn('history.flush 失败:', e.message); }
@@ -580,6 +635,7 @@ function registerAllIpcHandlers() {
     persistPlayQueue,
     loadPersistedPlayQueue,
     processQueue:     () => downloadQueueEngine.processQueue(),
+    requestCancelDownload: (taskId) => downloadQueueEngine.requestCancel(taskId),
   });
   ipcWindow.register();
   ipcSearch.register();
@@ -593,29 +649,30 @@ function registerAllIpcHandlers() {
   ipcPlaylist.register();
   ipcDownloadTemplates.register();
   ipcCloudSync.register();
+  ipcSubscriptions.register();
 
   // ── 播放队列持久化 IPC ─────────────────────────────
-  ipcMain.handle('save-play-queue', (_, data) => {
+  ipcHandle('save-play-queue', (_, data) => {
     persistPlayQueue(data);
     return { ok: true };
   });
-  ipcMain.handle('load-play-queue', () => {
+  ipcHandle('load-play-queue', () => {
     return loadPersistedPlayQueue() || { queue: [] };
   });
 
   // ── 系统托盘 IPC ───────────────────────────────────
-  ipcMain.on('tray-update-play-state', (_, playState) => {
+  ipcOn('tray-update-play-state', (_, playState) => {
     updateTrayMenu(playState);
   });
 
   // ── 全局快捷键开关（设置页实时切换）─────────────────
-  ipcMain.on('set-global-shortcuts', (_, enabled) => {
+  ipcOn('set-global-shortcuts', (_, enabled) => {
     updateGlobalShortcutsEnabled(!!enabled);
     logger.log(`[shortcuts] 全局媒体键: ${enabled ? '已启用' : '已停用'}`);
   });
 
   // ── 版本查询 IPC ───────────────────────────────────
-  ipcMain.handle('get-version', () => {
+  ipcHandle('get-version', () => {
     const pkg = require('../../package.json');
     const version = pkg.version || '1.0.0';
     const commit = process.env.npm_config_git_commit || '';
@@ -623,8 +680,9 @@ function registerAllIpcHandlers() {
   });
 }
 
-// ⚠️ 此处下方整段（30+ 个 ipcMain.handle/on + proxy-play/play_cache/LRC 解码）
-// 已在 P2-1 拆分到 src/main/ipc/{window,search,download,cookie,library}.js
+// ⚠️ 新增 IPC 请写进 src/main/ipc/*.js 并通过 register.js 的 handle/on 注册：
+// 通道与参数规格统一声明在 src/shared/ipcContract.js（契约未声明会启动即抛，
+// test/ipc-contract.test.js 常驻对账，勿再裸用 ipcMain）
 
 // ─── 下载队列调度（Sprint C：已抽到 main/downloadQueue.js）───────────────────
 // processQueue / processOneSong / sanitizeFilename 的完整实现见

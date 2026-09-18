@@ -1051,9 +1051,12 @@ audio { display: none; }
   font-size: 11px; color: var(--neon-dim); min-width: 32px; text-align: right;
 }
 
-
-  50%      { transform: scale(1.05); }
-}
+/* 此处曾有一段孤立的 `50% { transform: scale(1.05); } }` ——
+   某个 @keyframes 的头部与左花括号在早前编辑中丢了，只剩中段和收尾括号。
+   它没有任何 `animation:` 声明引用，属纯残留；但后果不小：
+   esbuild 每次构建都报 `Unexpected "50%"` / `Unexpected "}"` 两条 CSS 语法错误，
+   且游离的 `}` 会让解析器错位、可能连带吞掉后续规则。
+   已确认无引用（grep animation/scale(1.05) 只命中此处），故删除。 */
 
 /* ══════════════════════════════════════════════════════════
    听歌报告

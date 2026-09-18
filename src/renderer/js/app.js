@@ -22,7 +22,7 @@ import './shortcuts.js';
 
 // 播放状态外发同步 + 队列恢复（自 init() 内闭包提出，等价迁移）
 import {
-  syncToTray, syncToMiniPlayer, syncToDesktopLyric, resetDesktopLyricSong,
+  syncToTray, syncToMiniPlayer, resetMiniPlayerSong, syncToDesktopLyric, resetDesktopLyricSong,
   restorePlayQueueFromSaved,
 } from './player-sync.js';
 
@@ -38,6 +38,7 @@ import './views/ai-music.js';
 import './converter-core.js';
 import './views/converter.js';
 import './views/playlist.js';
+import './views/subscriptions.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -105,6 +106,14 @@ const mockApi = {
   getPlaylistSongs: async () => Array.from({length: 5}, (_, i) => ({ id: String(i+1), title: `歌单歌曲 ${i+1}`, artist: '歌手', album: '专辑', cover: '', duration: 200000, source: 'netease' })),
   getHomeSection: async () => ({ ok: true, data: [] }),
   addPlaylistToQueue: async () => ({ queued: 0, skipped: 0 }),
+  // 订阅更新
+  subscribeList: async () => [],
+  subscribeAdd: async (t, p, id, name) => ({ success: true, entry: { key: `${t}:${p}:${id}`, type: t, platform: p, targetId: String(id), name: name || '' } }),
+  subscribeRemove: async () => ({ success: true }),
+  subscribeUpdate: async () => ({ success: true }),
+  subscribeCheck: async () => ({ checked: 0, newTotal: 0 }),
+  subscribeMarkSeen: async () => ({ success: true }),
+  onSubscriptionsUpdated: () => {},
   proxyPlay: async () => ({ fileUrl: '' }),
   queryHistory: async () => ({ items: [], total: 0 }),
   getHistoryStats: async () => ({ total: 0, done: 0, error: 0 }),
@@ -180,6 +189,10 @@ let _loadWatchTimer = null;
 async function init() {
   // 如果 init 时 window.musicAPI 还没就绪（理论上 preload 已先执行），动态覆盖
   api = buildApi();
+  // 订阅事件接线：视图模块 import 期拿不到 api，只能在 buildApi 之后
+  if (typeof wireSubscriptionEvents === 'function') wireSubscriptionEvents();
+  // 启动即拉一次订阅列表：导航红点不依赖用户先访问订阅页
+  if (typeof loadSubscriptions === 'function') loadSubscriptions();
 
   // 用 setTimeout(0) 确保不阻塞渲染管线
   await new Promise(r => setTimeout(r, 0));
@@ -368,7 +381,10 @@ async function init() {
     api.onMiniNext(() => { if (typeof nextSong === 'function') nextSong(); });
     api.onMiniPrev(() => { if (typeof prevSong === 'function') prevSong(); });
     if (typeof api.onSyncMiniPlayer === 'function') {
-      api.onSyncMiniPlayer(syncToMiniPlayer);
+      // 歌词窗口/迷你窗口刚打开时要全量状态：清换曲标记强制重推元信息。
+      // （原实现直接传 syncToMiniPlayer，回调收不到 audio 参数被 !audio 短路，
+      //  迷你窗口首帧永远空白，直到下一次 timeupdate）
+      api.onSyncMiniPlayer(() => { resetMiniPlayerSong(); syncToMiniPlayer(_audio); });
     }
   }
 
@@ -502,6 +518,7 @@ function switchTab(tab, btn) {
   const aiMusicPage = document.getElementById('aiMusicPage');
   const converterPage = document.getElementById('converterPage');
   const playlistPage = document.getElementById('playlistPage');
+  const subscriptionPage = document.getElementById('subscriptionPage');
 
   homePage.style.display = 'none';
   searchPage.style.display = 'none';
@@ -512,6 +529,7 @@ function switchTab(tab, btn) {
   if (aiMusicPage) aiMusicPage.style.display = 'none';
   if (converterPage) converterPage.style.display = 'none';
   if (playlistPage) playlistPage.style.display = 'none';
+  if (subscriptionPage) subscriptionPage.style.display = 'none';
 
   if (tab === 'home') {
     homePage.style.display = 'flex';
@@ -530,6 +548,11 @@ function switchTab(tab, btn) {
     if (playlistPage) {
       playlistPage.style.display = 'flex';
       if (typeof initPlaylistView === 'function') initPlaylistView();
+    }
+  } else if (tab === 'subscription') {
+    if (subscriptionPage) {
+      subscriptionPage.style.display = 'flex';
+      if (typeof initSubscriptionView === 'function') initSubscriptionView();
     }
   } else if (tab === 'ai-music') {
     if (aiMusicPage) {
@@ -647,6 +670,7 @@ function renderPlaylistModal(songs) {
       <span class="pl-toolbar-info" id="plToolbarInfo">已选 ${checkedCount} / ${songs.length}，本地已存在 ${localCount}</span>
       <div class="pl-toolbar-actions">
         <button class="btn-sm" onclick="invertSelection()">反选</button>
+        <button class="btn-sm" id="plSubscribeBtn" title="新歌发布时提醒我" onclick="subscribeCurrentPlaylist()">📡 订阅</button>
         <button class="btn-sm" onclick="addPlaylistToQueueClick(false)">加入队列</button>
         <button class="btn-sm" onclick="addPlaylistToQueueClick(true)">仅未下载</button>
       </div>
@@ -666,7 +690,7 @@ function renderPlaylistModal(songs) {
           ? `<span class="album-link" onclick="openAlbumView('${escQ(s.albumMid)}','${escQ(s.source)}','${escQ(s.album)}')">${esc(s.album)}</span>`
           : esc(s.album)) : ''}</div>
       </div>
-      <span class="source-badge badge-${s.source}">${srcLabel(s.source)}</span>
+      <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendSong(state.getPlaylistSongs()[${i}])">▶</button>
       ${heartBtnHtml(s, 'top-song-action')}
       <button class="top-song-action" title="下载" onclick="event.stopPropagation();addSingleToQueue(${i})">⬇</button>
@@ -996,10 +1020,11 @@ window._playQueueIdx = (idx) => {
 };
 
 window.clearPlayQueue = () => {
+  // setState 订阅会自动刷新 UI（playQueue + playIdx 各触发一次），
+  // 原先这里再显式 renderPlayQueueUI() 是第三次重绘，删除
   setState('playQueue', []);
   setState('playIdx', 0);
   setState('currentPlaying', null);
-  renderPlayQueueUI();
   showToast('播放队列已清空', 'info');
 };
 

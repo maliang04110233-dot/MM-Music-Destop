@@ -26,6 +26,14 @@ export function syncToTray(audio) {
 }
 
 // ── 播放状态同步到迷你播放器 ──────────────────────────
+// M13: cover 可能是 base64 大图，原先每帧（timeupdate ~4Hz）整份 IPC 序列化
+// 一遍。现在曲名/艺术家/封面只在换曲时推一次，每帧只推播放态/进度/歌词行。
+let _mpLastSongKey = null;
+
+export function resetMiniPlayerSong() {
+  _mpLastSongKey = null;
+}
+
 export function syncToMiniPlayer(audio) {
   if (typeof api.syncMiniPlayer !== 'function' || !audio) return;
   const song = getState('currentPlaying') || (getState('playQueue') || [])[getState('playIdx')] || null;
@@ -45,15 +53,20 @@ export function syncToMiniPlayer(audio) {
   const timeTotal = fmtTime(audio.duration);
   const timeStr = `${timeNow} / ${timeTotal}`;
 
-  api.syncMiniPlayer({
-    title: song ? song.title : '未在播放',
-    artist: song ? (song.artist || '未知艺术家') : '—',
-    cover: song ? song.cover : '',
+  const payload = {
     playing: !audio.paused,
     progress,
     lyric: currentLyric,
     time: timeStr,
-  });
+  };
+  const songKey = song ? String(song.id) + ':' + String(song.source || '') : '';
+  if (songKey !== _mpLastSongKey) {
+    _mpLastSongKey = songKey;
+    payload.title = song ? song.title : '未在播放';
+    payload.artist = song ? (song.artist || '未知艺术家') : '—';
+    payload.cover = song ? (song.cover || '') : '';
+  }
+  api.syncMiniPlayer(payload);
 }
 
 // ── 播放状态同步到桌面歌词窗口 ────────────────────────

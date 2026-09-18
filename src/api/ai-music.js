@@ -401,8 +401,10 @@ async function generateMusic(params) {
   if (onProgress) onProgress({ status: 'submitting', percent: 10 });
 
   try {
+    // M10: 计费接口禁止自动重试——网络抖动/超时后重试可能重复扣费
     const result = await request(`${MINIMAX_API_BASE}/v1/music_generation`, {
       method: 'POST',
+      retries: 0,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },

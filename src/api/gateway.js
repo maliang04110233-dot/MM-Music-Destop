@@ -365,18 +365,34 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
    * 用途：searchSinger('all') / 首页分区的跨平台聚合。
    * 语义与既有 Promise.allSettled 写法一致：**失败平台产出空结果，不影响其它平台**。
    *
+   * M11: 并发数钳制为 4 —— 全平台同时打满会触发各平台限流/风控，
+   * 且慢平台会拖住整体（timeout 叠加）。按平台顺序取任务、结果按位回填。
+   *
    * @param {string[]} platformIds
    * @param {(platformId:string) => Promise<*>} fn
    * @returns {Promise<Array<{platform:string, ok:boolean, value:*}>>}
    */
+  const FANOUT_CONCURRENCY = 4;
   async function fanOut(platformIds, fn) {
     const ids = Array.isArray(platformIds) ? platformIds : [];
-    const settled = await Promise.allSettled(ids.map((id) => fn(id)));
-    return settled.map((r, i) => ({
-      platform: ids[i],
-      ok: r.status === 'fulfilled',
-      value: r.status === 'fulfilled' ? r.value : null,
-    }));
+    const results = new Array(ids.length);
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < ids.length) {
+        const i = cursor++;
+        const id = ids[i];
+        try {
+          results[i] = { platform: id, ok: true, value: await fn(id) };
+        } catch (e) {
+          logger.warn(`[gateway] fanOut ${id} 失败:`, (e && e.message) || e);
+          results[i] = { platform: id, ok: false, value: null };
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(FANOUT_CONCURRENCY, ids.length) }, () => worker())
+    );
+    return results;
   }
 
   /**

@@ -376,9 +376,9 @@ function renderHistoryTab(el) {
             </div>
             ${it.lyrics ? `<div class="ai-history-lyrics">${esc(it.lyrics.substring(0, 100))}${it.lyrics.length > 100 ? '...' : ''}</div>` : ''}
             <div class="ai-history-actions">
-              ${it.audioPath ? `<button class="ai-btn-action" onclick="playAiSong('${escAttr(it.audioPath)}')">▶ 播放</button>` : ''}
-              <button class="ai-btn-action" onclick="regenerateFromHistory('${escAttr(JSON.stringify(it))}')">🔄 重生成</button>
-              <button class="ai-btn-action" onclick="showAiLyricsDetail('${escAttr(JSON.stringify(it.lyrics || ''))}')">📝</button>
+              ${it.audioPath ? `<button class="ai-btn-action" onclick="playAiSong('${escQ(it.audioPath)}')">▶ 播放</button>` : ''}
+              <button class="ai-btn-action" onclick="regenerateFromHistory('${escQ(JSON.stringify(it))}')">🔄 重生成</button>
+              <button class="ai-btn-action" onclick="showAiLyricsDetail('${escQ(JSON.stringify(it.lyrics || ''))}')">📝</button>
             </div>
           </div>
         `).join('')}
@@ -855,7 +855,7 @@ async function generateAiPlaylist() {
         <span class="ai-playlist-num">${i + 1}</span>
         <span class="ai-playlist-title">${esc(s.title)}</span>
         <span class="ai-playlist-artist">${esc(s.artist)}</span>
-        <button class="ai-btn-action" onclick="searchAndAddSong('${escAttr(s.title)}','${escAttr(s.artist)}')">📥</button>
+        <button class="ai-btn-action" onclick="searchAndAddSong('${escQ(s.title)}','${escQ(s.artist)}')">📥</button>
       </div>
     `).join('');
 

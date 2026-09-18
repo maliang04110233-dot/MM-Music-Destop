@@ -4,9 +4,12 @@
  * 注册: export-all-data / import-all-data
  */
 
-const { ipcMain, dialog } = require('electron');
+const { dialog } = require('electron');
+const { handle } = require('./register');
 const prefs = require('../../utils/prefs');
 const history = require('../../utils/history');
+const approvedDirs = require('../approvedDirs');
+const { DIR_PREF_KEYS } = approvedDirs;
 const path = require('path');
 const logger = require('../../utils/logger');
 // 主进程即 UI 线程：文件 IO 必须异步
@@ -30,7 +33,7 @@ const IMPORTABLE_PREF_KEYS = new Set([
 
 function register() {
   // 导出所有数据
-  ipcMain.handle('export-all-data', async () => {
+  handle('export-all-data', async () => {
     try {
       const result = await dialog.showSaveDialog({
         title: '导出音乐下载器数据',
@@ -71,7 +74,7 @@ function register() {
   });
 
   // 导入数据
-  ipcMain.handle('import-all-data', async () => {
+  handle('import-all-data', async () => {
     try {
       const result = await dialog.showOpenDialog({
         title: '导入音乐下载器数据',
@@ -138,13 +141,20 @@ function register() {
       // 通用设置：只接受白名单键（导入文件内容不可信，防止注入未知键）
       if (data.prefs && typeof data.prefs === 'object') {
         let applied = 0;
+        let droppedDirs = 0;
         for (const [key, value] of Object.entries(data.prefs)) {
-          if (IMPORTABLE_PREF_KEYS.has(key)) {
-            prefs.set(key, value);
-            applied++;
+          if (!IMPORTABLE_PREF_KEYS.has(key)) continue;
+          // C1: 目录键来自不可信备份 —— 只接受已批准目录，否则丢弃，
+          // 让用户在设置里重新选一次（导入不应等于授予任意目录读写权）
+          if (DIR_PREF_KEYS.has(key) && value && !approvedDirs.isApprovedDir(value)) {
+            droppedDirs++;
+            continue;
           }
+          prefs.set(key, value);
+          applied++;
         }
         if (applied) results.push(`通用设置: ${applied} 项`);
+        if (droppedDirs) results.push(`目录设置: ${droppedDirs} 项被忽略（需在设置中重新选择）`);
       }
 
       return {

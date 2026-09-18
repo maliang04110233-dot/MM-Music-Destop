@@ -116,7 +116,7 @@ test('testAudioLink: 音频响应判为可用，解析体积与扩展名', async
     res.end(Buffer.alloc(64, 1));
   });
   try {
-    const r = await request.testAudioLink(`http://127.0.0.1:${port}/song.mp3`);
+    const r = await request.testAudioLink(`http://127.0.0.1:${port}/song.mp3`, { skipSsrfCheck: true });
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.ext, 'mp3');
@@ -130,7 +130,7 @@ test('testAudioLink: 200 但返回 text/plain 的拒绝文本 → 判为不可�
     res.end('refuse request!');
   });
   try {
-    const r = await request.testAudioLink(`http://127.0.0.1:${port}/anti.s`);
+    const r = await request.testAudioLink(`http://127.0.0.1:${port}/anti.s`, { skipSsrfCheck: true });
     assert.strictEqual(r.ok, false, 'text 响应不应被判为可用音频');
     assert.strictEqual(r.reason, 'not-audio');
   } finally { server.close(); }
@@ -155,7 +155,7 @@ test('testAudioLink: HEAD 被拒时退化为 Range GET，并从 content-range �
     res.end(Buffer.from([1, 2]));
   });
   try {
-    const r = await request.testAudioLink(`http://127.0.0.1:${port}/a.mp3`);
+    const r = await request.testAudioLink(`http://127.0.0.1:${port}/a.mp3`, { skipSsrfCheck: true });
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.status, 206);
     assert.strictEqual(seen.get, 1, 'HEAD 403 后应发起一次 GET');
@@ -178,7 +178,7 @@ test('testAudioLink: 跟随 302 重定向到真实音频', async () => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   port = server.address().port;
   try {
-    const r = await request.testAudioLink(`http://127.0.0.1:${port}/jump`);
+    const r = await request.testAudioLink(`http://127.0.0.1:${port}/jump`, { skipSsrfCheck: true });
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.status, 200);
   } finally { server.close(); }
@@ -190,7 +190,7 @@ test('testAudioLink: 4xx 判为不可用并带状态码', async () => {
     res.end('nope');
   });
   try {
-    const r = await request.testAudioLink(`http://127.0.0.1:${port}/missing.mp3`);
+    const r = await request.testAudioLink(`http://127.0.0.1:${port}/missing.mp3`, { skipSsrfCheck: true });
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.status, 404);
   } finally { server.close(); }
@@ -202,7 +202,7 @@ test('testAudioLink: 非法 URL 与连接失败均不抛异常', async () => {
   assert.strictEqual(bad.reason, 'invalid-url');
 
   // 端口无人监听 → 网络错误，应 resolve 成 ok:false 而不是 reject
-  const dead = await request.testAudioLink('http://127.0.0.1:1/x.mp3', { timeout: 1500 });
+  const dead = await request.testAudioLink('http://127.0.0.1:1/x.mp3', { timeout: 1500, skipSsrfCheck: true });
   assert.strictEqual(dead.ok, false);
 
   const empty = await request.testAudioLink('');

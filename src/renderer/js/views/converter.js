@@ -178,13 +178,15 @@ function renderConverterSongs() {
   }
 
   if (container) {
+    // M14: 每行 some() 线性扫队列 → 一次建 Set
+    const queuePaths = new Set(_convQueue.map(q => q.path));
     container.innerHTML = filtered.map(song => {
       const fp = song.filePath;
-      const inQueue = _convQueue.some(q => q.path === fp);
+      const inQueue = queuePaths.has(fp);
       return `
         <div class="converter-song-item ${inQueue ? 'in-queue' : ''}">
           <input type="checkbox" class="converter-song-check" ${_convSelected.has(fp) ? 'checked' : ''}
-                 onchange="_convSongToggle('${escAttr(fp)}')">
+                 onchange="_convSongToggle('${escQ(fp)}')">
           <div class="converter-song-info">
             <div class="converter-song-title">${esc(song.title || '未知标题')}</div>
             <div class="converter-song-sub">${esc(song.artist || '未知艺术家')} · ${esc(song.album || '未知专辑')} · ${(song.ext || '').toUpperCase()}</div>
@@ -192,7 +194,7 @@ function renderConverterSongs() {
           <div class="converter-song-actions">
             ${inQueue
               ? `<button class="btn-sm converter-btn-disabled" disabled>已添加</button>`
-              : `<button class="btn-sm converter-btn-add" onclick="_convSongAdd('${escAttr(fp)}')">+ 添加</button>`
+              : `<button class="btn-sm converter-btn-add" onclick="_convSongAdd('${escQ(fp)}')">+ 添加</button>`
             }
           </div>
         </div>

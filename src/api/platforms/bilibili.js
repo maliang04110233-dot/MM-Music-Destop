@@ -206,7 +206,7 @@ async function bilibiliGetLyrics(bvid) {
  */
 async function bilibiliSearch(keyword, page = 1, cookie = '') {
   if (!keyword || typeof keyword !== 'string') return [];
-  const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=20&order=totalrank`;
+  const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(keyword)}&page=${Number(page) || 1}&page_size=20&order=totalrank`;
 
   const result = await request(url, {
     headers: {
@@ -239,7 +239,7 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
   try {
     const c = await resolveCookie(cookie);
     // 1) 先拿 cid 和 aid
-    const infoResult = await request(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`, {
+    const infoResult = await request(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
       headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': c },
       timeout: 10000,
     });
@@ -249,7 +249,7 @@ async function bilibiliGetUrl(bvid, quality, cookie = '') {
 
     // 2) 拿 DASH 播放地址（fnval=16 必带）
     const streamResult = await request(
-      `https://api.bilibili.com/x/player/playurl?avid=${aid}&cid=${cid}&fnval=16&fnver=0&fourk=1&bvid=${bvid}&qn=112`,
+      `https://api.bilibili.com/x/player/playurl?avid=${Number(aid) || 0}&cid=${Number(cid) || 0}&fnval=16&fnver=0&fourk=1&bvid=${encodeURIComponent(bvid)}&qn=112`,
       { headers: { 'Referer': 'https://www.bilibili.com/', 'Cookie': c }, timeout: 12000 }
     );
 

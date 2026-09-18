@@ -1,0 +1,26 @@
+{
+  "code": 0,
+  "data": {
+    "numResults": 2,
+    "result": [
+      {
+        "bvid": "BV1qt411p7hx",
+        "aid": 812345,
+        "title": "<em class=\"keyword\">晴天</em> MV 周杰伦【4K修复】",
+        "author": "周杰伦官方账号",
+        "pic": "//i0.hdslb.com/bfs/archive/abc123.jpg",
+        "duration": "4:29",
+        "play": 12345678
+      },
+      {
+        "bvid": "",
+        "aid": 999000,
+        "title": "稻香  live版",
+        "author": "UP主B",
+        "pic": "",
+        "duration": "223",
+        "play": 100
+      }
+    ]
+  }
+}

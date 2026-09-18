@@ -1,184 +1,27 @@
 const { contextBridge, ipcRenderer } = require('electron');
-// sandbox preload 只能 require 内置模块与 electron，不能 require 应用内相对路径
-// （生产环境会 module not found），日志工具在此内联实现
+// IPC 契约由主进程经 webPreferences.additionalArguments 序列化注入
+// （见 src/shared/ipcContract.js buildContractArg）。sandbox preload 运行时
+// 不能 require 应用相对路径，argv 是保持单一事实源的传递方式。
 const logger = {
   warn: (...args) => console.warn('[MusicDL][preload]', ...args),
 };
 
-// ── 白名单 ──────────────────────────────────────────
-const SAFE_CHANNELS_SEND = new Set([
-  'window-minimize', 'window-maximize', 'window-close',
-  'mini-next', 'mini-prev', 'mini-toggle-play', 'mini-close', 'mini-player-update',
-  'open-mini-player',
-  'open-desktop-lyric', 'desktop-lyric-close',
-  'desktop-lyric-lock', 'desktop-lyric-set-ignore-mouse', 'desktop-lyric-update',
-  // 补齐：METHOD_MAP 引用但原先不在白名单的 send-only 通道
-  'tray-update-play-state',
-  'set-global-shortcuts',
-]);
+const raw = process.argv.find(a => a.startsWith('--ipc-contract='));
+if (!raw) {
+  // 不静默降级为无白名单：宁可窗口明确报错也不暴露未校验的桥
+  console.error('[MusicDL][preload] 缺少 --ipc-contract 参数，musicAPI 不可用（检查主进程 additionalArguments 注入）');
+}
+const contract = raw ? JSON.parse(raw.slice('--ipc-contract='.length)) : { invoke: [], send: [], receive: [], methods: {}, events: {} };
 
-const SAFE_CHANNELS_RECEIVE = new Set([
-  'queue-updated', 'download-progress', 'download-error',
-  'play-queue-restored', 'update-available',
-  'update-not-available', 'update-download-progress', 'update-downloaded', 'update-error',
-  'local-lrc-fetched', 'library-scan-progress', 'sync-mini-player',
-  'convert-audio-progress',
-  'focus-search', 'sleep-timer', 'sync-desktop-lyric',
-  'mini-player-update',
-  'desktop-lyric-data',
-  'tray-toggle-play', 'tray-next', 'tray-prev',
-  'mini-next', 'mini-prev', 'mini-toggle-play',
-]);
-
-const SAFE_CHANNELS_INVOKE = new Set([
-  'search-music', 'search-album', 'search-singer',
-  'get-singer-songs', 'get-singer-albums', 'get-album-songs', 'get-song-by-link',
-  'get-source-health', 'probe-sources', 'get-platforms',
-  'get-home-recommendations', 'get-home-section', 'get-playlist-songs',
-  'get-download-url', 'get-download-url-smart', 'add-to-queue', 'cancel-download', 'retry-download',
-  'remove-queue-item', 'clear-finished-queue', 'clear-all-queue',
-  'get-lyrics', 'get-cookies', 'save-cookie', 'clear-cookie', 'verify-cookie',
-  'open-login-window', 'scan-local-library', 'load-library-index',
-  'read-local-metadata', 'read-local-lrc', 'update-id3-tags', 'update-id3-cover',
-  'fetch-online-cover', 'select-dir', 'get-default-dir', 'open-folder', 'open-external',
-  'get-pref', 'set-pref', 'save-play-queue', 'load-play-queue',
-  'query-history', 'history-stats', 'clear-history',
-  'get-cache-size', 'clear-play-cache', 'batch-fetch-lyrics',
-  'write-local-lrc', 'check-local-exists', 'convert-audio', 'cancel-convert-audio',
-  'proxy-play', 'add-playlist-to-queue', 'get-version',
-  'ai-generate-music', 'ai-generate-lyrics',
-  'ai-history', 'ai-add-history', 'ai-clear-history', 'ai-translate-lyrics',
-  'export-all-data', 'import-all-data', 'get-download-templates',
-  'save-download-template', 'delete-download-template', 'set-active-template',
-  'preview-naming-template',
-  'get-search-history', 'set-search-history',
-  'get-user-playlists', 'save-user-playlist', 'delete-user-playlist',
-  'add-to-user-playlist', 'remove-from-user-playlist', 'toggle-favorite',
-  'export-playlist', 'delete-file', 'rename-file',
-  'check-for-update', 'download-update', 'restart-and-install',
-  'flush-prefs', 'flush-history',
-]);
-
-// ── 方法名映射：渲染层 camelCase → IPC kebab-case ──
-const METHOD_MAP = {
-  // 窗口（send-only：主进程只注册了 ipcMain.on，走 invoke 会无人应答）
-  windowClose: 'window-close',
-  windowMinimize: 'window-minimize',
-  windowMaximize: 'window-maximize',
-  windowToggleFullscreen: 'window-maximize',
-  // 搜索
-  searchMusic: 'search-music',
-  searchAlbum: 'search-album',
-  searchSinger: 'search-singer',
-  getSingerSongs: 'get-singer-songs',
-  getSingerAlbums: 'get-singer-albums',
-  getAlbumSongs: 'get-album-songs',
-  getSongByLink: 'get-song-by-link',
-  // 推荐
-  getHomeSection: 'get-home-section',
-  getHomeRecommendations: 'get-home-recommendations',
-  getPlaylistSongs: 'get-playlist-songs',
-  // 下载
-  getDownloadUrl: 'get-download-url',
-  getDownloadUrlSmart: 'get-download-url-smart',
-  addToQueue: 'add-to-queue',
-  proxyPlay: 'proxy-play',
-  cancelDownload: 'cancel-download',
-  retryDownload: 'retry-download',
-  removeQueueItem: 'remove-queue-item',
-  clearFinishedQueue: 'clear-finished-queue',
-  clearAllQueue: 'clear-all-queue',
-  addPlaylistToQueue: 'add-playlist-to-queue',
-  exportPlaylist: 'export-playlist',
-  getDownloadTemplates: 'get-download-templates',
-  saveDownloadTemplate: 'save-download-template',
-  deleteDownloadTemplate: 'delete-download-template',
-  setActiveDownloadTemplate: 'set-active-template',
-  previewNamingTemplate: 'preview-naming-template',
-  // 歌词
-  getLyrics: 'get-lyrics',
-  // Cookie
-  getCookies: 'get-cookies',
-  saveCookie: 'save-cookie',
-  clearCookie: 'clear-cookie',
-  verifyCookie: 'verify-cookie',
-  openLoginWindow: 'open-login-window',
-  // 本地
-  scanLocalLibrary: 'scan-local-library',
-  loadLibraryIndex: 'load-library-index',
-  readLocalMetadata: 'read-local-metadata',
-  readLocalLrc: 'read-local-lrc',
-  writeLocalLrc: 'write-local-lrc',
-  checkLocalExists: 'check-local-exists',
-  updateId3Tags: 'update-id3-tags',
-  updateId3Cover: 'update-id3-cover',
-  fetchOnlineCover: 'fetch-online-cover',
-  batchFetchLyrics: 'batch-fetch-lyrics',
-  convertAudio: 'convert-audio',
-  cancelConvertAudio: 'cancel-convert-audio',
-  deleteFile: 'delete-file',
-  renameFile: 'rename-file',
-  // 文件
-  selectDir: 'select-dir',
-  getDefaultDir: 'get-default-dir',
-  openFolder: 'open-folder',
-  openExternal: 'open-external',
-  // 设置
-  getPref: 'get-pref',
-  setPref: 'set-pref',
-  getSearchHistory: 'get-search-history',
-  setSearchHistory: 'set-search-history',
-  // 播放队列
-  savePlayQueue: 'save-play-queue',
-  loadPlayQueue: 'load-play-queue',
-  // 历史
-  queryHistory: 'query-history',
-  getHistoryStats: 'history-stats',  clearHistory: 'clear-history',
-  // 缓存
-  getCacheSize: 'get-cache-size',
-  clearPlayCache: 'clear-play-cache',
-  // 播放
-  getVersion: 'get-version',
-  // AI
-  aiGenerateMusic: 'ai-generate-music',
-  aiGenerateLyrics: 'ai-generate-lyrics',
-  aiTranslateLyrics: 'ai-translate-lyrics',
-  aiGetHistory: 'ai-history',
-  aiAddHistory: 'ai-add-history',
-  aiClearHistory: 'ai-clear-history',
-  // 用户歌单
-  getUserPlaylists: 'get-user-playlists',
-  saveUserPlaylist: 'save-user-playlist',
-  deleteUserPlaylist: 'delete-user-playlist',
-  addToUserPlaylist: 'add-to-user-playlist',
-  removeFromUserPlaylist: 'remove-from-user-playlist',
-  toggleFavorite: 'toggle-favorite',
-  // 云
-  exportAllData: 'export-all-data',
-  importAllData: 'import-all-data',
-  // 更新
-  checkForUpdate: 'check-for-update',
-  downloadUpdate: 'download-update',
-  restartAndInstall: 'restart-and-install',
-  // mini
-  openMiniPlayer: 'open-mini-player',
-  syncMiniPlayer: 'mini-player-update',
-  openDesktopLyric: 'open-desktop-lyric',
-  syncDesktopLyric: 'desktop-lyric-update',
-  closeDesktopLyric: 'desktop-lyric-close',
-  trayUpdatePlayState: 'tray-update-play-state',
-  setGlobalShortcuts: 'set-global-shortcuts',
-  getSourceHealth: 'get-source-health',
-  probeSources: 'probe-sources',
-  getPlatforms: 'get-platforms',
-};
+// ── 白名单（派生，不再手工维护） ──────────────────────────────
+const SAFE_CHANNELS_SEND    = new Set(contract.send);
+const SAFE_CHANNELS_RECEIVE = new Set(contract.receive);
+const SAFE_CHANNELS_INVOKE  = new Set(contract.invoke);
 
 // ── 核心 musicAPI（渲染层 → 主进程的 IPC 桥）────────────
-// 用工厂函数从 METHOD_MAP 生成所有方法，保证所有 renderer 调用的方法都有对应
+// 方向判定来自契约的 invoke 清单；不在其中且是 send 通道的走 ipcRenderer.send
+// （send-only 通道走 invoke 会无人应答、Promise 永远 pending）。
 function makeApiMethod(ipcChannel) {
-  // send-only 通道（主进程只有 ipcMain.on，无 handle）：走 send。
-  // 原实现一律 invoke，导致这些通道 invoke 后无人应答（Promise 永远 pending
-  // 或返回 undefined，窗口控制/托盘同步静默失效）。
   if (!SAFE_CHANNELS_INVOKE.has(ipcChannel) && SAFE_CHANNELS_SEND.has(ipcChannel)) {
     return (...args) => ipcRenderer.send(ipcChannel, ...args);
   }
@@ -193,28 +36,17 @@ const _musicApiBase = {
     logger.warn('[preload] 未授权的 IPC 通道:', channel);
   },
   get version() { return ipcRenderer.invoke('get-version'); },
-  // on 事件注册
-  onQueueUpdated(cb) { ipcRenderer.on('queue-updated', (_, d) => cb(d)); },
-  onDownloadProgress(cb) { ipcRenderer.on('download-progress', (_, d) => cb(d)); },
-  onDownloadError(cb) { ipcRenderer.on('download-error', (_, d) => cb(d)); },
-  onPlayQueueRestored(cb) { ipcRenderer.on('play-queue-restored', (_, d) => cb(d)); },
-  onLocalLrcFetched(cb) { ipcRenderer.on('local-lrc-fetched', (_, d) => cb(d)); },
-  onConvertAudioProgress(cb) { ipcRenderer.on('convert-audio-progress', (_, d) => cb(d)); },
-  onSyncMiniPlayer(cb) { ipcRenderer.on('sync-mini-player', () => cb()); },
-  onSyncDesktopLyric(cb) { ipcRenderer.on('sync-desktop-lyric', () => cb()); },
-  onMiniNext(cb) { ipcRenderer.on('mini-next', (_, d) => cb(d)); },
-  onMiniPrev(cb) { ipcRenderer.on('mini-prev', (_, d) => cb(d)); },
-  onMiniTogglePlay(cb) { ipcRenderer.on('mini-toggle-play', (_, d) => cb(d)); },
-  onTrayNext(cb) { ipcRenderer.on('tray-next', (_, d) => cb(d)); },
-  onTrayPrev(cb) { ipcRenderer.on('tray-prev', (_, d) => cb(d)); },
-  onTrayTogglePlay(cb) { ipcRenderer.on('tray-toggle-play', (_, d) => cb(d)); },
 };
 
-// 从 METHOD_MAP 批量生成方法
-Object.keys(METHOD_MAP).forEach(name => {
-  const ch = METHOD_MAP[name];
-  _musicApiBase[name] = makeApiMethod(ch);
-});
+// 从 METHODS 批量生成调用方法（渲染层 camelCase → 契约通道）
+for (const [name, channel] of Object.entries(contract.methods)) {
+  _musicApiBase[name] = makeApiMethod(channel);
+}
+
+// 从 EVENTS 批量生成订阅方法
+for (const [name, channel] of Object.entries(contract.events)) {
+  _musicApiBase[name] = (cb) => ipcRenderer.on(channel, (_, d) => cb(d));
+}
 
 contextBridge.exposeInMainWorld('musicAPI', _musicApiBase);
 

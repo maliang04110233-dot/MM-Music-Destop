@@ -2,29 +2,26 @@
  * 搜索 / 歌词 / 推荐 IPC
  *
  * 注册：search-music / get-lyrics / get-home-recommendations / get-playlist-songs
+ * 参数形状校验（keyword 截断、page/limit 钳制）已上移至 IPC 契约
+ * （src/shared/ipcContract.js，经 ./register 的 handle 统一执行），
+ * handler 只接收规范化后的位置参数。
  */
 
-const { ipcMain } = require('electron');
 const api = require('../../api');
 const logger = require('../../utils/logger');
+const { handle } = require('./register');
 
 function register() {
-  // 渲染层（含上游原版）按位置参数调用：api.searchMusic(keyword, source, page)，
-  // preload 原样展开传给 invoke —— handle 需同时兼容位置参数与对象两种形态
-  const args = (pos, obj) => (Array.isArray(pos) && pos.length) ? pos : obj;
-
-  ipcMain.handle('search-music', async (_, ...a) => {
+  handle('search-music', async (_, keyword, source, page) => {
     try {
-      const [keyword, source, page] = args(a, a[0] || {});
-      return await api.searchMusic(keyword, source, page || 1);
+      return await api.searchMusic(keyword, source, page);
     } catch (e) {
       return { error: e.message, songs: [] };
     }
   });
 
-  ipcMain.handle('get-lyrics', async (_, ...a) => {
+  handle('get-lyrics', async (_, id, source, title, artist) => {
     try {
-      const [id, source, title, artist] = args(a, a[0] || {});
       return await api.getLyrics(id, source, title, artist);
     } catch (e) {
       logger.warn('获取歌词失败:', e.message || e);
@@ -32,7 +29,7 @@ function register() {
     }
   });
 
-  ipcMain.handle('get-home-recommendations', async () => {
+  handle('get-home-recommendations', async () => {
     try {
       return await api.getHomeRecommendations();
     } catch (e) {
@@ -41,7 +38,7 @@ function register() {
     }
   });
 
-  ipcMain.handle('get-home-section', async (_, section) => {
+  handle('get-home-section', async (_, section) => {
     try {
       return await api.getHomeSection(section);
     } catch (e) {
@@ -49,9 +46,8 @@ function register() {
     }
   });
 
-  ipcMain.handle('get-playlist-songs', async (_, ...a) => {
+  handle('get-playlist-songs', async (_, platform, id, limit) => {
     try {
-      const [platform, id, limit] = args(a, a[0] || {});
       return await api.getPlaylistSongs(platform, id, limit);
     } catch (e) {
       logger.warn('获取歌单歌曲失败:', e.message);
@@ -59,58 +55,52 @@ function register() {
     }
   });
 
-  ipcMain.handle('search-singer', async (_, ...a) => {
+  handle('search-singer', async (_, keyword, source, page) => {
     try {
-      const [keyword, source, page] = args(a, a[0] || {});
-      return await api.searchSinger(keyword, source, page || 1);
+      return await api.searchSinger(keyword, source, page);
     } catch (e) {
       logger.warn('搜索歌手失败:', e.message);
       return { singers: [], total: 0 };
     }
   });
 
-  ipcMain.handle('get-singer-songs', async (_, ...a) => {
+  handle('get-singer-songs', async (_, singerMid, limit) => {
     try {
-      const [singerMid, limit] = args(a, a[0] || {});
-      return await api.getSingerSongs(singerMid, limit || 30);
+      return await api.getSingerSongs(singerMid, limit);
     } catch (e) {
       logger.warn('获取歌手歌曲失败:', e.message);
       return [];
     }
   });
 
-  ipcMain.handle('get-singer-albums', async (_, ...a) => {
+  handle('get-singer-albums', async (_, singerMid, source, pageNo, pageSize) => {
     try {
-      const [singerMid, source, pageNo, pageSize] = args(a, a[0] || {});
-      return await api.getSingerAlbums(singerMid, source || 'qq', pageNo || 1, pageSize || 20);
+      return await api.getSingerAlbums(singerMid, source || 'qq', pageNo, pageSize);
     } catch (e) {
       logger.warn('获取歌手专辑失败:', e.message);
       return { albums: [], total: 0 };
     }
   });
 
-  ipcMain.handle('get-album-songs', async (_, ...a) => {
+  handle('get-album-songs', async (_, platform, albumMid, limit) => {
     try {
-      const [platform, albumMid, limit] = args(a, a[0] || {});
-      return await api.getAlbumSongs(platform, albumMid, limit || 999);
+      return await api.getAlbumSongs(platform, albumMid, limit);
     } catch (e) {
       logger.warn('获取专辑歌曲失败:', e.message);
       return [];
     }
   });
 
-  ipcMain.handle('search-album', async (_, ...a) => {
+  handle('search-album', async (_, keyword, source, page) => {
     try {
-      const [keyword, source, page] = args(a, a[0] || {});
-      return await api.searchAlbum(keyword, source || 'qq', page || 1);
+      return await api.searchAlbum(keyword, source || 'qq', page);
     } catch (e) {
       return { albums: [], total: 0, error: e.message };
     }
   });
 
   // 粘贴链接智能识别：文本 → { matched, song? | link?, shortLink?, error? }
-  ipcMain.handle('get-song-by-link', async (_, ...a) => {
-    const [text] = args(a, a[0] || {});
+  handle('get-song-by-link', async (_, text) => {
     try {
       return await api.getSongByLink(String(text || ''));
     } catch (e) {
@@ -122,7 +112,7 @@ function register() {
   // ── 平台清单（v3）───────────────────────────────
   // 渲染层的平台名 / 图标 / 徽标配色 / 下拉选项 / 能力全部由这一次调用驱动。
   // 渲染层不再持有任何平台 id 清单，新增平台无需改动渲染层一行。
-  ipcMain.handle('get-platforms', () => {
+  handle('get-platforms', () => {
     try {
       return api.registry.toClientPayload();
     } catch (e) {
@@ -133,14 +123,14 @@ function register() {
 
   // ── 源可用性探针（P2）─────────────────────────────
   // 被动健康度快照：getDownloadUrlSmart 各环节记的滑动窗口统计
-  ipcMain.handle('get-source-health', () => {
+  handle('get-source-health', () => {
     // 探针源清单由 registry 派生（原先此数组在本文件被手抄两遍）
     return api.getSourceHealthMap(api.registry.getProbeSources());
   });
 
   // 主动探测：各源搜一首公共曲并尝试取流。搜索通=源可达；取流通=源健康。
   // 探测结果记入 sourceHealth 滑动窗口（与真实下载共用同一分数）。
-  ipcMain.handle('probe-sources', async () => {
+  handle('probe-sources', async () => {
     const PROBE_SOURCES = api.registry.getProbeSources();
     const KEYWORD = '周杰伦 晴天';
     const withTimeout = (p) => Promise.race([

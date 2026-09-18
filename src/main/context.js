@@ -28,6 +28,7 @@ function init(opts) {
     app:           opts.app,
     persistQueue:  opts.persistQueue,
     processQueue:  opts.processQueue,
+    requestCancelDownload: opts.requestCancelDownload,
   };
   return _ctx;
 }

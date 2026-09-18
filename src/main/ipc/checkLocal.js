@@ -10,9 +10,10 @@
  * （music-metadata 异步并发 + 缓存）。
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const { scanDirectory, readAudioMetadata } = require('../../utils/localLibrary');
 const logger = require('../../utils/logger');
+const approvedDirs = require('../approvedDirs');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
 
@@ -49,12 +50,15 @@ function matchSong(item, tag) {
  * 注册 IPC
  */
 function register() {
-  // 渲染层传对象：api.checkLocalExists({ saveDir, items })——单对象参数，
-  // 兼容位置传参形态以防万一
-  ipcMain.handle('check-local-exists', async (_, ...a) => {
-    const { saveDir, items } = (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) ? a[0] : (a[1] || {});
+  // 渲染层传对象：api.checkLocalExists({ saveDir, items })（契约 obj 规格已规范化）
+  handle('check-local-exists', async (_, payload) => {
+    const { saveDir, items } = payload || {};
     try {
-      if (!saveDir || !await fsa.exists(saveDir)) {
+      // C1: 未批准目录不可枚举（该通道会列目录内容并读任意文件的 ID3）
+      if (!saveDir || typeof saveDir !== 'string' || !approvedDirs.isApprovedDir(saveDir)) {
+        return items.map(it => ({ ...it, exists: false }));
+      }
+      if (!await fsa.exists(saveDir)) {
         return items.map(it => ({ ...it, exists: false }));
       }
       if (!Array.isArray(items) || items.length === 0) return [];

@@ -112,7 +112,10 @@ const LIB_FILES = ['晴天.flac', '七里香.flac', '夜曲.flac'];
 for (const n of LIB_FILES) fs.writeFileSync(path.join(libDir, n), 'fake-flac');
 
 // 让 library.js 的路径沙箱认这个目录
+// flush 立即落盘：否则 300ms 防抖写盘定时器可能在后面的「同步 fs 守卫」
+// 窗口内触发（全量并发跑时事件循环被拖慢），误报 writeFileSync/renameSync
 prefs.set('localDirPath', libDir);
+prefs.flush();
 
 // ── 守卫有效性自检 ───────────────────────────────────────────
 

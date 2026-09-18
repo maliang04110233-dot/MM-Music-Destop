@@ -263,6 +263,18 @@ function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCoun
   return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount, options);
 }
 
+// Minor: token → 在途 downloadFile 请求。downloadQueue.requestCancel 用它
+// 销毁正在下载的 req；销毁走既有 error 路径清理 .tmp，并给错误打 cancelled 标
+const _inflightReqs = new Map();
+function cancelDownload(token) {
+  const req = _inflightReqs.get(String(token));
+  if (!req) return false;
+  req._cancelled = true;
+  _inflightReqs.delete(String(token));
+  req.destroy();
+  return true;
+}
+
 function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redirectCount = 0, options = {}) {
   const MAX_REDIRECTS = 5;
   const speedLimit = options.speedLimit || 0; // bytes/sec, 0 = unlimited
@@ -378,8 +390,14 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
       writeStream.on('error', (e) => { cleanupTmp(); reject(e); });
     });
 
-    req.on('error', (e) => { cleanupTmp(); reject(e); });
+    req.on('error', (e) => { if (req._cancelled) e.cancelled = true; cleanupTmp(); reject(e); });
     req.on('timeout', () => { req.destroy(); cleanupTmp(); reject(new Error('下载超时')); });
+    // Minor: 注册在途请求，支持按 token 打断（用户取消下载中任务）
+    if (options.token) {
+      const token = String(options.token);
+      _inflightReqs.set(token, req);
+      req.on('close', () => { if (_inflightReqs.get(token) === req) _inflightReqs.delete(token); });
+    }
     req.end();
   });
 }
@@ -581,6 +599,7 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
       const result = await downloadFile(url, savePath, onProgress, extraHeaders, 0, opts);
       return result;
     } catch (e) {
+      if (e && e.cancelled) throw e; // 用户取消：绝不续传重试
       attempt++;
       const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(e.message || '');
       if (attempt <= maxRetry && isTransient) {
@@ -601,4 +620,4 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
   return tryOnce();
 }
 
-module.exports = { createThrottleStream, downloadFile, downloadFileWithRetry, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };
+module.exports = { createThrottleStream, downloadFile, downloadFileWithRetry, cancelDownload, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };

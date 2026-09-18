@@ -44,7 +44,7 @@ function getMid() {
  */
 async function kugouSearch(keyword, page = 1) {
   if (!keyword || typeof keyword !== 'string') return [];
-  const url = `https://songsearch.kugou.com/song_search_v2?keyword=${encodeURIComponent(keyword)}&page=${page}&pagesize=30&platform=WebFilter`;
+  const url = `https://songsearch.kugou.com/song_search_v2?keyword=${encodeURIComponent(keyword)}&page=${Number(page) || 1}&pagesize=30&platform=WebFilter`;
   const result = await request(url, { timeout: 10000 });
   const songs = result?.data?.lists || [];
   return songs.map(s => ({
@@ -93,7 +93,7 @@ async function kugouGetUrl(id, quality = 'standard') {
       try {
         const crypto = require('crypto');
         const key = crypto.createHash('md5').update(hash + 'kgcloudv2').digest('hex').toLowerCase();
-        const cdnUrl = `https://trackercdn.kugou.com/i/v2/?appid=1005&pid=2&cmd=25&behavior=play&hash=${hash}&key=${key}&br=${quality === 'lossless' ? 2000 : quality === 'hq' ? 320 : 128}&mid=${encodeURIComponent(getMid())}`;
+        const cdnUrl = `https://trackercdn.kugou.com/i/v2/?appid=1005&pid=2&cmd=25&behavior=play&hash=${encodeURIComponent(hash)}&key=${encodeURIComponent(key)}&br=${quality === 'lossless' ? 2000 : quality === 'hq' ? 320 : 128}&mid=${encodeURIComponent(getMid())}`;
         const cdnResult = await request(cdnUrl, { timeout: 8000 });
         const cdnData = cdnResult?.data || cdnResult || {};
         if (cdnData.play_url) playUrl = cdnData.play_url;
@@ -204,7 +204,7 @@ async function kugouGetLyricsByTitle(title, artist) {
  * @returns {Promise<{albums: Array, total: number, page: number}>}
  */
 async function kugouSearchAlbum(keyword, page = 1) {
-  const url = `https://mobilecdn.kugou.com/api/v3/search/album?keyword=${encodeURIComponent(keyword)}&page=${page}&pagesize=30&sort=1`;
+  const url = `https://mobilecdn.kugou.com/api/v3/search/album?keyword=${encodeURIComponent(keyword)}&page=${Number(page) || 1}&pagesize=30&sort=1`;
   const result = await request(url, { timeout: 10000 });
   const list = result?.data?.info || [];
   const total = result?.data?.total || 0;
@@ -231,7 +231,7 @@ async function kugouSearchAlbum(keyword, page = 1) {
  * @returns {Promise<{singers: Array, total: number, page: number}>}
  */
 async function kugouSearchSinger(keyword, page = 1) {
-  const url = `https://mobilecdn.kugou.com/api/v3/search/singer?keyword=${encodeURIComponent(keyword)}&page=${page}&pagesize=10`;
+  const url = `https://mobilecdn.kugou.com/api/v3/search/singer?keyword=${encodeURIComponent(keyword)}&page=${Number(page) || 1}&pagesize=10`;
   const result = await request(url, { timeout: 10000 });
   const list = Array.isArray(result?.data) ? result.data : (result?.data?.info || []);
   const total = result?.data?.total || list.length;
@@ -256,7 +256,7 @@ async function kugouSearchSinger(keyword, page = 1) {
  * @param {number} limit
  */
 async function kugouGetAlbumSongs(albumId, limit = 999) {
-  const url = `https://mobilecdn.kugou.com/api/v3/album/song?albumid=${albumId}&page=1&pagesize=${limit}`;
+  const url = `https://mobilecdn.kugou.com/api/v3/album/song?albumid=${encodeURIComponent(albumId)}&page=1&pagesize=${encodeURIComponent(limit)}`;
   const result = await request(url, { timeout: 10000 });
   const list = result?.data?.info || [];
   return list.map(s => {
@@ -279,7 +279,7 @@ async function kugouGetAlbumSongs(albumId, limit = 999) {
  * 获取歌手热门歌曲
  */
 async function kugouGetSingerSongs(singerId, limit = 50) {
-  const url = `https://mobilecdn.kugou.com/api/v3/singer/song?singerid=${singerId}&page=1&pagesize=${Math.min(limit, 100)}`;
+  const url = `https://mobilecdn.kugou.com/api/v3/singer/song?singerid=${encodeURIComponent(singerId)}&page=1&pagesize=${encodeURIComponent(Math.min(limit, 100))}`;
   const result = await request(url, { timeout: 10000 });
   const list = result?.data?.info || [];
   return list.slice(0, limit).map(s => {
@@ -302,7 +302,7 @@ async function kugouGetSingerSongs(singerId, limit = 50) {
  * 获取歌手专辑列表
  */
 async function kugouGetSingerAlbums(singerId, pageNo = 1, pageSize = 20) {
-  const url = `https://mobilecdn.kugou.com/api/v3/singer/album?singerid=${singerId}&page=${pageNo}&pagesize=${pageSize}`;
+  const url = `https://mobilecdn.kugou.com/api/v3/singer/album?singerid=${encodeURIComponent(singerId)}&page=${encodeURIComponent(pageNo)}&pagesize=${encodeURIComponent(pageSize)}`;
   const result = await request(url, { timeout: 10000 });
   const list = result?.data?.info || [];
   const total = result?.data?.total || 0;
@@ -320,6 +320,190 @@ async function kugouGetSingerAlbums(singerId, pageNo = 1, pageSize = 20) {
     total,
     page: pageNo,
   };
+}
+
+/**
+ * 榜单名 → rankid 映射。
+ *
+ * 与 netease 的 NETEASE_TOP_MAP 同一约定：榜单是**产品配置**（投放哪几个榜
+ * 是产品决定），不是平台能力，故不能由 registry 推导，只能显式声明。
+ *
+ * rankid 取自 `https://m.kugou.com/rank/list&json=true`（实测返回 55 个榜单），
+ * 这里只登记要上首页的四个，与 netease 的「飙升/热歌/新歌/原创」四榜对齐。
+ */
+const KUGOU_TOP_MAP = {
+  飙升榜: 6666,
+  网络热歌榜: 82831,
+  短视频热歌榜: 52144,
+  TOP500: 8888,
+};
+
+/**
+ * 榜单分页固定 30 条/页 —— 接口的 pagesize 由服务端决定（实测恒为 30），
+ * 传 pagesize 参数不生效。故「取 100 条」需要分页请求，见 kugouGetTopList。
+ */
+const KUGOU_RANK_PAGE_SIZE = 30;
+
+/**
+ * 把榜单接口的歌曲条目转成标准歌曲对象。
+ *
+ * 字段来源（实测 m.kugou.com/rank/info）：
+ *   - songname            「甲乙丙丁 (你我怎么两清)」——标题
+ *   - h5_author_name      「李佳薇」——歌手（单独字段，无需从 filename 切分）
+ *   - hash/sqhash/320hash 三种音质的 hash，直接喂 encodeKugouId 让下载侧择优
+ *   - album_sizable_cover 形如 http://imge.kugou.com/stdmusic/{size}/xxx.jpg
+ *   - duration            单位是**秒**（标准图谱里 duration 是毫秒，此处必须 ×1000）
+ *   - album_id            专辑 ID
+ *
+ * ⚠️ 封面 URL **必须把 http 升级为 https**：榜单接口下发的是 `http://imge.kugou.com/...`，
+ *    而渲染进程处于 https 上下文，混合内容会被直接拦掉（图全裂）。
+ *    实测 https 下同一路径返回 200 image/jpeg。{size} 占位符替换为 240
+ *    （榜单行封面实际渲染 36px，取 240 是为 2x/3x 屏留余量）。
+ */
+function kugouRankItemToSong(s) {
+  if (!s || typeof s !== 'object') return null;
+  const fileHash = s.hash || '';
+  if (!fileHash) return null;
+
+  const title = s.songname || s.filename || '';
+  if (!title) return null;
+
+  // 歌手优先取 h5_author_name；缺失时从 filename 的 "歌手 - 歌名" 里切
+  let artist = s.h5_author_name || '';
+  if (!artist && s.filename && String(s.filename).includes(' - ')) {
+    artist = String(s.filename).split(' - ')[0];
+  }
+
+  return {
+    id: encodeKugouId(fileHash, s.sqhash || '', s['320hash'] || ''),
+    title,
+    artist,
+    album: s.remark || '',
+    albumMid: s.album_id ? String(s.album_id) : '',
+    cover: kugouNormalizeCover(s.album_sizable_cover),
+    duration: (s.duration || 0) * 1000,
+    source: 'kugou',
+  };
+}
+
+/**
+ * 封面 URL 规范化：http → https，并把 {size} 占位符换成分辨率。
+ * @param {string} url
+ * @param {number} [size]
+ * @returns {string} 不可用时返回空串（渲染层会走 SVG 占位，不留裂图）
+ */
+function kugouNormalizeCover(url, size = 240) {
+  if (!url || typeof url !== 'string') return '';
+  return url.replace('{size}', String(size)).replace(/^http:\/\//i, 'https://');
+}
+
+/**
+ * 排行榜曲目。
+ *
+ * @param {string|number} name - 榜单名（见 KUGOU_TOP_MAP）或直接给 rankid
+ * @param {number} limit - 期望条数；酷狗单页固定 30，超出则翻页拉取
+ * @returns {Promise<Array>} 标准歌曲对象数组；失败返回 []
+ */
+async function kugouGetTopList(name, limit = 30) {
+  const rankId = typeof name === 'number' ? name : KUGOU_TOP_MAP[name];
+  if (!rankId) return [];
+
+  try {
+    const want = Math.max(1, limit);
+    const pages = Math.ceil(want / KUGOU_RANK_PAGE_SIZE);
+    const out = [];
+
+    // 串行翻页：酷狗对同域并发较敏感，且首页一次只要 30 条（1 页），
+    // 多页只发生在「查看完整榜单」弹窗里，慢一点可接受。
+    for (let page = 1; page <= pages; page++) {
+      const url = `https://m.kugou.com/rank/info/?rankid=${encodeURIComponent(rankId)}&page=${encodeURIComponent(page)}&json=true`;
+      const result = await request(url, { timeout: 10000 });
+      const list = result?.songs?.list || [];
+      if (!list.length) break; // 翻到底了
+      for (const raw of list) {
+        const song = kugouRankItemToSong(raw);
+        if (song) out.push(song);
+      }
+      if (out.length >= want) break;
+    }
+
+    return out.slice(0, want);
+  } catch (e) {
+    logger.warn(`[kugou] getTopList 失败 (rankid=${rankId}):`, e.message || e);
+    return [];
+  }
+}
+
+/**
+ * 榜单清单（供 UI 展示可选榜单，或验证 rankid 是否仍有效）。
+ *
+ * 之所以单独提供：酷狗的 rankid 是**服务端下发的**，可能随运营调整而失效。
+ * 硬编码映射一旦过期就会静默返回空榜单 —— 这个方法让「榜单还有效吗」
+ * 可被主动查询，而不是只能靠用户发现首页空了。
+ *
+ * @returns {Promise<Array<{id:string,name:string,cover:string}>>}
+ */
+async function kugouGetRankList() {
+  try {
+    const result = await request('https://m.kugou.com/rank/list&json=true', { timeout: 10000 });
+    const list = result?.rank?.list || [];
+    return list.map(r => ({
+      id: String(r.rankid || ''),
+      name: r.rankname || '',
+      cover: kugouNormalizeCover(r.img_9 || r.banner_9 || ''),
+      source: 'kugou',
+    })).filter(r => r.id && r.name);
+  } catch (e) {
+    logger.warn('[kugou] getRankList 失败:', e.message || e);
+    return [];
+  }
+}
+
+/**
+ * 推荐歌单。
+ *
+ * 酷狗**没有**「个性化推荐歌单」这类接口（不同于 netease 的 personalized /
+ * QQ 的 recommend）。可用的是歌单广场：
+ *   https://m.kugou.com/plist/index&json=true
+ * 返回官方精选歌单（实测 total=600，每页 30，带 has_next 可供翻页），
+ * 语义上最接近「推荐歌单」。
+ *
+ * 响应结构（实测，与初版猜测的嵌套完全不同 —— 故此处按真实结构解析）：
+ *   { plist: { list: { total, has_next, info: [ 歌单, ... ] } } }
+ *                          ^^^^ info 是**直接数组**，不是 list[].list.info
+ *
+ * 歌单条目字段（实测）：
+ *   specialid      数字 ID（下载侧要的）
+ *   specialname    歌单名
+ *   imgurl         封面，含 {size} 占位符
+ *   playcount      播放量（另有 play_count_text 是「1048.3万」这种已格式化串）
+ *   songcount      曲目数
+ *
+ * 若后续发现更合适的接口，只需替换本函数体，manifest 与 UI 都不用动。
+ *
+ * @param {number} limit
+ * @returns {Promise<Array<{id,name,cover,playCount,source}>>}
+ */
+async function kugouGetRecommendPlaylists(limit = 30) {
+  try {
+    const result = await request('https://m.kugou.com/plist/index&json=true', { timeout: 10000 });
+    const info = result?.plist?.list?.info || [];
+    return info
+      .filter(p => p && (p.specialid || p.global_specialid))
+      .map(p => ({
+        id: String(p.specialid || p.global_specialid),
+        name: p.specialname || p.intro || '',
+        cover: kugouNormalizeCover(p.imgurl || '', 300),
+        playCount: p.playcount || 0,
+        songCount: p.songcount || 0,
+        source: 'kugou',
+      }))
+      .filter(p => p.name)
+      .slice(0, limit);
+  } catch (e) {
+    logger.warn('[kugou] getRecommendPlaylists 失败:', e.message || e);
+    return [];
+  }
 }
 
 /**
@@ -394,6 +578,12 @@ module.exports = {
   searchSinger: kugouSearchSinger,
   getSingerSongs: kugouGetSingerSongs,
   getSingerAlbums: kugouGetSingerAlbums,
+  // 推荐域（2026-09-18 补齐）：此前酷狗只实现 search 三件套，
+  // 首页推荐页因此覆盖不到它。方法存在即能力存在 —— 补上这三个，
+  // registry 会自动推导出 topList / recommendPlaylists 能力位，
+  // gateway 的 recommendCall 立即可用，无需改动 gateway 或 UI。
+  getTopList: kugouGetTopList,
+  getRecommendPlaylists: kugouGetRecommendPlaylists,
 
   // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   kugouSearch,
@@ -406,4 +596,17 @@ module.exports = {
   kugouGetAlbumSongs,
   kugouGetSingerSongs,
   kugouGetSingerAlbums,
+  kugouGetTopList,
+  kugouGetRankList,
+  kugouGetRecommendPlaylists,
+  KUGOU_TOP_MAP,
+  // 内部纯函数：仅作单测断言入口，不属于对外契约
+  _internal: {
+    encodeKugouId,
+    decodeKugouId,
+    kugouRankItemToSong,
+    kugouNormalizeCover,
+    KUGOU_TOP_MAP,
+    KUGOU_RANK_PAGE_SIZE,
+  },
 };

@@ -61,7 +61,28 @@ async function openLoginWindow(platform, parentWindow) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      // M3: 独立内存会话 —— 原实现共用 defaultSession，clearStorageData
+      // 会无差别清掉所有站点/其他平台登录态；不带 persist: 前缀意味着
+      // 登录 Cookie 只活在本次登录窗口，抓到即弃，不落第二份。
+      partition: `login-${platform}`,
     },
+  });
+
+  // M3: 页面内跳转同样限域（原先只有弹窗守卫，will-navigate 不设防，
+  // 被诱导导航到 file:///内网 即可在本窗口上下文里读其他域）
+  const hostAllowed = (u) => {
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    const host = u.hostname;
+    return config.cookieDomains.some(d =>
+      host === d.replace(/^\./, '') || host.endsWith(d));
+  };
+  loginWin.webContents.on('will-navigate', (event, url) => {
+    let ok = false;
+    try { ok = hostAllowed(new URL(url)); } catch (_e) { ok = false; }
+    if (!ok) {
+      logger.warn('[loginWindow] 拒绝越域导航:', url);
+      event.preventDefault();
+    }
   });
 
   // 拦截窗口弹出（OAuth跳转时可能被强制新窗口打开）。
@@ -69,11 +90,7 @@ async function openLoginWindow(platform, parentWindow) {
   // file://、内网地址或钓鱼页（登录窗口能读取这些域的 Cookie）。
   loginWin.webContents.setWindowOpenHandler(({ url }) => {
     try {
-      const u = new URL(url);
-      const host = u.hostname;
-      const allowed = config.cookieDomains.some(d =>
-        host === d.replace(/^\./, '') || host.endsWith(d));
-      if ((u.protocol === 'https:' || u.protocol === 'http:') && allowed) {
+      if (hostAllowed(new URL(url))) {
         loginWin.webContents.loadURL(url);
       } else {
         logger.warn('[loginWindow] 拒绝弹出导航:', url);
@@ -84,7 +101,7 @@ async function openLoginWindow(platform, parentWindow) {
     return { action: 'deny' };
   });
 
-  // 清理该平台的旧 Cookie，确保抓到的是本次登录态
+  // 内存分区会话天然无历史 Cookie；仍显式清一次以防同窗口期残留
   const ses = loginWin.webContents.session;
   try {
     await ses.clearStorageData({ cookies: true });

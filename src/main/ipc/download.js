@@ -7,8 +7,8 @@
  * 队列管理 + processQueue/processOneSong 留在 main/index.js（共享状态多）
  */
 
-const { ipcMain } = require('electron');
 const api = require('../../api');
+const { handle } = require('./register');
 const { getDownloadQueue, safeSend } = require('../context');
 const { proxyPlay } = require('../playCache');
 const history = require('../../utils/history');
@@ -20,9 +20,25 @@ function register() {
   // 关键：downloadQueue / app / persistQueue / processQueue 都通过 getter 拿，
   // 避免 register 时（createWindow 之前）解构到 undefined
 
+  // M9: IPC 边界参数形状校验——id/source/quality 会拼进平台 API URL，
+  // 渲染层被 XSS 后可传任意字符串，这里兜底拦截控制字符与超长值
+  const safeId = (v) => {
+    const s = String(v ?? '').trim();
+    // 仅允许可见 ASCII（无空白/控制字符）且长度受限
+    return s.length && s.length <= 128 && /^[ -~]+$/.test(s) ? s : null;
+  };
+  const safeToken = (v) => {
+    const s = String(v ?? '');
+    return /^[a-z0-9_-]{1,32}$/i.test(s) ? s : null;
+  };
+
   // 获取下载 URL（渲染层位置参数调用：api.getDownloadUrl(id, source, quality)）
-  ipcMain.handle('get-download-url', async (_, ...a) => {
-    const [id, source, quality] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('get-download-url', async (_, rawId, rawSource, rawQuality) => {
+    
+    const id = safeId(rawId);
+    const source = safeToken(rawSource);
+    const quality = ['lossless', 'hq', 'standard'].includes(rawQuality) ? rawQuality : 'standard';
+    if (!id || !source) return { error: '非法参数', fatal: true };
     try {
       return await api.getDownloadUrl(id, source, quality);
     } catch (e) {
@@ -32,8 +48,8 @@ function register() {
   });
 
   // 智能取流（换源）：渲染层播放链路用——本源失败自动跨源找同曲
-  ipcMain.handle('get-download-url-smart', async (_, ...a) => {
-    const [song, quality] = (Array.isArray(a) && a.length) ? a : (a[0] || []);
+  handle('get-download-url-smart', async (_, song, quality) => {
+    
     try {
       return await api.getDownloadUrlSmart(song, quality);
     } catch (e) {
@@ -45,8 +61,8 @@ function register() {
   // 在线播放：把跨域音频代理到本地临时文件
   const { app } = require('electron');
   const { assertPublicHttpUrl } = require('../../utils/urlGuard');
-  ipcMain.handle('proxy-play', async (_, ...a) => {
-    const [url, referer] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('proxy-play', async (_, url, referer) => {
+    
     // C10: SSRF protection — full guard via urlGuard:
     //   scheme/userinfo 校验 + DNS 全记录解析 + 内网 IP 判定（含
     //   2130706433 / 0x7f.0.0.1 / 0177.0.0.1 / [::ffff:127.0.0.1] 等编码绕过）
@@ -63,7 +79,7 @@ function register() {
   });
 
   // 添加到下载队列
-  ipcMain.handle('add-to-queue', async (_, song) => {
+  handle('add-to-queue', async (_, song) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue, processQueue } = require('../context').getCtx();
     // 查重 1：同 id+source 且未完成的任务已在队列 → 拒绝，避免重复下载同一首
@@ -94,12 +110,19 @@ function register() {
     return { queued: true, taskId };
   });
 
-  // 取消下载（仅可取消 pending）
-  ipcMain.handle('cancel-download', (_, taskId) => {
+  // 取消下载：pending 直接移出队列；downloading 走协作式取消
+  // （置标记 + 打断在途请求，.tmp 由失败路径清理，任务转入 error=已取消）
+  handle('cancel-download', (_, taskId) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue } = require('../context').getCtx();
     const idx = downloadQueue.findIndex(s => s.taskId === taskId && s.status === 'pending');
-    if (idx === -1) return { canceled: false };
+    if (idx === -1) {
+      const { requestCancelDownload } = require('../context').getCtx();
+      if (typeof requestCancelDownload === 'function' && requestCancelDownload(taskId)) {
+        return { canceled: true, cancelling: true };
+      }
+      return { canceled: false };
+    }
     downloadQueue.splice(idx, 1);
     safeSend('queue-updated', downloadQueue);
     persistQueue();
@@ -107,7 +130,7 @@ function register() {
   });
 
   // 重试失败的下载任务
-  ipcMain.handle('retry-download', (_, taskId) => {
+  handle('retry-download', (_, taskId) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue, processQueue } = require('../context').getCtx();
     const idx = downloadQueue.findIndex(s => s.taskId === taskId);
@@ -129,7 +152,7 @@ function register() {
   });
 
   // 移除队列项
-  ipcMain.handle('remove-queue-item', (_, taskId) => {
+  handle('remove-queue-item', (_, taskId) => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue } = require('../context').getCtx();
     const idx = downloadQueue.findIndex(s => s.taskId === taskId);
@@ -141,7 +164,7 @@ function register() {
   });
 
   // 清空已完成
-  ipcMain.handle('clear-finished-queue', () => {
+  handle('clear-finished-queue', () => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue } = require('../context').getCtx();
     const before = downloadQueue.length;
@@ -154,7 +177,7 @@ function register() {
   });
 
   // 清空全部
-  ipcMain.handle('clear-all-queue', () => {
+  handle('clear-all-queue', () => {
     const downloadQueue = getDownloadQueue();
     const { persistQueue } = require('../context').getCtx();
     const before = downloadQueue.length;
@@ -165,7 +188,7 @@ function register() {
   });
 
   // 批量加入队列（歌单详情页用）
-  ipcMain.handle('add-playlist-to-queue', async (_, payload) => {
+  handle('add-playlist-to-queue', async (_, payload) => {
     try {
       const songs = (payload && payload.songs) || [];
       if (!Array.isArray(songs) || songs.length === 0) {
@@ -236,7 +259,7 @@ function register() {
   });
 
   // ── 导出播放列表 ──────────────────────────────────────────
-  ipcMain.handle('export-playlist', async (_, params) => {
+  handle('export-playlist', async (_, params) => {
     const { dialog } = require('electron');
 
     try {

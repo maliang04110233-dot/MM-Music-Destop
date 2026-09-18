@@ -4,7 +4,7 @@
  * 注册：get-cookies / save-cookie / clear-cookie / verify-cookie / open-login-window
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const api = require('../../api');
 const cookieStore = require('../../utils/cookieStore');
 const { refreshQQMusickey } = require('../../utils/cookie');
@@ -16,7 +16,7 @@ function register() {
   // 每次用时从 getCtx() 拿。
 
   // 脱敏显示所有 Cookie
-  ipcMain.handle('get-cookies', () => {
+  handle('get-cookies', () => {
     const all = cookieStore.getAll();
     const masked = {};
     for (const [k, v] of Object.entries(all)) {
@@ -26,8 +26,7 @@ function register() {
   });
 
   // 保存 Cookie（渲染层位置参数：api.saveCookie(platform, cookie)）
-  ipcMain.handle('save-cookie', async (_, ...a) => {
-    const [platform, cookie] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('save-cookie', async (_, platform, cookie) => {
     cookieStore.set(platform, cookie.trim());
     api.updateCookie(platform, cookie.trim());
     if (cookie.trim()) {
@@ -46,15 +45,14 @@ function register() {
   });
 
   // 删除 Cookie
-  ipcMain.handle('clear-cookie', (_, platform) => {
+  handle('clear-cookie', (_, platform) => {
     cookieStore.clear(platform);
     api.updateCookie(platform, '');
     return { cleared: true };
   });
 
   // 验证 Cookie（不保存，仅测试）
-  ipcMain.handle('verify-cookie', async (_, ...a) => {
-    const [platform, cookie] = (Array.isArray(a) && a.length) ? a : (a[0] || {});
+  handle('verify-cookie', async (_, platform, cookie) => {
     try {
       return await api.verifyCookie(platform, cookie);
     } catch (e) {
@@ -63,7 +61,7 @@ function register() {
   });
 
   // 打开登录子窗口
-  ipcMain.handle('open-login-window', async (_, platform) => {
+  handle('open-login-window', async (_, platform) => {
     try {
       const result = await openLoginWindow(platform, getMainWindow());
       if (result.success && result.cookie) {

@@ -66,6 +66,7 @@ function sanitizeFilename(name) {
  * @param {Object} [deps.history] 下载历史模块（默认 utils/history；注入便于单测）
  * @param {Object} [deps.fsa] 异步文件工具（默认 utils/fsAsync）
  * @param {Object} [deps.downloader] 下载器（默认 utils/downloader），需含 downloadFileWithRetry / embedId3Tags
+ * @param {(dir:string) => boolean} [deps.isSaveDirAllowed] C1: 渲染层传入 saveDir 的沙箱校验（默认不限制，单测用）
  * @returns {Object} 引擎实例
  */
 function createDownloadQueueEngine({
@@ -74,6 +75,7 @@ function createDownloadQueueEngine({
   getDownloadUrlSmart,
   getLyrics,
   onQueueChanged,
+  isSaveDirAllowed,
   notifier,
   history = historyDefault,
   fsa = fsaDefault,
@@ -184,8 +186,13 @@ function createDownloadQueueEngine({
   async function processOneSong(song) {
     let lastError = null;
     let isFatal = false;
+    const cancelToken = String(song.taskId || song.id);
 
     for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+      if (song._cancelRequested) {
+        lastError = Object.assign(new Error('下载已取消'), { cancelled: true });
+        break;
+      }
       try {
         logger.log(`[processOneSong] ▶ ${song.source} "${song.title}" - "${song.artist}" id=${song.id} quality=${song.quality || 'standard'}`);
         const urlInfo = await getDownloadUrlSmart(song, song.quality || 'standard');
@@ -213,7 +220,14 @@ function createDownloadQueueEngine({
         const namingTemplate = prefs.get('namingTemplate') || '{artist} - {title}';
         // saveDir 兜底：用户从未选过下载目录时渲染层传 null，path.join(null) 直接
         // 崩溃（必现 "The path argument must be of type string. Received null"）。
-        const saveDir = song.saveDir || prefs.get('saveDir') || path.join(userDataDirSafe(), 'MusicDownloader');
+        // C1: 渲染层可整包传入 song.saveDir —— 未经用户批准的目录（XSS 场景）
+        // 一律回落到 prefs/默认目录，防任意路径写文件（queue.json 也会持久化它）
+        let songSaveDir = song.saveDir || null;
+        if (songSaveDir && typeof isSaveDirAllowed === 'function' && !isSaveDirAllowed(songSaveDir)) {
+          logger.warn('[processOneSong] 拒绝未批准 saveDir，回落默认目录:', songSaveDir);
+          songSaveDir = null;
+        }
+        const saveDir = songSaveDir || prefs.get('saveDir') || path.join(userDataDirSafe(), 'MusicDownloader');
         const savePath = path.join(saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
 
         await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
@@ -229,7 +243,7 @@ function createDownloadQueueEngine({
         await downloadFileWithRetry(urlInfo.url, savePath, (progress) => {
           song.progress = progress;
           safeSend('download-progress', { id: song.taskId, progress });
-        }, extraHeaders, { speedLimit });
+        }, extraHeaders, { speedLimit, token: cancelToken });
 
         // 歌词（换源成功时优先用匹配源的 id 同源拿，更准）
         let lrc = '';
@@ -317,6 +331,12 @@ function createDownloadQueueEngine({
     if (lastError) {
       song.status = 'error';
       song.error = lastError.message;
+      song._cancelRequested = false;
+      if (lastError.cancelled) {
+        // 用户主动取消：不写失败历史、不发 download-error toast
+        notifyQueueChanged();
+        return;
+      }
       // 写历史：失败
       try {
         history.add({
@@ -399,6 +419,22 @@ function createDownloadQueueEngine({
     }
   }
 
+  /**
+   * Minor: 取消「下载中」任务（协作式）：置标记 + 打断在途请求。
+   * downloader.cancelDownload 销毁 req → downloader 既有失败路径清理 .tmp，
+   * processOneSong 捕获 cancelled 错误后不再重试、不写失败历史。
+   * @returns {boolean} 是否命中一个下载中任务
+   */
+  function requestCancel(taskId) {
+    const song = downloadQueue.find(s => s.taskId === taskId && s.status === 'downloading');
+    if (!song) return false;
+    song._cancelRequested = true;
+    if (typeof downloader.cancelDownload === 'function') {
+      try { downloader.cancelDownload(String(taskId)); } catch (e) { logger.warn('[requestCancel]', e.message); }
+    }
+    return true;
+  }
+
   return {
     // 状态访问
     getQueue: () => downloadQueue,
@@ -408,6 +444,7 @@ function createDownloadQueueEngine({
     loadPersistedQueue,
     // 调度
     processQueue,
+    requestCancel,
     // 工具（队列 IPC 需要）
     sanitizeFilename,
     /**

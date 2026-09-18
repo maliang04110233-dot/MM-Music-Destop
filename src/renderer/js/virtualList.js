@@ -116,7 +116,11 @@ export class VirtualScroller {
    */
   destroy() {
     if (this._renderFrame) cancelAnimationFrame(this._renderFrame);
-    this.container.removeChild(this._scrollContainer);
+    // M12: 宿主视图可能先以 innerHTML 覆盖了挂载容器（如 local.js 空态渲染），
+    // 此时 _scrollContainer 已脱离 DOM，removeChild 会抛 NotFoundError
+    if (this._scrollContainer && this._scrollContainer.parentNode) {
+      this._scrollContainer.parentNode.removeChild(this._scrollContainer);
+    }
     this._renderedItems.clear();
   }
 

@@ -23,6 +23,25 @@ const https = require('https');
 const http = require('http');
 const logger = require('../utils/logger');
 const { USER_AGENT } = require('../utils/userAgent');
+const { assertPublicHttpUrl } = require('../utils/urlGuard');
+
+/**
+ * 日志脱敏：平台 API 常把鉴权态（authst/key/sign/data）放进 GET 查询串，
+ * 全 URL 落日志等于把登录态抄送一份给日志文件/控制台。
+ */
+function redactUrl(u) {
+  return String(u).replace(/([?&](?:data|sign|vkey|authst|key|token|cookie)=)[^&]*/gi, '$1[redacted]');
+}
+
+/** 跨 host 重定向时必须剥掉的凭证头（C2：防止 302 把登录态带往任意域） */
+const CREDENTIAL_HEADERS = ['cookie', 'authorization', 'proxy-authorization'];
+function stripCredentials(headers) {
+  const out = { ...headers };
+  for (const k of Object.keys(out)) {
+    if (CREDENTIAL_HEADERS.includes(k.toLowerCase())) delete out[k];
+  }
+  return out;
+}
 
 /** 网络层错误 / 超时 → 值得重试 */
 function isRetriableError(err) {
@@ -67,8 +86,18 @@ function _followRedirects(url, options, redirectCount = 0) {
       // 跟随重定向（递归时也走本函数，外层 retry 不重做这次内部重定向）
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        const next = new URL(res.headers.location, url).toString();
-        return _followRedirects(next, options, redirectCount + 1).then(resolve).catch(reject);
+        let nextUrl;
+        try { nextUrl = new URL(res.headers.location, url); }
+        catch { return reject(new Error('非法重定向目标')); }
+        // C2: 禁止 https→http 协议降级（明文链路会把凭证送出体外）
+        if (parsedUrl.protocol === 'https:' && nextUrl.protocol === 'http:') {
+          return reject(new Error(`拒绝协议降级重定向: ${nextUrl.origin}`));
+        }
+        // C2: 跨 host 重定向剥离 Cookie/Authorization —— 登录态不随 302 扩散
+        if (nextUrl.hostname !== parsedUrl.hostname) {
+          options = { ...options, headers: stripCredentials(options.headers || {}) };
+        }
+        return _followRedirects(nextUrl.toString(), options, redirectCount + 1).then(resolve).catch(reject);
       }
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -124,7 +153,7 @@ async function request(url, options = {}) {
       // 指数退避：200ms → 600ms → 1800ms
       const delay = baseDelay * Math.pow(3, attempt);
       const reason = err.statusCode ? `HTTP ${err.statusCode}` : err.message;
-      logger.warn(`[request] ${url} 失败 (尝试 ${attempt + 1}/${maxRetries + 1})，${delay}ms 后重试: ${reason}`);
+      logger.warn(`[request] ${redactUrl(url)} 失败 (尝试 ${attempt + 1}/${maxRetries + 1})，${delay}ms 后重试: ${reason}`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
@@ -166,14 +195,23 @@ function _extFromMeta(contentType, url) {
 
 /**
  * 单次探测（never reject，失败也 resolve 成 { ok:false } 形态给上层判断）
+ * 每一跳都过 urlGuard（M8：直链可能来自远端响应/中转站，不能默认可信）；
+ * skipSsrf 仅供本机测试服务器场景（与 downloader 的 skipSsrfCheck 同约定）。
  * @returns {Promise<{status:number|null, contentType?:string, sizeBytes?:number|null, reason?:string}>}
  */
-function _probeAudio(url, method, headers, timeout, redirectLeft) {
-  return new Promise((resolve) => {
-    let parsed;
-    try { parsed = new URL(url); }
-    catch { return resolve({ status: null, reason: 'invalid-url' }); }
+async function _probeAudio(url, method, headers, timeout, redirectLeft, skipSsrf) {
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { return { status: null, reason: 'invalid-url' }; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { status: null, reason: 'unsupported-protocol' };
+  }
+  if (!skipSsrf) {
+    const guard = await assertPublicHttpUrl(url);
+    if (!guard.ok) return { status: null, reason: `ssrf-blocked: ${guard.reason}` };
+  }
 
+  return await new Promise((resolve) => {
     const isHttps = parsed.protocol === 'https:';
     const lib = isHttps ? https : http;
 
@@ -190,8 +228,13 @@ function _probeAudio(url, method, headers, timeout, redirectLeft) {
       // 直链常 302 到 CDN，跟到底（手动跟，避免 request() 的 body 累积）
       if (status >= 300 && status < 400 && res.headers.location && redirectLeft > 0) {
         res.resume();
-        const next = new URL(res.headers.location, url).toString();
-        return resolve(_probeAudio(next, method, headers, timeout, redirectLeft - 1));
+        let nextUrl;
+        try { nextUrl = new URL(res.headers.location, url); }
+        catch { return resolve({ status, reason: 'invalid-redirect' }); }
+        if (isHttps && nextUrl.protocol === 'http:') {
+          return resolve({ status, reason: 'downgrade-blocked' });
+        }
+        return _probeAudio(nextUrl.toString(), method, headers, timeout, redirectLeft - 1, skipSsrf).then(resolve);
       }
 
       const out = {
@@ -225,10 +268,11 @@ async function testAudioLink(url, opts = {}) {
     ...(opts.headers || {}),
   };
   const timeout = opts.timeout || 8000;
+  const skipSsrf = opts.skipSsrfCheck === true;
 
-  let r = await _probeAudio(url, 'HEAD', headers, timeout, MAX_PROBE_REDIRECTS);
+  let r = await _probeAudio(url, 'HEAD', headers, timeout, MAX_PROBE_REDIRECTS, skipSsrf);
   if (!r.status || r.status === 403 || r.status === 405 || r.status === 501) {
-    r = await _probeAudio(url, 'GET', { ...headers, Range: 'bytes=0-1' }, timeout, MAX_PROBE_REDIRECTS);
+    r = await _probeAudio(url, 'GET', { ...headers, Range: 'bytes=0-1' }, timeout, MAX_PROBE_REDIRECTS, skipSsrf);
   }
 
   const status = r.status;

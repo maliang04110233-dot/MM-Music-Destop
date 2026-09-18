@@ -1,0 +1,32 @@
+{
+  "status": 1,
+  "errcode": 0,
+  "data": {
+    "total": 2,
+    "cursor": "xx",
+    "lists": [
+      {
+        "Hash": "aabbccddeeff0011",
+        "FileHash": "aabbccddeeff0011",
+        "SQFileHash": "sq000111222333",
+        "HQFileHash": "hq000111222333",
+        "SongName": "晴天",
+        "SingerName": "周杰伦",
+        "AlbumName": "叶惠美",
+        "Duration": 264,
+        "MvHash": ""
+      },
+      {
+        "Hash": "ddeeff001122",
+        "FileHash": "ddeeff001122",
+        "SQFileHash": "",
+        "HQFileHash": "hq4455667788",
+        "SongName": "稻香",
+        "SingerName": "周杰伦",
+        "AlbumName": "魔杰座",
+        "Duration": 223,
+        "MvHash": ""
+      }
+    ]
+  }
+}

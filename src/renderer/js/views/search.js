@@ -131,7 +131,7 @@ function showSearchSuggestions() {
     }
 
     container.innerHTML = suggestions.map(s => `
-      <div class="suggestion-item" onmousedown="selectSuggestion('${escAttr(s.title)}')">
+      <div class="suggestion-item" onmousedown="selectSuggestion('${escQ(s.title)}')">
         <span class="suggestion-icon">${s.icon}</span>
         <span class="suggestion-title">${esc(s.title)}</span>
         ${s.artist ? `<span class="suggestion-artist">${esc(s.artist)}</span>` : ''}
@@ -262,7 +262,7 @@ function showSearchHistory() {
       ${filtered.map(h => `
       <div class="search-history-item">
         <span class="history-icon">🕐</span>
-        <span class="history-kw" onmousedown="event.preventDefault();searchInput.value='${esc(h.keyword)}';doSearch(1);hideSearchHistory()">${esc(h.keyword)}</span>
+        <span class="history-kw" onmousedown="event.preventDefault();searchInput.value='${escQ(h.keyword)}';doSearch(1);hideSearchHistory()">${esc(h.keyword)}</span>
         <span class="history-meta">
           <span class="history-time">${fmtHistoryTime(h.time)}</span>
           <button class="history-del-btn" onclick="event.stopPropagation();removeSearchHistory('${escQ(h.keyword)}')" title="删除">✕</button>
@@ -622,6 +622,7 @@ async function openSingerDetail(singerMid, singerName, source) {
     <div class="singer-detail-header">
       <button class="back-btn" onclick="backToSearch()">← 返回</button>
       <span class="singer-detail-name">${esc(singerName)}</span>
+      <button class="btn-sm" style="margin-left:auto;" title="新歌发布时提醒我" onclick="subscribeCurrentSinger()">📡 订阅</button>
     </div>
     <div class="singer-detail-tabs">
       <button class="tab ${_singerDetailTab === 'songs' ? 'active' : ''}" onclick="switchSingerTab('songs', this)">热门歌曲</button>
@@ -677,7 +678,7 @@ async function loadSingerDetail(singerMid, tab) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">⚠️</div>
       <div class="empty-text">加载失败</div>
-      <div class="empty-hint">${e.message || ''}</div>
+      <div class="empty-hint">${esc(e.message || '')}</div>
     </div>`;
   }
 }
@@ -727,7 +728,7 @@ function renderSongList(list) {
           : esc(s.album)) : ''}</div>
       </div>
       <span class="song-duration">${fmtDuration(s.duration)}</span>
-      <span class="source-badge badge-${s.source}">${srcLabel(s.source)}</span>
+      <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       <div class="song-actions">
         ${heartBtnHtml(s)}
         <button class="action-btn" title="试听" onclick="playSong(${i})">▶</button>

@@ -71,6 +71,14 @@ async function relayLossless(id) {
     });
     const d = res?.data || {};
     if (!d.url || !/^https?:\/\//.test(d.url)) return null;
+    // M7: 中转站是第三方服务，其响应不可信 —— 返回的直链只接受 kuwo 自家
+    // 域名，否则等于它可指挥本应用请求任意主机
+    let host = '';
+    try { host = new URL(d.url).hostname; } catch (_e) { return null; }
+    if (!/(^|\.)kuwo\.cn$/i.test(host)) {
+      logger.warn('[kuwo] 中转返回非 kuwo 域直链，丢弃:', host);
+      return null;
+    }
     const test = await testAudioLink(d.url, { headers: { Referer: 'http://www.kuwo.cn/' } });
     if (!test.ok) return null;
     return { url: d.url, ext: test.ext, size: test.sizeBytes, via: 'relay:cenguigui' };

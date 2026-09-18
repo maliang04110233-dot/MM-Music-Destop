@@ -264,7 +264,7 @@ function renderSourceHealth(health, probes) {
       const text = ok ? '可用' : (probe.stage === 'getUrl' ? '取流失败' : '搜索不可达');
       const tone = ok ? 'is-ok' : 'is-bad';
       return `<div class="source-health-row">
-        <span class="source-health-name">${name}</span>
+        <span class="source-health-name">${esc(name)}</span>
         <span class="source-health-bar"><i class="${tone}" style="width:100%"></i></span>
         <span class="source-health-val ${tone}">${text}</span>
       </div>`;
@@ -275,14 +275,14 @@ function renderSourceHealth(health, probes) {
       // ≥60 健康 / ≥30 警告 / 否则不可用
       const tone = pct >= 60 ? 'is-ok' : (pct >= 30 ? 'is-warn' : 'is-bad');
       return `<div class="source-health-row">
-        <span class="source-health-name">${name}</span>
+        <span class="source-health-name">${esc(name)}</span>
         <span class="source-health-bar"><i class="${tone}" style="width:${pct}%"></i></span>
         <span class="source-health-val ${tone}">${pct}%<em>${h.samples} 次</em></span>
       </div>`;
     }
 
     return `<div class="source-health-row is-empty">
-      <span class="source-health-name">${name}</span>
+      <span class="source-health-name">${esc(name)}</span>
       <span class="source-health-bar"><i></i></span>
       <span class="source-health-val">暂无数据</span>
     </div>`;
@@ -433,7 +433,7 @@ function analyzeCookieUI(platform) {
     });
   }
 
-  html += `<div class="analyze-tip" style="margin-top:6px">共解析 ${fields.length} 个字段：${fields.map(f => f.key).join(', ')}</div>`;
+  html += `<div class="analyze-tip" style="margin-top:6px">共解析 ${fields.length} 个字段：${esc(fields.map(f => f.key).join(', '))}</div>`;
   el.innerHTML = html;
   el.className = 'cookie-analyze show';
 }

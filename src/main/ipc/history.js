@@ -4,14 +4,14 @@
  * 注册：query-history / history-stats / clear-history / flush-history
  */
 
-const { ipcMain } = require('electron');
+const { handle } = require('./register');
 const history = require('../../utils/history');
 
 function register() {
-  ipcMain.handle('query-history', (_, opts) => history.query(opts || {}));
-  ipcMain.handle('history-stats', () => history.stats());
-  ipcMain.handle('clear-history', () => { history.clear(); return true; });
-  ipcMain.handle('flush-history', () => { history.flush(); return true; });
+  handle('query-history', (_, opts) => history.query(opts || {}));
+  handle('history-stats', () => history.stats());
+  handle('clear-history', () => { history.clear(); return true; });
+  handle('flush-history', () => { history.flush(); return true; });
 }
 
 module.exports = { register };

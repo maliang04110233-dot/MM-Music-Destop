@@ -8,10 +8,14 @@
  *      desktop-lyric-update / desktop-lyric-sync
  */
 
-const { ipcMain, BrowserWindow, dialog, shell, app } = require('electron');
+const { BrowserWindow, dialog, shell, app } = require('electron');
+const { handle, on } = require('./register');
+const { buildContractArg } = require('../../shared/ipcContract');
 const path = require('path');
 const { getMainWindow } = require('../context');
 const playCache = require('../playCache');
+const approvedDirs = require('../approvedDirs');
+const logger = require('../../utils/logger');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
 
@@ -36,9 +40,16 @@ function createDesktopLyric() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../../preload/preload.js'),
+      // C4/M2: 本窗口渲染远端歌词 —— 用最小 preload（只含歌词通道），
+      // 不再暴露主窗口的 delete-file/save-cookie 等特权 IPC
+      preload: path.join(__dirname, '../../preload/preload-secondary.js'),
+      // sandbox preload 不能 require 应用文件：IPC 契约经 argv 序列化注入
+      additionalArguments: [buildContractArg('secondary')],
     },
   });
+  // 二级窗口只加载本地固定页面，任何导航/弹窗一律拒绝
+  desktopLyricWin.webContents.on('will-navigate', (event) => event.preventDefault());
+  desktopLyricWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   desktopLyricWin.loadFile(path.join(__dirname, '../../renderer/desktop-lyric.html'));
   desktopLyricWin.webContents.on('did-finish-load', () => {
     // 通知主窗口推送当前播放状态（含 parsedLyrics）到歌词窗口
@@ -75,11 +86,14 @@ function createMiniPlayer() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      // dist 布局：本文件在 dist/main/ipc/（比主进程入口深一层），
-      // preload 实际在 dist/preload/preload.js → ../../preload/preload.js
-      preload: path.join(__dirname, '../../preload/preload.js'),
+      // C4/M2: 迷你播放器渲染远端歌名/封面 —— 只暴露播放控制最小通道
+      preload: path.join(__dirname, '../../preload/preload-secondary.js'),
+      // sandbox preload 不能 require 应用文件：IPC 契约经 argv 序列化注入
+      additionalArguments: [buildContractArg('secondary')],
     },
   });
+  miniPlayerWin.webContents.on('will-navigate', (event) => event.preventDefault());
+  miniPlayerWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   miniPlayerWin.loadFile(path.join(__dirname, '../../renderer/mini-player.html'));
   miniPlayerWin.webContents.on('did-finish-load', () => {
     // 通知主窗口推送当前播放状态到迷你播放器
@@ -99,58 +113,58 @@ function syncMiniPlayer(data) {
 }
 
 function register() {
-  ipcMain.on('window-minimize', () => {
+  on('window-minimize', () => {
     const w = getMainWindow();
     if (w && !w.isDestroyed()) w.minimize();
   });
-  ipcMain.on('window-maximize', () => {
+  on('window-maximize', () => {
     const w = getMainWindow();
     if (!w || w.isDestroyed()) return;
     w.isMaximized() ? w.unmaximize() : w.maximize();
   });
-  ipcMain.on('window-close', () => {
+  on('window-close', () => {
     const w = getMainWindow();
     if (w && !w.isDestroyed()) w.close();
   });
 
   // ── 迷你播放器 ──────────────────────────────────────
-  ipcMain.on('open-mini-player', () => createMiniPlayer());
+  on('open-mini-player', () => createMiniPlayer());
 
   // 渲染器推送状态到迷你播放器
-  ipcMain.on('mini-player-update', (_, data) => syncMiniPlayer(data));
+  on('mini-player-update', (_, data) => syncMiniPlayer(data));
 
-  ipcMain.on('mini-toggle-play', () => {
+  on('mini-toggle-play', () => {
     const w = getMainWindow();
     if (w && !w.isDestroyed()) w.webContents.send('mini-toggle-play');
   });
-  ipcMain.on('mini-next', () => {
+  on('mini-next', () => {
     const w = getMainWindow();
     if (w && !w.isDestroyed()) w.webContents.send('mini-next');
   });
-  ipcMain.on('mini-prev', () => {
+  on('mini-prev', () => {
     const w = getMainWindow();
     if (w && !w.isDestroyed()) w.webContents.send('mini-prev');
   });
-  ipcMain.on('mini-close', () => {
+  on('mini-close', () => {
     if (miniPlayerWin && !miniPlayerWin.isDestroyed()) {
       miniPlayerWin.close();
     }
   });
 
   // ── 桌面歌词 ────────────────────────────────────────
-  ipcMain.on('open-desktop-lyric', () => createDesktopLyric());
+  on('open-desktop-lyric', () => createDesktopLyric());
 
   // 主窗口渲染层推送状态到歌词窗口（歌词/进度/播放态）
-  ipcMain.on('desktop-lyric-update', (_, data) => syncDesktopLyric(data));
+  on('desktop-lyric-update', (_, data) => syncDesktopLyric(data));
 
-  ipcMain.on('desktop-lyric-close', () => {
+  on('desktop-lyric-close', () => {
     if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
       desktopLyricWin.close();
     }
   });
 
   // 锁定切换：锁定=拖动条常驻可拖，解锁=正文穿透鼠标、悬停控制条才恢复点击
-  ipcMain.on('desktop-lyric-lock', (_, locked) => {
+  on('desktop-lyric-lock', (_, locked) => {
     if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
       if (locked === false) {
         desktopLyricWin.setIgnoreMouseEvents(true, { forward: true });
@@ -161,37 +175,44 @@ function register() {
   });
 
   // 点击穿透切换（渲染层 mouseenter/leave 控制条时调用）
-  ipcMain.on('desktop-lyric-set-ignore-mouse', (_, ignore) => {
+  on('desktop-lyric-set-ignore-mouse', (_, ignore) => {
     if (desktopLyricWin && !desktopLyricWin.isDestroyed()) {
       desktopLyricWin.setIgnoreMouseEvents(ignore, { forward: true });
     }
   });
 
   // 选择下载目录
-  ipcMain.handle('select-dir', async () => {
+  handle('select-dir', async () => {
     const result = await dialog.showOpenDialog(getMainWindow(), {
       properties: ['openDirectory'],
     });
-    return result.canceled ? null : result.filePaths[0];
+    if (result.canceled || !result.filePaths?.length) return null;
+    // C1: 经原生选器确认的目录登记为「用户批准」，下载/扫描/歌词写入
+    // 等通道只接受批准集合内的路径
+    approvedDirs.approve(result.filePaths[0]);
+    return result.filePaths[0];
   });
 
   // 默认下载目录
-  ipcMain.handle('get-default-dir', () => {
+  handle('get-default-dir', () => {
     return path.join(app.getPath('music'), 'MusicDownloader');
   });
 
   // 打开目录 / 外部链接（渲染层经 musicAPI invoke 调用，需 handle）
   const openFolderImpl = async (folder) => {
     if (!folder || typeof folder !== 'string') return { ok: false };
-    // H11: Validate path is a local filesystem path (no protocol handlers)
-    if (/^[a-zA-Z]+:/.test(folder) || folder.startsWith('\\') || folder.startsWith('/')) {
-      // Resolve to real path and ensure it exists
-      try {
-        const resolved = path.resolve(folder);
-        if (await fsa.exists(resolved)) {
-          shell.showItemInFolder(resolved);
-        }
-      } catch (_) { /* ignore invalid paths */ }
+    // H11: 拒绝带协议前缀的伪路径（file:/http:/javascript:），仅放行
+    // Windows 盘符（"C:\x"）与普通本地路径；原实现把两类判断写反了
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]+:/.test(folder) && !/^[a-zA-Z]:[\\/]/.test(folder)) {
+      return { ok: false, error: '非法路径' };
+    }
+    try {
+      const resolved = path.resolve(folder);
+      if (await fsa.exists(resolved)) {
+        shell.showItemInFolder(resolved);
+      }
+    } catch (e) {
+      logger.warn('[window] open-folder 失败:', e.message);
     }
     return { ok: true };
   };
@@ -201,15 +222,15 @@ function register() {
     }
     return { ok: true };
   };
-  ipcMain.handle('open-folder', (_, folder) => openFolderImpl(folder));
-  ipcMain.handle('open-external', (_, url) => openExternalImpl(url));
+  handle('open-folder', (_, folder) => openFolderImpl(folder));
+  handle('open-external', (_, url) => openExternalImpl(url));
 
   // 缓存管理
-  ipcMain.handle('get-cache-size', async () => {
+  handle('get-cache-size', async () => {
     const size = await playCache.getCacheSize(app.getPath('userData'));
     return playCache.formatCacheSize(size);
   });
-  ipcMain.handle('clear-play-cache', async () => {
+  handle('clear-play-cache', async () => {
     await playCache.clearAllCache(app.getPath('userData'));
     return { cleared: true };
   });

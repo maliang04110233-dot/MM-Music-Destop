@@ -150,7 +150,7 @@ function handleUpdateDownloaded(version) {
     <div style="padding:4px 0;">
       <div style="margin-bottom:8px;">
         <span style="font-size:18px;">✅</span>
-        <span style="font-weight:bold; color:var(--neon-green);">v${version} 下载完成</span>
+        <span style="font-weight:bold; color:var(--neon-green);">v${esc(version)} 下载完成</span>
       </div>
       <div style="display:flex; gap:8px;">
         <button onclick="window.restartAndInstall()" style="flex:1;padding:8px;background:var(--neon-green);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">立即重启安装</button>
@@ -161,7 +161,7 @@ function handleUpdateDownloaded(version) {
 }
 
 function handleUpdateError(message) {
-  showUpdate(`<div style="color:var(--neon-orange);">更新失败：${message}</div>`);
+  showUpdate(`<div style="color:var(--neon-orange);">更新失败：${esc(message)}</div>`);
 }
 
 window.downloadUpdate = downloadUpdate;

@@ -98,6 +98,23 @@ function validate(plugin, source) {
   if (!plugin.hosts || !Array.isArray(plugin.hosts.origins)) {
     throw new Error(`[PluginRegistry] ${where}: 缺少 hosts.origins（CORS 白名单由此派生）`);
   }
+  // Minor: origins/suffixes 会进 CORS 响应头判定，manifest 写错（带路径、
+  // userinfo、通配）不应静默生效——只允许 scheme+裸主机名
+  for (const o of plugin.hosts.origins) {
+    if (typeof o !== 'string' || !/^https?:\/\/[a-z0-9.-]+$/i.test(o) || o.includes('@')) {
+      throw new Error(`[PluginRegistry] ${where}: hosts.origins 含非法项（须为 http(s)://裸主机名）: ${String(o).slice(0, 60)}`);
+    }
+  }
+  if (plugin.hosts.originSuffixes) {
+    if (!Array.isArray(plugin.hosts.originSuffixes)) {
+      throw new Error(`[PluginRegistry] ${where}: hosts.originSuffixes 必须是数组`);
+    }
+    for (const s of plugin.hosts.originSuffixes) {
+      if (typeof s !== 'string' || !/^\.[a-z0-9.-]+$/i.test(s) || s.includes('@')) {
+        throw new Error(`[PluginRegistry] ${where}: hosts.originSuffixes 含非法项（须为 .域名片段）: ${String(s).slice(0, 60)}`);
+      }
+    }
+  }
   if (!plugin.policies || typeof plugin.policies.order !== 'number') {
     throw new Error(
       `[PluginRegistry] ${where}: 缺少 policies.order（数字，决定聚合权重与 UI 顺序；`

@@ -215,7 +215,7 @@ function _renderLocalRow(s, i) {
       <input type="checkbox" id="localcb_${i}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleLocalSelect('${encodedPath}',${i})">
     </div>` : ''}
     ${s.cover
-      ? `<img class="local-row-cover" src="${s.cover.replace(/"/g, '&quot;')}" alt="" style="width:40px;height:40px;border-radius:4px;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      ? `<img class="local-row-cover" src="${escAttr(s.cover)}" alt="" style="width:40px;height:40px;border-radius:4px;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : ''}
     <div class="local-row-cover-ph" style="width:40px;height:40px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:var(--bg-tertiary);font-size:18px;${s.cover ? 'display:none' : ''}">🎵</div>
     <div class="local-row-info" style="flex:1;min-width:0;">
@@ -661,7 +661,7 @@ function renderLocalGrid() {
     <div class="grid-cell" onclick="playLocalSong(${i})">
       <div class="grid-cover">
         ${s.cover
-          ? `<img src="${s.cover.replace(/"/g, '&quot;')}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          ? `<img src="${escAttr(s.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
           : ''}
         <div class="grid-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
         <div class="grid-play-overlay">▶</div>
@@ -692,6 +692,8 @@ async function batchAutoMeta() {
   const needCover = needMeta.filter(s => !s.cover);
   let coverOk = 0, coverFail = 0;
   if (needCover.length) {
+    // M14: 循环内 findIndex 是 O(n×m)，先用 filePath 建索引
+    const filteredIndex = new Map(getState('localFiltered').map(x => [x.filePath, x]));
     progressLabel.textContent = `步骤 1/2：补全封面 (0/${needCover.length})`;
     for (let di = 0; di < needCover.length; di++) {
       if (_batchCancelled) break;
@@ -702,9 +704,8 @@ async function batchAutoMeta() {
           const wr = await api.updateId3Cover(s.filePath, result.coverBase64);
           if (wr && wr.success) {
             s.cover = result.coverBase64;
-            const lf = getState('localFiltered');
-            const fi = lf.findIndex(x => x.filePath === s.filePath);
-            if (fi >= 0) lf[fi].cover = result.coverBase64;
+            const fe = filteredIndex.get(s.filePath);
+            if (fe) fe.cover = result.coverBase64;
             coverOk++;
           } else { coverFail++; }
         } else { coverFail++; }

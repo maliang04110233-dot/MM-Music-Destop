@@ -315,6 +315,32 @@ test('UI：app.js 在 applyTranslations() **之前**拉取平台清单（顺序�
   );
 });
 
+test('UI：平台圆点的 --plat-c 必须挂在圆点自身可达的选择器上', () => {
+  // 回归背景（真实发生过）：圆点是徽标的**兄弟节点**，CSS 变量只向下继承。
+  // 若注入写成 `.badge-<id>{--plat-c:...}`，变量挂在徽标上、圆点拿不到，
+  // 结果是 8 个平台圆点全部回落灰色兜底 —— 不报错、lint 不报、截图才看得出。
+  const utils = read('src/renderer/js/utils.js');
+  assert.ok(
+    /\.plat-dot\[data-plat=/.test(utils),
+    'applyPlatformBadgeTheme 注入的 --plat-c 必须同时命中 .plat-dot[data-plat="id"]，'
+    + '否则圆点拿不到变量（兄弟节点不继承），全部静默变灰',
+  );
+
+  // 反向：圆点必须真的带 data-plat，否则上面的选择器永远匹配不到
+  const home = read('src/renderer/js/views/home.js');
+  const dots = [...home.matchAll(/class="plat-dot"[^>]*/g)].map(m => m[0]);
+  assert.ok(dots.length >= 2, `home.js 应至少渲染 2 处平台圆点，实际 ${dots.length}`);
+  for (const d of dots) {
+    assert.ok(/data-plat=/.test(d), `圆点缺少 data-plat，--plat-c 选择器将永远匹配不到: ${d}`);
+  }
+
+  // 圆点不得再依赖逐平台短码 class（wy/qq/bi/kg 是又一份手写平台清单）
+  assert.ok(
+    !/class="plat-dot \$\{|plat-dot\s+\$\{p\.dot\}/.test(home),
+    '圆点不应再使用 p.dot 短码 class —— 那是平台清单的第二份拷贝',
+  );
+});
+
 test('UI：utils.js 的 platformName 具备降级兜底（清单缺失不炸界面）', () => {
   const src = read('src/renderer/js/utils.js');
   assert.ok(/FALLBACK_PLATFORM_NAMES/.test(src), '应有兜底名称表');
@@ -567,18 +593,13 @@ test('守卫：账号页平台清单由 registry 能力派生，无第二份平�
     '渲染端 hasLoginWindow 集合与主进程 LOGIN_CONFIGS 不一致');
 });
 
-test('IPC：get-platforms 三处登记齐全（漏一处静默失效）', () => {
+test('IPC：get-platforms 登记齐全（handler 注册 + 契约声明 + 方法映射）', () => {
   const search = read('src/main/ipc/search.js');
-  const preload = read('src/main/preload.js');
-  assert.ok(/ipcMain\.handle\(\s*'get-platforms'/.test(search), '主进程未注册 get-platforms');
-
-  // ⚠️ 不能按前后顺序切文件取块：preload 里三张表的**声明顺序**是
-  //    SEND → RECEIVE → INVOKE，按 RECEIVE 切会把 INVOKE 切到后半段（已踩）。
-  //    改为锚定各表自身的声明区段。
-  const invokeBlock = /const SAFE_CHANNELS_INVOKE = new Set\(\[([\s\S]*?)\]\)/.exec(preload);
-  assert.ok(invokeBlock, 'preload 应存在 SAFE_CHANNELS_INVOKE 白名单');
-  assert.ok(/'get-platforms'/.test(invokeBlock[1]), 'SAFE_CHANNELS_INVOKE 未登记 get-platforms');
-  assert.ok(/getPlatforms:\s*'get-platforms'/.test(preload), 'METHOD_MAP 未登记 getPlatforms');
+  const { CHANNELS, METHODS } = require('../src/shared/ipcContract');
+  assert.ok(/handle\(\s*'get-platforms'/.test(search), '主进程未注册 get-platforms');
+  assert.ok((CHANNELS['get-platforms'].invoke || []).includes('main'),
+    '契约未把 get-platforms 声明为 main 窗口 invoke 通道');
+  assert.strictEqual(METHODS.getPlatforms, 'get-platforms', '契约 METHODS 未登记 getPlatforms');
 });
 
 // ══════════════════════════════════════════════════════════

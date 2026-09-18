@@ -47,6 +47,20 @@ export default defineConfig({
           },
         },
       },
+      {
+        entry: path.resolve(projectRoot, 'src/main/preload-secondary.js'),
+        onstart(args) {
+          args.reload();
+        },
+        vite: {
+          build: {
+            outDir: path.resolve(projectRoot, 'dist/preload'),
+            rollupOptions: {
+              external: ['electron'],
+            },
+          },
+        },
+      },
     ]),
     renderer(),
   ],
