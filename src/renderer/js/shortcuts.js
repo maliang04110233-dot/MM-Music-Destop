@@ -226,6 +226,7 @@ export function showShortcutsHelp() {
           <div class="shortcut-group-title">其他</div>
           <div class="shortcut-row"><span>关闭弹窗</span><kbd>Esc</kbd></div>
           <div class="shortcut-row"><span>显示/隐藏这个帮助</span><kbd>?</kbd></div>
+          <div class="shortcut-row"><span>拖入音乐链接即识别（非快捷键）</span><kbd>🖱 拖放</kbd></div>
         </div>
       </div>
     </div>

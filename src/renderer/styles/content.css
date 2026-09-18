@@ -1659,3 +1659,18 @@
   background: var(--bg-hover);
   box-shadow: inset 2px 0 0 var(--neon-cyan);
 }
+
+/* 拖拽音乐链接投放提示层 */
+.drop-zone {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 229, 255, 0.05);
+  border: 2px dashed var(--neon-cyan);
+  pointer-events: none;
+  animation: fade-in var(--dur-2) var(--ease);
+}
+.drop-zone-inner {
+  padding: 10px 22px; border-radius: var(--r-lg);
+  background: var(--bg-card); border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan); font-size: 14px; font-weight: 600;
+}
