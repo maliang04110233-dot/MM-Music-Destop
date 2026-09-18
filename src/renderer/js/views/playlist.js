@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
+import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -98,6 +99,7 @@ function renderPlaylistDetailSongs(songs) {
   const list = document.getElementById('playlistDetailSongs');
   if (!list) return;
   _currentDetailSongs = songs || [];
+  dlEnsureHistoryLoaded(); // 跨会话"已下载"懒回填，完成后经监听器重渲染徽标
 
   if (!songs || songs.length === 0) {
     list.innerHTML = '<div class="empty-hint" style="text-align:center;padding:30px 0;">歌单为空，去搜索页添加喜欢的歌曲吧</div>';
@@ -111,9 +113,11 @@ function renderPlaylistDetailSongs(songs) {
         <div class="song-title" title="${esc(song.title)}">${esc(song.title) || '未知'}</div>
         <div class="song-meta">${esc(song.artist) || '未知艺术家'}${song.album ? ' · ' + esc(song.album) : ''}</div>
       </div>
+      ${dlBadgeHtml(song, getState('queueSnapshot') || [])}
       <span class="song-duration">${song.duration ? fmtDuration(song.duration) : '--:--'}</span>
       <div class="song-actions">
         <button class="action-btn" onclick="playPlaylistSong(${idx})" title="播放">▶</button>
+        <button class="action-btn" onclick="downloadPlaylistSong(${idx})" title="加入下载队列">⬇</button>
         <button class="action-btn" onclick="addPlaylistSongToQueue(${idx})" title="加入播放队列">➕</button>
         <button class="action-btn" onclick="removeSongFromPlaylist('${escQ(String(song.id))}','${escQ(String(song.source || ''))}')" title="从歌单移除">✕</button>
       </div>
@@ -178,6 +182,68 @@ function addPlaylistSongToQueue(idx) {
   setState('playQueue', q);
   showToast('✅ 已加入播放队列', 'success');
 }
+
+// ── 下载：单曲入队 / 整单入队（语义与搜索页 addDownload 一致）──
+async function downloadPlaylistSong(idx) {
+  const song = _currentDetailSongs[idx];
+  if (!song) return;
+  const existing = (getState('queueSnapshot') || []).find(q =>
+    q.id === song.id && q.source === song.source && q.status !== 'done');
+  if (existing) { showToast(`「${song.title}」已在队列中`, 'warn', 2500); return; }
+  const saveDir = getState('saveDir');
+  const quality = resolveQuality(song.source);
+  try {
+    const r = await api.addToQueue({ ...song, saveDir, quality });
+    if (r && r.duplicated) { showToast(`「${song.title}」已在下载队列中`, 'warn', 2500); return; }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(song.title, r.finishedAt, () => {
+        api.addToQueue({ ...song, saveDir, quality, forceRedownload: true })
+          .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入失败: ' + (e.message || e), 'error'));
+      });
+      return;
+    }
+    if (r && r.queued) showToast(`「${song.title}」已加入下载队列`, 'success');
+    else showToast((r && r.error) || '加入下载队列失败', 'error');
+  } catch (e) {
+    showToast('加入下载队列失败: ' + (e.message || e), 'error');
+  }
+}
+
+async function downloadAllPlaylist() {
+  const songs = _currentDetailSongs.slice();
+  if (!songs.length) { showToast('歌单为空', 'warn'); return; }
+  const saveDir = getState('saveDir');
+  let queued = 0, inQueue = 0, dlSkipped = 0;
+  for (const song of songs) {
+    const existing = (getState('queueSnapshot') || []).find(q =>
+      q.id === song.id && q.source === song.source && q.status !== 'done');
+    if (existing) { inQueue++; continue; }
+    try {
+      // 批量场景：历史已下载且文件还在 → 静默跳过（同 downloadAlbum）
+      const r = await api.addToQueue({ ...song, saveDir, quality: resolveQuality(song.source) });
+      if (r && r.queued) queued++;
+      else if (r && r.alreadyDownloaded) dlSkipped++;
+    } catch (e) { logger.warn('歌单批量入队失败:', song.title, e.message); }
+  }
+  let msg = `歌单 ${queued} 首已加入下载队列`;
+  const skippedParts = [];
+  if (inQueue) skippedParts.push(`${inQueue} 首已在队列`);
+  if (dlSkipped) skippedParts.push(`${dlSkipped} 首已下载过`);
+  if (skippedParts.length) msg += `（跳过 ${skippedParts.join('，')}）`;
+  showToast(msg, queued || dlSkipped ? 'success' : 'info');
+}
+
+// 详情弹窗打开期间队列/历史变化 → 防抖重渲染徽标
+let _plDlTimer = null;
+addDlChangeListener(() => {
+  const modal = document.getElementById('playlistDetailModal');
+  if (!modal || modal.classList.contains('hidden') || _plDlTimer) return;
+  _plDlTimer = setTimeout(() => {
+    _plDlTimer = null;
+    if (_currentPlaylistId && _currentDetailSongs.length) renderPlaylistDetailSongs(_currentDetailSongs);
+  }, 300);
+});
 
 // ── 从歌单移除歌曲 ─────────────────────────────────────
 async function removeSongFromPlaylist(songId, source) {
@@ -381,6 +447,8 @@ window.openPlaylistDetail = openPlaylistDetail;
 window.closePlaylistDetail = closePlaylistDetail;
 window.playPlaylistSong = playPlaylistSong;
 window.addPlaylistSongToQueue = addPlaylistSongToQueue;
+window.downloadPlaylistSong = downloadPlaylistSong;
+window.downloadAllPlaylist = downloadAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
 window.closePlaylistEditor = closePlaylistEditor;
