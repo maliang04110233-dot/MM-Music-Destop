@@ -55,6 +55,149 @@ function parseDuration(str) {
   return parseInt(str) || 0;
 }
 
+
+// ── WBI 签名（/x/player/wbi/v2 字幕接口需要 w_rid）─────────────
+// 混钥 = nav 返回的 wbi_img 两张图的文件名按固定置换表拼接后取前 32 位。
+// 这是官方前端常量；若 B 站调整，表现为字幕接口返回 code=-403。
+const WBI_MIXIN_TAB = [46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13];
+const WBI_KEY_TTL = 12 * 3600 * 1000;
+const BILI_REFERER = 'https://www.bilibili.com/';
+
+let _wbiKey = null;
+let _wbiKeyAt = 0;
+const _cidCache = new Map(); // bvid -> { bvid, aid, cid, at }
+
+function md5hex(str) {
+  const crypto = require('crypto');
+  return crypto.createHash('md5').update(str, 'utf8').digest('hex');
+}
+
+function basenameNoExt(url) {
+  const name = String(url || '').split('/').pop();
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+async function getWbiKey() {
+  const now = Date.now();
+  if (_wbiKey && now - _wbiKeyAt < WBI_KEY_TTL) return _wbiKey;
+  try {
+    const r = await request('https://api.bilibili.com/x/web-interface/nav', {
+      headers: { 'Referer': BILI_REFERER, 'Cookie': await resolveCookie() },
+      timeout: 8000,
+    });
+    const img = r?.data?.wbi_img;
+    const raw = basenameNoExt(img?.img_url) + basenameNoExt(img?.sub_url);
+    if (raw.length >= 64) {
+      const mixin = WBI_MIXIN_TAB.map(i => raw[i] || '').join('');
+      if (mixin.length === 32) {
+        _wbiKey = mixin;
+        _wbiKeyAt = now;
+        return _wbiKey;
+      }
+    }
+    logger.warn('[bilibili] WBI 混钥解析失败：wbi_img 文件名异常');
+  } catch (e) {
+    logger.warn('[bilibili] WBI 混钥获取失败:', e.message);
+  }
+  return null;
+}
+
+async function wbiGet(pathName, params) {
+  const key = await getWbiKey();
+  if (!key) return null;
+  const p = { ...params, wts: Math.floor(Date.now() / 1000) };
+  const signed = Object.keys(p).sort().map(k => k + '=' + encodeURIComponent(p[k])).join('&');
+  p.w_rid = md5hex(signed + key);
+  const query = Object.keys(p).sort().map(k => k + '=' + encodeURIComponent(p[k])).join('&');
+  try {
+    return await request('https://api.bilibili.com' + pathName + '?' + query, {
+      headers: { 'Referer': BILI_REFERER, 'Cookie': await resolveCookie() },
+      timeout: 10000,
+    });
+  } catch (e) {
+    logger.warn('[bilibili] wbi 请求失败:', e.message);
+    return null;
+  }
+}
+
+// 视频 id -> { bvid, aid, cid }，进程内缓存（同一稿件的 cid 不变）
+async function resolveVideoCid(id) {
+  const key = String(id || '').trim();
+  if (!key) return null;
+  const hit = _cidCache.get(key);
+  if (hit && Date.now() - hit.at < WBI_KEY_TTL) return hit;
+  try {
+    const r = await request(
+      'https://api.bilibili.com/x/web-interface/view?bvid=' + encodeURIComponent(key),
+      { headers: { 'Referer': BILI_REFERER, 'Cookie': await resolveCookie() }, timeout: 10000 },
+    );
+    const d = r?.data;
+    if (!d || !d.cid) return null;
+    const v = { bvid: d.bvid || key, aid: d.aid, cid: d.cid, at: Date.now() };
+    _cidCache.set(key, v);
+    return v;
+  } catch (e) {
+    logger.warn('[bilibili] 解析 cid 失败:', e.message);
+    return null;
+  }
+}
+
+// 人工上传的中文轨优先，其次任意中文轨（含 AI 生成），最后任意轨
+function bilibiliPickSubtitle(list) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const zh = list.filter(s => /^zh/i.test(s.lan || ''));
+  const manual = zh.filter(s => !s.ai_type);
+  return manual[0] || zh[0] || list[0] || null;
+}
+
+// B 站字幕 JSON { body: [{from, to, content}] }（单位秒）→ LRC
+function bilibiliSubtitleToLrc(body) {
+  if (!Array.isArray(body)) return '';
+  const lines = [];
+  for (const seg of body) {
+    const text = String(seg?.content || '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    const sec = Number(seg.from) || 0;
+    const min = Math.floor(sec / 60);
+    const rest = sec - min * 60;
+    const stamp = '[' + String(min).padStart(2, '0') + ':' + rest.toFixed(2).padStart(5, '0') + ']';
+    lines.push(stamp + text);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * 取字幕当歌词：/x/player/wbi/v2 的 subtitle_list → 转 LRC
+ * 没有字幕轨时返回空串，交由 api/index.js 的歌词聚合兜底链处理。
+ * @param {string} bvid
+ * @returns {Promise<string>} LRC 文本
+ */
+async function bilibiliGetLyrics(bvid) {
+  try {
+    const v = await resolveVideoCid(bvid);
+    if (!v) return '';
+    const r = await wbiGet('/x/player/wbi/v2', {
+      aid: v.aid, cid: v.cid, bvid: v.bvid, qn: 126, fnval: 16, fnver: 0, fourk: 1,
+    });
+    // 字幕列表的键名随接口版本变过：老响应是 subtitle_list，现网返回 subtitles
+    const subObj = r?.data?.subtitle;
+    const pick = bilibiliPickSubtitle(subObj?.subtitle_list || subObj?.subtitles);
+    if (!pick || !pick.subtitle_url) return '';
+    const abs = pick.subtitle_url.startsWith('http') ? pick.subtitle_url : 'https:' + pick.subtitle_url;
+    const sub = await request(abs, {
+      headers: { 'Referer': BILI_REFERER, 'Cookie': await resolveCookie() },
+      timeout: 10000,
+    });
+    const lrc = bilibiliSubtitleToLrc(sub?.body);
+    logger.info('[bilibili] 字幕转歌词:', v.bvid, '→', lrc ? lrc.split('\n').length + ' 行' : '空');
+    return lrc;
+  } catch (e) {
+    logger.warn('[bilibili] getLyrics 失败:', e.message);
+    return '';
+  }
+}
+
 /**
  * 搜索视频
  * @param {string} keyword
@@ -232,6 +375,7 @@ module.exports = {
   // ── 实现（方法存在 = 能力存在）──────────────────────────────
   search: bilibiliSearch,
   getUrl: bilibiliGetUrl,
+  getLyrics: bilibiliGetLyrics,
   getSongDetail: bilibiliGetSongDetail,
   verifyCookie: bilibiliVerifyCookie,
   // 排行（v3 阶段 1 收尾：正式纳入 manifest。signature 含 cookie 末位参数，
@@ -244,5 +388,8 @@ module.exports = {
   bilibiliGetSongDetail,
   bilibiliVerifyCookie,
   bilibiliGetRanking,
+  bilibiliGetLyrics,
+  bilibiliPickSubtitle,
+  bilibiliSubtitleToLrc,
   parseDuration,
 };
