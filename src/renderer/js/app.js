@@ -85,6 +85,8 @@ const mockApi = {
   windowMaximize: () => {},
   windowClose: () => window.close(),
   onQueueUpdated: () => {},
+  onQueuePausedChanged: () => {},
+  setQueuePaused: async () => ({ ok: true, paused: false }),
   onDownloadProgress: () => {},
   onDownloadError: () => {},
   onLocalLrcFetched: () => {},
@@ -271,6 +273,15 @@ async function init() {
       renderQueue(queue);
       dlObserveQueue(queue); // 下载状态徽标：吸收 done + 通知列表刷新
     });
+
+    // 托盘切换暂停 → 同步下载页按钮（views/download.js 提供 UI 钩子）
+    if (typeof api.onQueuePausedChanged === 'function') {
+      api.onQueuePausedChanged((payload) => {
+        if (typeof window.applyQueuePausedUi === 'function') {
+          window.applyQueuePausedUi(!!(payload && payload.paused));
+        }
+      });
+    }
 
     api.onDownloadProgress((info) => {
       const { id, progress } = info || {};

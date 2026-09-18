@@ -176,6 +176,14 @@ function register() {
     return { ok: changed, error: changed ? null : '无法移动该任务' };
   });
 
+  // 暂停/继续下载调度（在途任务不打断）
+  handle('set-queue-paused', (_, paused) => {
+    const { setQueuePaused, queueIsPaused } = require('../context').getCtx();
+    if (typeof setQueuePaused !== 'function') return { ok: false, error: '引擎未就绪' };
+    setQueuePaused(!!paused);
+    return { ok: true, paused: !!queueIsPaused() };
+  });
+
   // 清空已完成
   handle('clear-finished-queue', () => {
     const downloadQueue = getDownloadQueue();

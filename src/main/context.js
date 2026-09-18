@@ -34,6 +34,8 @@ function init(opts) {
     persistQueue:  opts.persistQueue,
     processQueue:  opts.processQueue,
     requestCancelDownload: opts.requestCancelDownload,
+    setQueuePaused: opts.setQueuePaused,
+    queueIsPaused: opts.queueIsPaused,
   };
   return _ctx;
 }

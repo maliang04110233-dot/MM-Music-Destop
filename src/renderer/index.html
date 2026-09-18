@@ -289,6 +289,7 @@
           <div class="download-header" style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">
             <div style="font-size:16px;font-weight:600;" data-i18n="download.title">⬇ 下载队列</div>
             <span class="panel-badge" id="queueBadge">0</span>
+            <button class="tab" id="queuePauseBtn" title="暂停后不再启动新任务，在途任务继续完成" onclick="toggleQueuePause()">⏸ 暂停</button>
             <!-- 状态筛选标签 -->
             <div class="filter-tabs" id="downloadFilterTabs">
               <button class="filter-tab active" onclick="setDownloadFilter('all')" data-i18n="search.all">全部</button>

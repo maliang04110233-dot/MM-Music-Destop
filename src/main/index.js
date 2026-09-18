@@ -340,6 +340,19 @@ function updateTrayMenu(playState = { isPlaying: false, title: '', artist: '' })
       },
     },
     {
+      type: 'checkbox',
+      label: '⏸ 暂停下载队列',
+      checked: !!(downloadQueueEngine && downloadQueueEngine.isPaused()),
+      click: (mi) => {
+        if (!downloadQueueEngine) return;
+        downloadQueueEngine.setPaused(mi.checked);
+        // 同步渲染层按钮状态（queue-updated 不携带 paused，走独立事件）
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('queue-paused-changed', { paused: mi.checked });
+        }
+      },
+    },
+    {
       label: '❌ 退出',
       click: () => {
         isQuitting = true;
@@ -647,6 +660,8 @@ function registerAllIpcHandlers() {
     loadPersistedPlayQueue,
     processQueue:     () => downloadQueueEngine.processQueue(),
     requestCancelDownload: (taskId) => downloadQueueEngine.requestCancel(taskId),
+    setQueuePaused:   (v) => downloadQueueEngine.setPaused(v),
+    queueIsPaused:    () => downloadQueueEngine.isPaused(),
   });
   ipcWindow.register();
   ipcSearch.register();

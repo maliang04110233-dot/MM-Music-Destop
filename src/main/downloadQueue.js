@@ -96,6 +96,7 @@ function createDownloadQueueEngine({
   let activeDownloads = 0;
   let processTimer = null;
   let _processQueueRunning = false;
+  let _paused = false;
   let queuePersistTimer = null;
 
   const QUEUE_FILE = () => path.join(userDataDir(), 'queue.json');
@@ -414,6 +415,7 @@ function createDownloadQueueEngine({
    * _processQueueRunning 防止重入，避免并发调度导致 activeDownloads 计数混乱。
    */
   async function processQueue() {
+    if (_paused) return; // 暂停：不调度新任务（在途任务不打断，与取消语义一致）
     if (_processQueueRunning) return;
     _processQueueRunning = true;
     const concurrency = getConcurrency();
@@ -467,6 +469,16 @@ function createDownloadQueueEngine({
     return true;
   }
 
+  /** 暂停/继续调度：暂停只挡新任务启动；恢复时立即重新调度 */
+  function setPaused(v) {
+    _paused = !!v;
+    if (!_paused) {
+      if (processTimer) { clearTimeout(processTimer); processTimer = null; }
+      _processQueueRunning = false;
+      processQueue();
+    }
+  }
+
   return {
     // 状态访问
     getQueue: () => downloadQueue,
@@ -477,6 +489,8 @@ function createDownloadQueueEngine({
     // 调度
     processQueue,
     requestCancel,
+    setPaused,
+    isPaused: () => _paused,
     // 工具（队列 IPC 需要）
     sanitizeFilename,
     /**

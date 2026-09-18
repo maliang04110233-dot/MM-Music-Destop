@@ -61,6 +61,7 @@ const CHANNELS = {
   'retry-download':         { invoke: MAIN, args: [['taskId', t.any()]] },
   'remove-queue-item':      { invoke: MAIN, args: [['taskId', t.any()]] },
   'reorder-queue-item':     { invoke: MAIN, args: [['taskId', t.str(64)], ['action', t.enum(['up', 'down', 'top'])]] },
+  'set-queue-paused':       { invoke: MAIN, args: [['paused', t.bool()]] },
   'clear-finished-queue':   { invoke: MAIN },
   'clear-all-queue':        { invoke: MAIN },
   'add-playlist-to-queue':  { invoke: MAIN, args: [['payload', t.obj()]] },
@@ -174,6 +175,7 @@ const CHANNELS = {
 
   // ── 主进程 → 渲染层（receive 事件） ───────────────
   'queue-updated':         { receive: MAIN },
+  'queue-paused-changed':  { receive: MAIN },
   'subscriptions-updated': { receive: MAIN },
   'clipboard-link':        { receive: MAIN },
   'download-progress':     { receive: MAIN },
@@ -225,6 +227,7 @@ const METHODS = {
   retryDownload: 'retry-download',
   removeQueueItem: 'remove-queue-item',
   reorderQueueItem: 'reorder-queue-item',
+  setQueuePaused: 'set-queue-paused',
   clearFinishedQueue: 'clear-finished-queue',
   clearAllQueue: 'clear-all-queue',
   addPlaylistToQueue: 'add-playlist-to-queue',
@@ -323,6 +326,7 @@ const METHODS = {
 // ── 主窗口订阅事件：方法名 → receive 通道 ────────────────────
 const EVENTS = {
   onQueueUpdated: 'queue-updated',
+  onQueuePausedChanged: 'queue-paused-changed',
   onSubscriptionsUpdated: 'subscriptions-updated',
   onClipboardLink: 'clipboard-link',
   onDownloadProgress: 'download-progress',

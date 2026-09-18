@@ -495,3 +495,56 @@ test('通知：默认开启时调用通知器', async () => {
     assert.strictEqual(notified, 1);
   } finally { restore(); }
 });
+
+// ── 暂停/继续调度 ────────────────────────────────────────
+
+test('setPaused: 暂停时不调度新任务，恢复后立即调度并完成', async () => {
+  const { engine, restore, downloaded } = buildEngine();
+  try {
+    engine.setPaused(true);
+    assert.strictEqual(engine.isPaused(), true);
+    engine.getQueue().push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'x', status: 'pending' });
+    await engine.processQueue();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(engine.getQueue()[0].status, 'pending', '暂停期间不应启动');
+    assert.strictEqual(downloaded.length, 0);
+
+    engine.setPaused(false);
+    assert.strictEqual(engine.isPaused(), false);
+    await waitFor(() => engine.getQueue()[0].status === 'done');
+    assert.strictEqual(downloaded.length, 1);
+  } finally { restore(); }
+});
+
+test('setPaused: 在途任务不被打断，照常完成', async () => {
+  const { engine, restore } = buildEngine({
+    downloadFileWithRetry: async () => { await new Promise((r) => setTimeout(r, 60)); },
+  });
+  try {
+    engine.getQueue().push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'x', status: 'pending' });
+    await engine.processQueue();
+    await waitFor(() => engine.getQueue()[0].status === 'downloading');
+    engine.setPaused(true);
+    await waitFor(() => engine.getQueue()[0].status === 'done', { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 50)); // 等 finally 链收尾（activeDownloads--）
+    assert.strictEqual(engine.getActiveCount(), 0);
+  } finally { restore(); }
+});
+
+test('setPaused: 暂停期间入队的多个任务恢复后全部完成（含 100ms 重排定时器被打断）', async () => {
+  const { engine, restore } = buildEngine({
+    prefs: { concurrency: 1 },
+    downloadFileWithRetry: async () => { await new Promise((r) => setTimeout(r, 10)); },
+  });
+  try {
+    engine.setPaused(true);
+    for (let i = 0; i < 3; i++) {
+      engine.getQueue().push({ id: String(i), source: 'netease', title: `t${i}`, artist: 'a', taskId: `k${i}`, status: 'pending' });
+    }
+    await engine.processQueue();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok(engine.getQueue().every(s => s.status === 'pending'));
+    engine.setPaused(false);
+    await waitFor(() => engine.getQueue().every(s => s.status === 'done'), { timeout: 3000 });
+  } finally { restore(); }
+});

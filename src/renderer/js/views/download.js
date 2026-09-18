@@ -360,6 +360,34 @@ async function reorderQueueItem(taskId, action) {
   }
 }
 
+// ── 队列暂停/继续（只挡新任务启动，在途任务自然完成）────
+let _queuePaused = false;
+
+/** 统一按钮呈现；托盘切换经 queue-paused-changed 事件也走这里 */
+function applyQueuePausedUi(paused) {
+  _queuePaused = !!paused;
+  const btn = document.getElementById('queuePauseBtn');
+  if (btn) {
+    btn.textContent = _queuePaused ? '▶ 继续' : '⏸ 暂停';
+    btn.classList.toggle('active', _queuePaused);
+    btn.classList.toggle('tab-neon', _queuePaused);
+    btn.title = _queuePaused
+      ? '已暂停：新任务不会启动，点击继续'
+      : '暂停后不再启动新任务，在途任务继续完成';
+  }
+}
+
+async function toggleQueuePause() {
+  try {
+    const r = await api.setQueuePaused(!_queuePaused);
+    if (!r || !r.ok) { showToast((r && r.error) || '切换失败', 'error'); return; }
+    applyQueuePausedUi(r.paused);
+    showToast(r.paused ? '⏸ 已暂停下载（在途任务继续完成）' : '▶ 已继续下载', 'info', 2200);
+  } catch (e) {
+    showToast('切换失败：' + e.message, 'error', 3000);
+  }
+}
+
 async function clearFinishedDownloads() {
   try {
     const r = await api.clearFinishedQueue();
@@ -465,6 +493,8 @@ export {
   clearAllDownloads,
   openSaveDir,
   exportCurrentPlaylist,
+  toggleQueuePause,
+  applyQueuePausedUi,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -486,6 +516,8 @@ window.retryQueueItem = retryQueueItem;
 window.retryAllFailed = retryAllFailed;
 window.removeQueueItem = removeQueueItem;
 window.reorderQueueItem = reorderQueueItem;
+window.toggleQueuePause = toggleQueuePause;
+window.applyQueuePausedUi = applyQueuePausedUi;
 window.playDownloadedFile = playDownloadedFile;
 window.playQueueItem = playQueueItem;
 window.dlProgressText = dlProgressText;
