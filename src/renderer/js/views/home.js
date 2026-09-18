@@ -18,6 +18,7 @@
 import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
+import { openSongRowMenu } from '../songMenu.js';
 
 // ── 分区注册表 ────────────────────────────────────────────
 // 新增一个区块 = 这里加一行；DOM、锚点、懒加载、状态统计自动跟上
@@ -494,7 +495,7 @@ function listHtml(meta, songs) {
  */
 function songRowsHtml(meta, songs) {
   return songs.map((s, i) => `
-    <div class="top-song-row" onclick="playRecommendById('${escQ(meta.sec)}',${i})">
+    <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" onclick="playRecommendById('${escQ(meta.sec)}',${i})">
       <span class="top-song-rank ${i < 3 ? 'top3' : ''}">${i + 1}</span>
       ${coverThumbHtml(s.cover)}
       <div class="top-song-info">
@@ -514,6 +515,21 @@ function songRowsHtml(meta, songs) {
     </div>
   `).join('');
 }
+
+// ── 榜单行右键菜单（业务项在 ../songMenu.js 共享）──────
+// data-sec 只在榜单行上；榜单弹层行同样经 songRowsHtml 渲染，菜单顺带覆盖
+document.addEventListener('contextmenu', (e) => {
+  const row = e.target && e.target.closest ? e.target.closest('.top-song-row[data-sec]') : null;
+  if (!row) return;
+  const sec = row.getAttribute('data-sec');
+  const idx = Number(row.getAttribute('data-ridx'));
+  const s = _getSection(sec)[idx];
+  if (!s) return;
+  openSongRowMenu(e, s, {
+    play: () => playRecommendById(sec, idx),
+    download: () => addRecommendDownload(sec, idx),
+  });
+});
 
 /**
  * 36px 方形封面缩略图。
