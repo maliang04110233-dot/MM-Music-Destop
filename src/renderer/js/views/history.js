@@ -4,6 +4,9 @@
 
 const PAGE_SIZE = 50;
 import { logger } from '../logger.js';
+import { showContextMenu } from '../contextMenu.js';
+import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
+import { favKey } from '../state.js';
 let historyPage = 0;
 let historyFilter = '';
 
@@ -57,7 +60,7 @@ function renderHistory(items, stats) {
   }
 
   _historyDom.list.innerHTML = _historyItems.map((s, idx) => `
-    <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}">
+    <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}" data-hidx="${idx}">
       <div class="history-icon">${s.status === 'done' ? '✅' : '❌'}</div>
       <div class="history-info">
         <div class="history-title">${esc(s.title)}</div>
@@ -162,6 +165,51 @@ async function playHistoryItem(idx) {
   if (typeof window.playDownloadedFile !== 'function') { showToast('播放模块未加载，请刷新重试', 'error'); return; }
   await window.playDownloadedFile(s);
 }
+
+// ── 行右键菜单 ────────────────────────────────────────
+// 历史记录字段是下载任务子集，拼个歌曲形对象供收藏/加歌单复用
+function _historySongLike(s) {
+  return {
+    id: s.id, source: s.source, title: s.title, artist: s.artist,
+    album: s.album || '', cover: s.cover || '', duration: s.duration || 0,
+  };
+}
+
+function historyRowContext(e) {
+  const row = e.target && e.target.closest ? e.target.closest('.history-row') : null;
+  if (!row || !_historyDom.list || !_historyDom.list.contains(row)) return;
+  const idx = Number(row.getAttribute('data-hidx'));
+  const s = _historyItems[idx];
+  if (!s) return;
+  e.preventDefault();
+  const items = [];
+  if (s.status === 'done' && s.savePath) {
+    items.push(
+      { icon: '▶', label: '本地播放', onClick: () => playHistoryItem(idx) },
+      { icon: '📂', label: '打开文件夹', onClick: () => api.openFolder(s.savePath) },
+    );
+  }
+  items.push({
+    icon: s.status === 'error' ? '🔄' : '⬇', label: '重新下载',
+    onClick: () => retryFromHistory(String(s.id), String(s.source || ''),
+      s.title || '', s.artist || '', s.album || '', s.quality || 'standard'),
+  });
+  if (s.id != null && s.source) {
+    const songLike = _historySongLike(s);
+    registerFavSong(songLike); // 让「收藏」切换能带回元数据（历史行没有红心按钮可登记）
+    const on = isFavorite(songLike);
+    items.push(
+      { sep: true },
+      { icon: on ? '💔' : '♥', label: on ? '取消收藏' : '收藏',
+        onClick: () => toggleFavoriteByKey(favKey(s.source, s.id)) },
+      { icon: '📋', label: '添加到歌单', onClick: () => {
+        if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(songLike);
+      } },
+    );
+  }
+  showContextMenu(e.clientX, e.clientY, items);
+}
+document.addEventListener('contextmenu', historyRowContext);
 
 // 导出到全局
 // ── ES Module 导出 ──────────────────────────────────────
