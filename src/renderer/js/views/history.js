@@ -13,6 +13,8 @@ const _historyDom = {
   info: null,
 };
 
+let _historyItems = []; // 当前页数据缓存：▶ 按钮按行号回查记录对象
+
 function _cacheHistoryDom() {
   _historyDom.list = document.getElementById('historyList');
   _historyDom.info = document.getElementById('historyInfo');
@@ -38,6 +40,7 @@ async function loadHistory() {
 }
 
 function renderHistory(items, stats) {
+  _historyItems = items || [];
   if (_historyDom.info && stats) {
     _historyDom.info.textContent = `总计 ${stats.total} 首 · 成功 ${stats.done || 0} · 失败 ${stats.error || 0}`;
   }
@@ -53,7 +56,7 @@ function renderHistory(items, stats) {
     return;
   }
 
-  _historyDom.list.innerHTML = items.map(s => `
+  _historyDom.list.innerHTML = _historyItems.map((s, idx) => `
     <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}">
       <div class="history-icon">${s.status === 'done' ? '✅' : '❌'}</div>
       <div class="history-info">
@@ -65,6 +68,9 @@ function renderHistory(items, stats) {
       <span class="history-size">${formatBytes(s.size)}</span>
       <span class="history-time">${fmtDate(s.finishedAt)}</span>
       <div class="history-actions">
+        ${s.status === 'done' && s.savePath
+          ? `<button class="action-btn" title="本地播放（下载完直接听）" onclick="playHistoryItem(${idx})">▶</button>`
+          : ''}
         ${s.status === 'done' && s.savePath
           ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escQ(s.savePath)}')">📂</button>`
           : ''}
@@ -149,6 +155,14 @@ function fmtDate(ts) {
   } catch (_e) { return ''; }
 }
 
+// ▶ 本地播放：复用 download.js 桥接的 playDownloadedFile（两视图同属下载合并页，必同加载）
+async function playHistoryItem(idx) {
+  const s = _historyItems[idx];
+  if (!s || !s.savePath) { showToast('未找到文件路径', 'error'); return; }
+  if (typeof window.playDownloadedFile !== 'function') { showToast('播放模块未加载，请刷新重试', 'error'); return; }
+  await window.playDownloadedFile(s);
+}
+
 // 导出到全局
 // ── ES Module 导出 ──────────────────────────────────────
 export {
@@ -158,6 +172,7 @@ export {
   historyNextPage,
   clearAllHistory,
   retryFromHistory,
+  playHistoryItem,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -167,6 +182,7 @@ window.historyPrevPage = historyPrevPage;
 window.historyNextPage = historyNextPage;
 window.clearAllHistory = clearAllHistory;
 window.retryFromHistory = retryFromHistory;
+window.playHistoryItem = playHistoryItem;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHistoryDom();

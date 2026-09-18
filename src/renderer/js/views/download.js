@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../logger.js';
+import { loadAndPlay } from '../player.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -182,6 +183,7 @@ function renderQueue(queue) {
       ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" title="下移" onclick="event.stopPropagation();reorderQueueItem('${escQ(s.taskId)}','down')">⬇</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消">✕</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'downloading') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消下载（中断传输并清理临时文件）">✕</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'done' && s.savePath) ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="本地播放（下载完直接听）" onclick="event.stopPropagation();playQueueItem('${escQ(s.taskId)}')">▶</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(getState('saveDir') || '')}')">📂</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="转换格式" onclick="event.stopPropagation();showConvertModal('${escQ(s.savePath || '')}', '${escQ(s.title || '')}')">🔄</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'error') ? `
@@ -383,6 +385,29 @@ function openSaveDir() {
   else showToast('尚未设置保存目录', 'warn');
 }
 
+// ── 下载完成即播（本地 file:// 直放，复用 player 本地分支）───
+async function playDownloadedFile(s) {
+  const path = s.filePath || s.savePath;
+  if (!path) { showToast('未找到文件路径', 'error'); return; }
+  const song = { ...s, filePath: path };
+  setState('playQueue', [song]);
+  setState('playIdx', 0);
+  setState('currentPlaying', song);
+  try {
+    await loadAndPlay(song, 'file://' + String(path).replace(/\\/g, '/'));
+  } catch (e) {
+    logger.error('[playDownloadedFile]', e);
+    showToast('播放失败: ' + (e.message || e), 'error');
+  }
+}
+
+async function playQueueItem(taskId) {
+  const queue = getState('queueSnapshot') || [];
+  const s = queue.find(x => x.taskId === taskId);
+  if (!s || s.status !== 'done') return; // 队列已变动（重渲染时序），静默忽略
+  await playDownloadedFile(s);
+}
+
 async function exportCurrentPlaylist() {
   const queue = getState('queueSnapshot') || [];
   if (!queue.length) {
@@ -461,6 +486,8 @@ window.retryQueueItem = retryQueueItem;
 window.retryAllFailed = retryAllFailed;
 window.removeQueueItem = removeQueueItem;
 window.reorderQueueItem = reorderQueueItem;
+window.playDownloadedFile = playDownloadedFile;
+window.playQueueItem = playQueueItem;
 window.dlProgressText = dlProgressText;
 window.clearFinishedDownloads = clearFinishedDownloads;
 window.clearAllDownloads = clearAllDownloads;
