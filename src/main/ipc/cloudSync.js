@@ -17,7 +17,8 @@ const fsa = require('../../utils/fsAsync');
 const IMPORTABLE_PREF_KEYS = new Set([
   'saveDir', 'localDirPath', 'theme', 'language',
   'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
-  'namingTemplate', 'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
+  'namingTemplate', 'qualityBySource',
+  'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory',
   'recentlyPlayed', 'playStats', 'playProgressMap',
   'eqPreset', 'eqGains', 'eqBypass',
@@ -169,4 +170,4 @@ async function getAllPrefs() {
   return {};
 }
 
-module.exports = { register };
+module.exports = { register, IMPORTABLE_PREF_KEYS };

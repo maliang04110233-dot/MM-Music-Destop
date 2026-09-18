@@ -726,6 +726,16 @@
               <span class="setting-hint" data-i18n="settings.general.qualityHint">搜索和下载时的默认音质</span>
             </div>
 
+            <div class="setting-row" style="display:block;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+                <label class="setting-label">分平台音质</label>
+                <button class="action-btn" style="width:auto;height:auto;padding:3px 10px;font-size:11px;"
+                  onclick="resetQualityBySource()" title="清除所有分平台覆盖，全部回到默认音质">恢复默认</button>
+              </div>
+              <span class="setting-hint">单平台覆盖默认音质；未定制的平台沿用上面的默认值</span>
+            </div>
+            <div id="qualityBySourceList" class="quality-map"></div>
+
             <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.concurrency">最大并发下载数</label>
               <input class="setting-input setting-input--num" id="settingConcurrency" type="number" min="1" max="10" value="3">

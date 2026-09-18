@@ -70,6 +70,7 @@ function openSettings() {
   Promise.all([
     ...PLATFORMS.map(p => loadAccountCardStatus(p.id)),
     loadGeneralSettings(),
+    loadQualityBySource(),
     updateCacheSize(),
     loadDownloadTemplates(),
     loadSourceHealth(),
@@ -435,6 +436,74 @@ function updateFilenameTmplPreview() {
   }, 250);
 }
 
+// ── 分平台音质 ─────────────────────────────────────────
+// 默认音质（settingQuality）是兜底；这里为单个平台指定档位。
+// 覆盖表只存有自定义的平台，其余平台走默认值 —— 新增平台自动继承默认，无需迁移。
+let _qualityBySourceTimer = null;
+
+/** 平台 id 清单：主进程下发优先，未就绪时回落到内置兜底表 */
+function qualityPlatformIds() {
+  const ids = getPlatforms().map(x => x && x.id).filter(Boolean);
+  return ids.length ? ids : fallbackPlatformIds();
+}
+
+function _qualitySelectOptions(selected) {
+  let opts = '<option value="">' + esc('跟随默认') + '</option>';
+  for (const o of QualityOptions) {
+    opts += '<option value="' + escAttr(o.value) + '"' +
+      (selected === o.value ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+  }
+  return opts;
+}
+
+async function loadQualityBySource() {
+  let map = null;
+  try { map = await api.getPref('qualityBySource'); }
+  catch (e) { logger.warn('读取分平台音质失败:', e.message); }
+  setState('qualityBySource', (map && typeof map === 'object' && !Array.isArray(map)) ? map : {});
+  renderQualityBySource();
+}
+
+function renderQualityBySource() {
+  const el = document.getElementById('qualityBySourceList');
+  if (!el) return;
+  const map = getQualityBySource();
+  el.innerHTML = qualityPlatformIds().map(id => {
+    const fixed = QualityFixed.has(id);
+    const cur = map[id] || '';
+    const icon = platformIcon(id);
+    return '<div class="quality-map-row' + (fixed ? ' quality-map-row--fixed' : '') + '">' +
+      '<div class="quality-map-name" title="' + escAttr(platformName(id)) + '">' +
+        (icon ? esc(icon) + ' ' : '') + esc(platformName(id)) + '</div>' +
+      '<select class="setting-select quality-map-select"' +
+        (fixed ? ' disabled' : '') +
+        ' data-qs-id="' + escAttr(id) + '"' +
+        (fixed ? '' : ' onchange="onQualityBySourceChange(this)"') + '>' +
+        _qualitySelectOptions(cur) +
+      '</select>' +
+    '</div>';
+  }).join('');
+}
+
+function onQualityBySourceChange(sel) {
+  const map = getQualityBySource();
+  const id = sel.dataset.qsId;
+  if (!id) return;
+  if (sel.value) map[id] = sel.value; else delete map[id];
+  setState('qualityBySource', map);
+  // 防抖落盘：逐项切换时避免每次击键都跨进程写 prefs
+  clearTimeout(_qualityBySourceTimer);
+  _qualityBySourceTimer = setTimeout(() => saveQualityBySource(map), 250);
+}
+
+async function resetQualityBySource() {
+  clearTimeout(_qualityBySourceTimer);
+  setState('qualityBySource', {});
+  await saveQualityBySource({});
+  renderQualityBySource();
+  showToast('已恢复为全部跟随默认音质', 'info');
+}
+
 async function loadGeneralSettings() {
   try {
     const prefs = Object.values(GENERAL_PREFS);
@@ -786,6 +855,7 @@ export {
   exportConfig,
   importConfig,
   loadGeneralSettings,
+  loadQualityBySource,
   loadSourceHealth,
   probeSourcesUI,
   applyTheme,
@@ -797,6 +867,9 @@ window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.closeSettingsOnBg = closeSettingsOnBg;
 window.switchSettingsTab = switchSettingsTab;
+window.loadQualityBySource = loadQualityBySource;
+window.onQualityBySourceChange = onQualityBySourceChange;
+window.resetQualityBySource = resetQualityBySource;
 window.selectTheme = selectTheme;
 window.loadCookieStatus = loadCookieStatus;
 window.saveCookie = saveCookie;

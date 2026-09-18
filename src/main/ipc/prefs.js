@@ -18,6 +18,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
   // 命名模板（统一键名：下载页与设置页共用 namingTemplate）
   'namingTemplate',
+  // 分平台音质覆盖表：平台 id → standard/hq/lossless，未列出的平台沿用 quality
+  'qualityBySource',
   // 播放行为
   'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
@@ -54,4 +56,4 @@ function register() {
   });
 }
 
-module.exports = { register };
+module.exports = { register, ALLOWED_PREF_KEYS };
