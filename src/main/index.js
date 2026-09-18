@@ -9,6 +9,7 @@ const cookieStore = require('../utils/cookieStore');
 const { setOnlineLrcNotifier } = require('../utils/onlineLrc');
 const { getDownloadUrlSmart, getLyrics } = require('../api');
 const { init: initContext, safeSend: ctxSafeSend } = require('./context');
+const taskbarProgress = require('./taskbarProgress');
 const { createDownloadQueueEngine } = require('./downloadQueue');
 const playCache = require('./playCache');
 const approvedDirs = require('./approvedDirs');
@@ -609,6 +610,11 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  // 任务栏进度/托盘提示的落地目标（context.safeSend 在队列事件时驱动刷新）
+  taskbarProgress.init({
+    getWindows: () => (mainWindow && !mainWindow.isDestroyed() ? [mainWindow] : []),
+    getTray: () => tray,
+  });
   registerGlobalShortcuts();
 });
 

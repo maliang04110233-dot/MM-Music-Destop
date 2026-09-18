@@ -9,12 +9,17 @@ let _ctx = null;
 let _getMainWindow = () => null;
 let _getDownloadQueue = () => [];
 
+const taskbarProgress = require('./taskbarProgress');
+
 function safeSend(channel, payload) {
   try {
     if (!_ctx) return;
     const w = _getMainWindow();
     if (w && !w.isDestroyed() && w.webContents && !w.webContents.isDestroyed()) {
       w.webContents.send(channel, payload);
+    }
+    if (channel === 'queue-updated' || channel === 'download-progress') {
+      taskbarProgress.refresh(_getDownloadQueue);
     }
   } catch (e) {
     // swallow
