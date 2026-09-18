@@ -173,7 +173,8 @@ function renderQueue(queue) {
         <div class="queue-title">${esc(s.title || '未知')}</div>
         <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${errorTag(s.errorCode)}</div>
         ${s.status === 'downloading' ? `
-        <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>` : ''}
+        <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>
+        <div class="queue-dl-meta" id="progmeta-${escAttr(s.taskId)}"></div>` : ''}
       </div>
       <button class="queue-detail-toggle" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" title="${isExpanded ? '收起详情' : '展开详情'}">${isExpanded ? '▾' : '▸'}</button>
       ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" title="置顶" onclick="event.stopPropagation();reorderQueueItem('${escQ(s.taskId)}','top')">⏫</button>` : ''}
@@ -330,6 +331,24 @@ async function removeQueueItem(taskId) {
   }
 }
 
+// 下载中条目的速度/剩余/大小文案（download-progress 事件驱动，app.js 调用）
+function formatEta(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60) % 60, h = Math.floor(sec / 3600), s = sec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function dlProgressText(info) {
+  if (!info) return '';
+  const parts = [];
+  if (typeof info.progress === 'number') parts.push(info.progress + '%');
+  if (info.speedBps > 0) parts.push(formatBytes(info.speedBps) + '/s');
+  if (info.etaSec != null) parts.push('剩余 ' + formatEta(info.etaSec));
+  if (info.totalBytes > 0) parts.push(`${formatBytes(info.receivedBytes)} / ${formatBytes(info.totalBytes)}`);
+  return parts.join(' · ');
+}
+
 async function reorderQueueItem(taskId, action) {
   try {
     const r = await api.reorderQueueItem(taskId, action);
@@ -442,6 +461,7 @@ window.retryQueueItem = retryQueueItem;
 window.retryAllFailed = retryAllFailed;
 window.removeQueueItem = removeQueueItem;
 window.reorderQueueItem = reorderQueueItem;
+window.dlProgressText = dlProgressText;
 window.clearFinishedDownloads = clearFinishedDownloads;
 window.clearAllDownloads = clearAllDownloads;
 window.openSaveDir = openSaveDir;

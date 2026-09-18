@@ -31,6 +31,7 @@ const historyDefault = require('../utils/history');
 const fsaDefault = require('../utils/fsAsync');
 const downloaderDefault = require('../utils/downloader');
 const { renderFileName } = require('../utils/naming');
+const speedMeter = require('./speedMeter');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
 
 /** done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长 */
@@ -90,6 +91,7 @@ function createDownloadQueueEngine({
 
   // ── 状态（引擎私有，通过 getter 暴露）────────────────────
   const downloadQueue = [];
+  const speedStates = {}; // taskId → 速度采样状态（瞬态，任务终态即删）
   let activeDownloads = 0;
   let processTimer = null;
   let _processQueueRunning = false;
@@ -240,9 +242,18 @@ function createDownloadQueueEngine({
         // 读取限速设置（KB/s → bytes/s）
         const speedLimitKB = prefs.get('speedLimit') || 0;
         const speedLimit = speedLimitKB > 0 ? speedLimitKB * 1024 : 0;
-        await downloadFileWithRetry(urlInfo.url, savePath, (progress) => {
+        await downloadFileWithRetry(urlInfo.url, savePath, (progress, bytes) => {
           song.progress = progress;
-          safeSend('download-progress', { id: song.taskId, progress });
+          const payload = { id: song.taskId, progress };
+          if (bytes) {
+            const r = speedMeter.nextSpeed(speedStates[song.taskId], Date.now(), bytes.receivedBytes, bytes.totalBytes);
+            speedStates[song.taskId] = r.state;
+            payload.receivedBytes = bytes.receivedBytes;
+            payload.totalBytes = bytes.totalBytes || null;
+            payload.speedBps = r.speedBps;
+            payload.etaSec = r.etaSec;
+          }
+          safeSend('download-progress', payload);
         }, extraHeaders, { speedLimit, token: cancelToken });
 
         // 歌词（换源成功时优先用匹配源的 id 同源拿，更准）
@@ -276,6 +287,7 @@ function createDownloadQueueEngine({
         song.savePath = savePath;
         song.error = null;
         lastError = null;
+        delete speedStates[song.taskId];
 
         // 下载完成通知（默认开启）
         if (prefs.get('notifications') !== false) {
@@ -332,6 +344,7 @@ function createDownloadQueueEngine({
       song.status = 'error';
       song.error = lastError.message;
       song._cancelRequested = false;
+      delete speedStates[song.taskId];
       if (lastError.cancelled) {
         // 用户主动取消：不写失败历史、不发 download-error toast
         notifyQueueChanged();

@@ -266,9 +266,12 @@ async function init() {
       renderQueue(queue);
     });
 
-    api.onDownloadProgress(({ id, progress }) => {
+    api.onDownloadProgress((info) => {
+      const { id, progress } = info || {};
       const el = document.getElementById('prog-' + id);
       if (el) el.style.width = progress + '%';
+      const meta = document.getElementById('progmeta-' + id);
+      if (meta && typeof dlProgressText === 'function') meta.textContent = dlProgressText(info);
     });
 
     api.onDownloadError(({ title, error, fatal }) => {

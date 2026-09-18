@@ -372,7 +372,8 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
       dataStream.on('data', (chunk) => {
         downloaded += chunk.length;
         if (fullSize > 0 && onProgress) {
-          onProgress(Math.round((downloaded / fullSize) * 100));
+          // 第二参带字节数（速度/ETA 估算用），旧调用方只取第一参不受影响
+          onProgress(Math.round((downloaded / fullSize) * 100), { receivedBytes: downloaded, totalBytes: fullSize });
         }
       });
 

@@ -26,6 +26,7 @@
   overflow: hidden; text-overflow: ellipsis; color: var(--neon-text);
 }
 .queue-status { font-size: 11px; color: var(--neon-dim); }
+.queue-dl-meta { font-size: 11px; color: var(--neon-cyan); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .status-pending { color: var(--neon-dim); }
 .status-downloading { color: var(--neon-cyan); }
 .status-done { color: var(--neon-green); }
