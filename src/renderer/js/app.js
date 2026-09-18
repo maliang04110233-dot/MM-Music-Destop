@@ -41,6 +41,7 @@ import './views/playlist.js';
 import './views/subscriptions.js';
 import './views/clipboard.js';
 import './views/welcome.js';
+import { dlObserveQueue } from './dlStatus.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -267,6 +268,7 @@ async function init() {
     api.onQueueUpdated((queue) => {
       state.set('queueSnapshot', queue);
       renderQueue(queue);
+      dlObserveQueue(queue); // 下载状态徽标：吸收 done + 通知列表刷新
     });
 
     api.onDownloadProgress((info) => {

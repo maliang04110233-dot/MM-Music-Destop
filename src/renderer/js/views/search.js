@@ -4,6 +4,7 @@
 
 import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
+import { dlBadgeHtml, dlEnsureHistoryLoaded, setDlChangeListener } from '../dlStatus.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -694,7 +695,21 @@ function backToSearch() {
 }
 
 // ── 单曲渲染 ─────────────────────────────────────────
+// 下载状态徽标：记住当前列表，队列/历史变化时防抖重渲染（300ms 合并突发）
+let _dlLastList = null;
+let _dlRerenderTimer = null;
+setDlChangeListener(() => {
+  if (_dlRerenderTimer || !_dlLastList) return;
+  _dlRerenderTimer = setTimeout(() => {
+    _dlRerenderTimer = null;
+    if (_dlLastList) renderSongList(_dlLastList);
+  }, 300);
+});
+
 function renderSongList(list) {
+  _dlLastList = list;
+  dlEnsureHistoryLoaded(); // 首次渲染后拉一次下载历史，到达时自动重打徽标
+  const _dlQueue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
   const el = document.getElementById('songList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state">
@@ -729,6 +744,7 @@ function renderSongList(list) {
       </div>
       <span class="song-duration">${fmtDuration(s.duration)}</span>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
+      ${dlBadgeHtml(s, _dlQueue)}
       <div class="song-actions">
         ${heartBtnHtml(s)}
         <button class="action-btn" title="试听" onclick="playSong(${i})">▶</button>
