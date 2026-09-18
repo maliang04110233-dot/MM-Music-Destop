@@ -10,6 +10,7 @@
 const api = require('../../api');
 const { handle } = require('./register');
 const { getDownloadQueue, safeSend } = require('../context');
+const { queueMove } = require('../queueOrder');
 const { proxyPlay } = require('../playCache');
 const history = require('../../utils/history');
 const logger = require('../../utils/logger');
@@ -161,6 +162,18 @@ function register() {
     safeSend('queue-updated', downloadQueue);
     persistQueue();
     return { removed: true };
+  });
+
+  // 调整队列顺序（置顶/上移/下移，仅 pending 可动）
+  handle('reorder-queue-item', (_, taskId, action) => {
+    const downloadQueue = getDownloadQueue();
+    const { persistQueue } = require('../context').getCtx();
+    const changed = queueMove(downloadQueue, taskId, action);
+    if (changed) {
+      safeSend('queue-updated', downloadQueue);
+      persistQueue();
+    }
+    return { ok: changed, error: changed ? null : '无法移动该任务' };
   });
 
   // 清空已完成

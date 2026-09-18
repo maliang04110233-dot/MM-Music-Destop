@@ -176,6 +176,9 @@ function renderQueue(queue) {
         <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>` : ''}
       </div>
       <button class="queue-detail-toggle" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" title="${isExpanded ? '收起详情' : '展开详情'}">${isExpanded ? '▾' : '▸'}</button>
+      ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" title="置顶" onclick="event.stopPropagation();reorderQueueItem('${escQ(s.taskId)}','top')">⏫</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" title="上移" onclick="event.stopPropagation();reorderQueueItem('${escQ(s.taskId)}','up')">⬆</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" title="下移" onclick="event.stopPropagation();reorderQueueItem('${escQ(s.taskId)}','down')">⬇</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消">✕</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'downloading') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消下载（中断传输并清理临时文件）">✕</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(getState('saveDir') || '')}')">📂</button>` : ''}
@@ -327,6 +330,15 @@ async function removeQueueItem(taskId) {
   }
 }
 
+async function reorderQueueItem(taskId, action) {
+  try {
+    const r = await api.reorderQueueItem(taskId, action);
+    if (r && !r.ok) showToast(r.error || '无法移动该任务', 'info', 1800);
+  } catch (e) {
+    showToast('移动失败：' + e.message, 'error', 3000);
+  }
+}
+
 async function clearFinishedDownloads() {
   try {
     const r = await api.clearFinishedQueue();
@@ -429,6 +441,7 @@ window.batchRemoveDl = batchRemoveDl;
 window.retryQueueItem = retryQueueItem;
 window.retryAllFailed = retryAllFailed;
 window.removeQueueItem = removeQueueItem;
+window.reorderQueueItem = reorderQueueItem;
 window.clearFinishedDownloads = clearFinishedDownloads;
 window.clearAllDownloads = clearAllDownloads;
 window.openSaveDir = openSaveDir;

@@ -69,6 +69,7 @@ const mockApi = {
   cancelDownload: () => {},
   retryDownload: async () => ({ ok: true }),
   removeQueueItem: async () => ({ removed: true }),
+  reorderQueueItem: async () => ({ ok: true }),
   clearFinishedQueue: async () => ({ removed: 0 }),
   clearAllQueue: async () => ({ removed: 0 }),
   selectDir: async () => null,
