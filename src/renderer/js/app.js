@@ -40,6 +40,7 @@ import './views/converter.js';
 import './views/playlist.js';
 import './views/subscriptions.js';
 import './views/clipboard.js';
+import './views/welcome.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -197,6 +198,8 @@ async function init() {
   if (typeof wireClipboardEvents === 'function') wireClipboardEvents();
   // 启动即拉一次订阅列表：导航红点不依赖用户先访问订阅页
   if (typeof loadSubscriptions === 'function') loadSubscriptions();
+  // 首启动新手引导（prefs.welcomeSeen 已设则静默跳过）
+  if (typeof maybeShowWelcome === 'function') maybeShowWelcome();
 
   // 用 setTimeout(0) 确保不阻塞渲染管线
   await new Promise(r => setTimeout(r, 0));

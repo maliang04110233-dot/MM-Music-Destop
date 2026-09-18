@@ -1612,3 +1612,32 @@
   from { opacity: 0; transform: translate(-50%, -8px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* ── 首启动新手引导浮层（views/welcome.js 动态挂载） ─────── */
+.welcome-overlay {
+  position: fixed; inset: 0; z-index: 1500;
+  background: rgba(0, 0, 0, .55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in var(--dur-2) var(--ease);
+}
+.welcome-panel {
+  width: min(560px, 92vw); max-height: 86vh; overflow-y: auto;
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: var(--r-xl); padding: 28px 30px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+}
+.welcome-title { font-size: 20px; font-weight: 700; color: var(--neon-text); }
+.welcome-sub { font-size: 13px; color: var(--neon-dim); margin: 4px 0 18px; }
+.welcome-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px; margin-bottom: 10px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.welcome-card-icon { font-size: 22px; flex-shrink: 0; }
+.welcome-card-body { flex: 1; min-width: 0; }
+.welcome-card-title { font-size: 14px; font-weight: 600; color: var(--neon-text); }
+.welcome-card-desc { font-size: 12px; color: var(--neon-dim); margin-top: 2px; line-height: 1.5; }
+.welcome-btn { flex-shrink: 0; font-size: 12px; padding: 6px 12px; }
+.welcome-hint { font-size: 12px; color: var(--neon-dim); margin: 12px 2px 16px; line-height: 1.6; }
+.welcome-actions { display: flex; justify-content: flex-end; gap: 10px; }
