@@ -45,6 +45,15 @@ const CAP_METHODS = {
   linkDetail: 'getSongDetail',
   cookie: 'verifyCookie',
   playlistDetail: 'getPlaylistDetail',
+  // 推荐域（与 pluginRegistry.CAPABILITY_METHODS 保持同步）
+  playlistSongs: 'getPlaylistSongs',
+  topList: 'getTopList',
+  recommendPlaylists: 'getRecommendPlaylists',
+  categoryPlaylists: 'getCategoryPlaylists',
+  newSongs: 'getNewSongs',
+  radioStations: 'getRadioStations',
+  hotSingers: 'getHotSingers',
+  ranking: 'getRanking',
 };
 
 function withCaps(plugin) {
@@ -261,35 +270,48 @@ test('fanOut: 空数组 / 非数组入参返回空结果，不抛错', async () 
 });
 
 // ══════════════════════════════════════════════════════════
-// 推荐域：过渡实现的行为与空值退化
+// 推荐域：manifest 直接推导（无 gateway 自带映射字典）
 // ══════════════════════════════════════════════════════════
 
-test('推荐域: 平台未实现该方法 ⇒ []（过渡字典的键不存在时）', async () => {
+test('推荐域: 平台未实现该方法 ⇒ []', async () => {
   const gw = createPlatformGateway({ registry: makeRegistry({ p: withCaps({}) }) });
   assert.deepStrictEqual(await gw.getTopList('p', 'name', 10), []);
   assert.deepStrictEqual(await gw.getRanking('p', 10), []);
   assert.deepStrictEqual(await gw.getHotSingers('p', 10), []);
 });
 
-test('推荐域: 按过渡字典映射到平台的老式具名导出', async () => {
+test('推荐域: 未注册平台 ⇒ []（不抛错）', async () => {
+  const gw = createPlatformGateway({ registry: makeRegistry({}) });
+  assert.deepStrictEqual(await gw.getTopList('nope', '飙升榜', 100), []);
+});
+
+test('推荐域: 按 manifest 标准方法名直接调用，参数原样透传', async () => {
   const calls = [];
   const reg = makeRegistry({
     netease: withCaps({
-      neteaseGetTopList: async (name, limit) => { calls.push(['top', name, limit]); return [1, 2]; },
+      getTopList: async (name, limit) => { calls.push(['top', name, limit]); return [1, 2]; },
     }),
   });
-  // ⚠️ 过渡字典键是平台 id —— 桩 registry 用的 id 必须与真实 id 一致
   const gw = createPlatformGateway({ registry: reg });
   const r = await gw.getTopList('netease', '飙升榜', 100);
   assert.deepStrictEqual(r, [1, 2]);
   assert.deepStrictEqual(calls, [['top', '飙升榜', 100]]);
 });
 
-test('推荐域: withCookie 选项把 cookie 注入为末位参数（B 站排行）', async () => {
+test('推荐域: 平台名与 gateway 接口名解耦 —— 任意 id 均可调用', async () => {
+  // 若 gateway 仍持有「平台 id → 实现名」字典，这里会因 id 不在字典中而返回 []
+  const reg = makeRegistry({
+    brandnew: withCaps({ getRecommendPlaylists: async () => [{ id: 'x' }] }),
+  });
+  const gw = createPlatformGateway({ registry: reg });
+  assert.deepStrictEqual(await gw.getRecommendPlaylists('brandnew', 6), [{ id: 'x' }]);
+});
+
+test('推荐域: getRanking 把 cookie 注入为末位参数（B 站排行）', async () => {
   let seen = null;
   const reg = makeRegistry({
     bilibili: withCaps({
-      bilibiliGetRanking: async (limit, cookie) => { seen = { limit, cookie }; return []; },
+      getRanking: async (limit, cookie) => { seen = { limit, cookie }; return []; },
     }),
   });
   const gw = createPlatformGateway({ registry: reg, getCookie: () => 'BILI_CK' });
@@ -297,12 +319,44 @@ test('推荐域: withCookie 选项把 cookie 注入为末位参数（B 站排行
   assert.deepStrictEqual(seen, { limit: 100, cookie: 'BILI_CK' });
 });
 
+test('推荐域: 除 getRanking 外的推荐方法不注入 cookie', async () => {
+  let seen = 'unset';
+  const reg = makeRegistry({
+    netease: withCaps({
+      getTopList: async (...args) => { seen = args; return []; },
+    }),
+  });
+  const gw = createPlatformGateway({ registry: reg, getCookie: () => 'SHOULD_NOT_APPEAR' });
+  await gw.getTopList('netease', '热歌榜', 100);
+  assert.deepStrictEqual(seen, ['热歌榜', 100]);
+});
+
 test('推荐域: 平台返回非数组 ⇒ []（防止上层拿到脏数据）', async () => {
   const reg = makeRegistry({
-    qq: withCaps({ qqGetHotSingers: async () => ({ not: 'array' }) }),
+    qq: withCaps({ getHotSingers: async () => ({ not: 'array' }) }),
   });
   const gw = createPlatformGateway({ registry: reg });
   assert.deepStrictEqual(await gw.getHotSingers('qq', 30), []);
+});
+
+test('推荐域: 平台抛错 ⇒ []（不向上传播）', async () => {
+  const reg = makeRegistry({
+    qq: withCaps({ getNewSongs: async () => { throw new Error('qq down'); } }),
+  });
+  const gw = createPlatformGateway({ registry: reg });
+  assert.deepStrictEqual(await gw.getNewSongs('qq', 1, 30), []);
+});
+
+test('推荐域: platformsWith 按能力发现平台（registry 推导，非手写清单）', () => {
+  const reg = makeRegistry({
+    a: withCaps({ getTopList: async () => [] }),
+    b: withCaps({}),
+    c: withCaps({ getTopList: async () => [], getRanking: async () => [] }),
+  });
+  const gw = createPlatformGateway({ registry: reg });
+  assert.deepStrictEqual(gw.platformsWith('topList'), ['a', 'c']);
+  assert.deepStrictEqual(gw.platformsWith('ranking'), ['c']);
+  assert.deepStrictEqual(gw.platformsWith('radioStations'), []);
 });
 
 // ══════════════════════════════════════════════════════════

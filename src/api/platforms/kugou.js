@@ -361,6 +361,41 @@ async function kugouGetSongDetail(hash) {
 }
 
 module.exports = {
+  // ── PlatformManifest（v3 单一事实来源）──────────────────────
+  id: 'kugou',
+  name: '酷狗音乐',
+  nameEn: 'Kugou',
+  icon: '🎸',
+  badge: { bg: 'rgba(16,185,129,.14)', fg: 'var(--c-ok)', border: 'rgba(16,185,129,.22)' },
+  // 酷狗音频域有多个动态前缀，精确枚举不完，故额外做后缀匹配
+  hosts: {
+    origins: ['https://www.kugou.com'],
+    originSuffixes: ['.kugou.com'],
+  },
+  linkPatterns: [
+    // 单曲：mixsong/12345.html（数字即 id）
+    { type: 'song', re: /kugou\.com\/mixsong\/(\d{4,15})\.html/, extract: m => m[1] },
+    // 单曲：/song/xxx.html?hash=YYYY（hash 即 id）
+    { type: 'song', re: /kugou\.com\/song\/[a-z0-9]+\.html\?hash=([A-Fa-f0-9]{20,40})/, extract: m => m[1] },
+    // 专辑：/album/xxx.html（slug 型 id，保持原样）
+    { type: 'album', re: /kugou\.com\/album\/([a-z0-9_-]{6,40})\.html/, extract: m => m[1] },
+  ],
+  policies: { order: 40, fallbackSource: true, probeable: true, aggregateLimit: 5 },
+
+  // ── 实现（方法存在 = 能力存在）──────────────────────────────
+  search: kugouSearch,
+  getUrl: kugouGetUrl,
+  getLyrics: kugouGetLyrics,
+  // 按标题兜底取词：供 api/index 的歌词 fallback 遍历（原先是被直连的私有函数）
+  getLyricsByTitle: kugouGetLyricsByTitle,
+  getSongDetail: kugouGetSongDetail,
+  searchAlbum: kugouSearchAlbum,
+  getAlbumSongs: kugouGetAlbumSongs,
+  searchSinger: kugouSearchSinger,
+  getSingerSongs: kugouGetSingerSongs,
+  getSingerAlbums: kugouGetSingerAlbums,
+
+  // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   kugouSearch,
   kugouGetUrl,
   kugouGetSongDetail,

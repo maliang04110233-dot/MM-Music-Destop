@@ -167,6 +167,30 @@ async function kuwoGetLyrics(id) {
 }
 
 module.exports = {
+  // ── PlatformManifest（v3 单一事实来源）──────────────────────
+  id: 'kuwo',
+  name: '酷我音乐',
+  nameEn: 'Kuwo',
+  icon: '🎧',
+  badge: { bg: 'rgba(46,127,255,.14)', fg: 'var(--c-info)', border: 'rgba(46,127,255,.22)' },
+  // 网络事实：搜索(www) / 取流(antiserver) / 歌词(m) / 封面(img4)
+  hosts: {
+    origins: [
+      'http://www.kuwo.cn',
+      'http://antiserver.kuwo.cn',
+      'http://m.kuwo.cn',
+      'https://img4.kuwo.cn',
+    ],
+  },
+  linkPatterns: [],
+  policies: { order: 50, fallbackSource: true, probeable: true, aggregateLimit: 5 },
+
+  // ── 实现（方法存在 = 能力存在）──────────────────────────────
+  search: kuwoSearch,
+  getUrl: kuwoGetUrl,
+  getLyrics: kuwoGetLyrics,
+
+  // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   kuwoSearch,
   kuwoGetUrl,
   kuwoGetLyrics,

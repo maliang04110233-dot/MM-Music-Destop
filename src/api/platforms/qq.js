@@ -19,6 +19,78 @@ const {
 } = require('../../utils/cookie');
 const logger = require('../../utils/logger');
 
+/**
+ * 安全调用 qq-music-api 的路由。
+ *
+ * 为什么需要这层包装（实测踩到的上游缺陷）：
+ *   qq-music-api 的 `api()` 是
+ *     new Promise((resolve, reject) => { try { route(...) } catch (err) { reject(err) } })
+ *   而每个 route 都是 **async** 函数。于是 route 内部的抛错**不会被那个 try/catch 捕获**
+ *   （它只捕获同步抛错），而是变成一个**没人 await 的 rejected promise** ⇒
+ *   末位兜底没有 ⇒ Node 视为 unhandledRejection ⇒ **整个进程崩掉**。
+ *
+ *   实例：routes/top.js 读 `result.detail.data.data.period`，
+ *   当上游 QQ 接口返回 400（result 为 undefined）时抛
+ *   "Cannot read properties of undefined (reading 'detail')"。
+ *   实测：gateway 的 safeRun 能吞掉 `api()` 的 reject（拿到 0 条），
+ *   但**吞不掉这个游离异常** —— 首页一个板块就能把 App 打崩。
+ *
+ * 隔离策略（重要）：
+ *   游离异常**无法归属到具体调用** —— 它可能在 api() resolve 之后很久
+ *   （等真实 HTTP 往返）才冒出来，此时发出它的那次调用早返回了。因此
+ *   不能按调用窗口临时挂监听（试过：窗口一关异常就漏，反而让测试/主进程失败）。
+ *
+ *   正确做法是**模块级常驻兜底**：本模块加载时安装一次 unhandledRejection 监听，
+ *   凡是从 qq-music-api 内部逃逸的异常一律拦下并记日志，进程永不因此崩溃。
+ *   为不误伤其它模块自身的 unhandledRejection，只处理「看起来来自本 SDK」的
+ *   异常（消息特征匹配）；不匹配的交给其它监听者或 Node 默认行为。
+ *
+ *   ⚠️ 这是**上游 SDK 缺陷的隔离层**，不是业务逻辑。若将来升级 qq-music-api
+ *      且其修复了该问题，可移除（test/qq.test.js 的守卫会提示）。
+ */
+
+/** 上游 SDK 内部抛错的典型特征（route 里裸读深层字段导致） */
+const QQ_SDK_ESCAPE_RE = /Cannot read propert(?:y|ies) of undefined \(reading '[^']+'\)/;
+
+let qqEscapeSeen = 0; // 已被隔离的游离异常计数（便于诊断/测试断言）
+
+/**
+ * 判定并隔离一个来自 qq-music-api 的游离异常。
+ * 抽成纯函数便于单测（避免直接依赖 process 事件，测试运行器会拦截）。
+ *
+ * @param {*} reason
+ * @returns {boolean} true = 已识别为本 SDK 异常并隔离；false = 不归本模块管，交还上层
+ */
+function _handleQQEscape(reason) {
+  const msg = (reason && reason.message) || String(reason);
+  if (QQ_SDK_ESCAPE_RE.test(msg)) {
+    qqEscapeSeen += 1;
+    logger.warn('[qq] 已隔离 qq-music-api 上游游离异常（进程不受影响）:', msg);
+    return true;
+  }
+  // 不匹配的交给 Node 默认处理（其它监听者或抛错），不吞别人的异常。
+  return false;
+}
+
+process.on('unhandledRejection', _handleQQEscape);
+
+/**
+ * 调用 qq-music-api 路由。异常隔离由上面的模块级兜底负责，
+ * 本函数只做「统一入口 + 正常 reject 透传」，让所有调用点形状一致。
+ *
+ * @param {string} path 路由路径，如 'top'
+ * @param {object} [query]
+ * @returns {Promise<*>} 与 qqMusic.api 同语义
+ */
+function safeQQApi(path, query = {}) {
+  return qqMusic.api(path, query);
+}
+
+/** 供测试断言：已被隔离的上游游离异常次数 */
+function _qqEscapeCount() {
+  return qqEscapeSeen;
+}
+
 // 调试专辑搜索字段（临时）
 // require('qq-music-api').api('search', { key: '周杰伦', pageNo: 1, pageSize: 2, t: 8 })
 //   .then(r => { logger.log('ALBUM_RAW_FIELDS:' + JSON.stringify(Object.keys(r?.list?.[0] || {}))); })
@@ -40,7 +112,7 @@ const logger = require('../../utils/logger');
  */
 async function qqGetSingerSongs(singerMid, limit = 20) {
   try {
-    const result = await qqMusic.api('singer/songs', { singermid: singerMid, num: limit });
+    const result = await safeQQApi('singer/songs', { singermid: singerMid, num: limit });
     // 返回结构: { list: [...], singer, desc, total, num, singermid }
     // list 项字段: mid, id, name, album={mid,name}, singer=[{mid,name}], interval
     const list = result?.list || [];
@@ -69,7 +141,7 @@ async function qqGetSingerSongs(singerMid, limit = 20) {
  */
 async function qqGetSingerAlbums(singerMid, pageNo = 1, pageSize = 20) {
   try {
-    const result = await qqMusic.api('singer/album', { singermid: singerMid, pageNo, pageSize });
+    const result = await safeQQApi('singer/album', { singermid: singerMid, pageNo, pageSize });
     // 返回结构: { list, id, singermid, name, total, pageNo, pageSize }
     const list = result?.list || [];
     return {
@@ -132,7 +204,7 @@ async function qqSearchSinger(keyword, page = 1) {
 async function qqSearch(keyword, page = 1) {
   if (!keyword || typeof keyword !== 'string') return [];
   try {
-    const result = await qqMusic.api('search', {
+    const result = await safeQQApi('search', {
       key: keyword,
       pageNo: page,
       pageSize: 30,
@@ -202,7 +274,7 @@ async function qqSearchAlbum(keyword, page = 1) {
     const singerAlbums = [];
     for (const sMid of singerMids) {
       try {
-        const sa = await qqMusic.api('singer/album', {
+        const sa = await safeQQApi('singer/album', {
           singermid: sMid, pageNo: page, pageSize,
         });
         const list = sa?.list || [];
@@ -405,7 +477,7 @@ async function _tryRefreshMusickey(cookie, uin) {
  */
 async function qqGetSongDetail(mid) {
   try {
-    const result = await qqMusic.api('song', { songmid: String(mid) });
+    const result = await safeQQApi('song', { songmid: String(mid) });
     const track = result?.data?.track_info || result?.trackInfo || result?.track_info;
     if (!track || !track.mid) return null;
     return {
@@ -563,7 +635,7 @@ async function qqVerifyCookie(cookie) {
  */
 async function qqGetRecommendPlaylists(limit = 6) {
   try {
-    const result = await qqMusic.api('recommend/playlist/u');
+    const result = await safeQQApi('recommend/playlist/u');
     return (result?.list || []).slice(0, limit).map(p => {
       const cover = p.cover || p.pic || p.image || p.picUrl || p.coverUrl || '';
       return {
@@ -589,7 +661,7 @@ async function qqGetRecommendPlaylists(limit = 6) {
 async function qqGetCategoryPlaylists(categoryId = 3317, pageNo = 1, pageSize = 30) {
   try {
     // 使用 songlist/list 接口获取分类歌单
-    const result = await qqMusic.api('songlist/list', { category: categoryId, pageNo, pageSize });
+    const result = await safeQQApi('songlist/list', { category: categoryId, pageNo, pageSize });
     // result 可能是 undefined（QQ API 返回 400 时），安全兜底
     const list = (result?.data?.list || result?.list || []).map(p => {
       const cover = p.imgurl || p.cover || p.img || p.pic || p.image || '';
@@ -616,7 +688,7 @@ async function qqGetCategoryPlaylists(categoryId = 3317, pageNo = 1, pageSize = 
  */
 async function qqGetTopList(topId = 4, limit = 50) {
   try {
-    const result = await qqMusic.api('top', { id: topId, pageSize: limit });
+    const result = await safeQQApi('top', { id: topId, pageSize: limit });
     // qq-music-api 的 top 路由直接 resolve data，歌曲在 result.list
     const songs = result?.list || [];
     return songs.slice(0, limit).map(s => {
@@ -648,7 +720,7 @@ async function qqGetTopList(topId = 4, limit = 50) {
 async function qqGetNewSongs(type = 1, limit = 30) {
   try {
     // new/songs 路由参数 type 含义：0=最新, 1=内地, 2=港台, 3=欧美, 4=韩国, 5=日本
-    const result = await qqMusic.api('new/songs', { type, num: limit });
+    const result = await safeQQApi('new/songs', { type, num: limit });
     // resolve 出 data: { lan, list, type }
     const songs = result?.list || [];
     return songs.slice(0, limit).map(s => {
@@ -675,26 +747,61 @@ async function qqGetNewSongs(type = 1, limit = 30) {
 
 /**
  * QQ 首页 · 热门电台
+ *
+ * 不走上游 qq-music-api 的 radio/category 路由，它有两处不可用：
+ *   1. 打的是 http:// 明文地址（其余首页接口已是 https）；
+ *   2. 包装层把 res.data 直接 resolve 出来，返回的是「分组数组」本身，
+ *      并不是 { radio_list: [...] } —— 按 radio_list 取值恒为 undefined，
+ *      表现为「热门电台」分区永远为空（实测本可拿到 11 组 × 25 台）。
+ * 这里自己打 https 的 musicu.fcg，再把两级结构（组 → 电台）拍平。
  */
+function _radioPayload() {
+  return {
+    songlist: { module: 'mb_track_radio_svr', method: 'get_radio_track', param: { id: 99, firstplay: 1, num: 15 } },
+    radiolist: { module: 'pf.radiosvr', method: 'GetRadiolist', param: { ct: '24' } },
+    comm: { ct: 24, cv: 0 },
+  };
+}
+
+/**
+ * 把 radio/category 的两级结构拍平成电台列表（纯函数，便于无网单测）
+ * 实测响应形态：
+ *   { radiolist: { data: { radio_list: [
+ *       { id, title, group_type, list: [ { id, title, listenNum, pic_url } ] } ] } } }
+ * @param {object} raw 原始响应
+ * @param {number} limit 最多返回多少台
+ * @returns {Array<{id,name,cover,playCount,group,source}>}
+ */
+function mapRadioStations(raw, limit = 20) {
+  const out = [];
+  // limit<=0 时直接返回空：不能先 push 再判长度，否则 limit=0 会漏出 1 条
+  if (!(limit > 0)) return out;
+  const groups = raw?.radiolist?.data?.radio_list;
+  if (!Array.isArray(groups)) return out;
+  for (const g of groups) {
+    if (!Array.isArray(g?.list)) continue;
+    for (const r of g.list) {
+      if (!r || r.id === undefined || r.id === null) continue;
+      out.push({
+        id: String(r.id),
+        name: r.title || r.name || '',
+        cover: r.pic_url || r.subscript_picurl || r.picUrl || '',
+        playCount: r.listenNum || r.listen_num || 0,
+        group: g.title || '',
+        source: 'qq',
+      });
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
 async function qqGetRadioStations(limit = 20) {
   try {
-    // radio/category 返回 data: {radio_list: [{id, name, picUrlMid, ...}]}
-    const result = await qqMusic.api('radio/category');
-    const list = result?.radio_list || [];
-    return list.slice(0, limit).map(r => {
-      // 电台封面用 picUrlMid 拼
-      const picMid = r.picUrlMid || r.picurlmid || r.mid || '';
-      const cover = picMid
-        ? `https://y.gtimg.cn/music/photo/radio/300_${picMid}.jpg`
-        : (r.picUrl || r.cover || '');
-      return {
-        id: String(r.id || r.rid || ''),
-        name: r.name || r.title || '',
-        cover,
-        playCount: r.listenNum || r.playCount || 0,
-        source: 'qq',
-      };
-    });
+    const url = 'https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data=' +
+      encodeURIComponent(JSON.stringify(_radioPayload()));
+    const result = await request(url, { headers: { 'Referer': 'https://y.qq.com' } });
+    return mapRadioStations(result, limit);
   } catch (e) {
     logger.warn('[qq] getRadioStations 失败:', e.message);
     return [];
@@ -707,7 +814,7 @@ async function qqGetRadioStations(limit = 20) {
 async function qqGetHotSingers(limit = 20) {
   try {
     // singer/list 路由参数 area/sex/genre/index 任意，-100 = 不限
-    const result = await qqMusic.api('singer/list', { area: -100, sex: -100, genre: -100, index: -100, pageSize: limit });
+    const result = await safeQQApi('singer/list', { area: -100, sex: -100, genre: -100, index: -100, pageSize: limit });
     // data.list: { totalNum, totalPage, pageSize, ...}
     const list = result?.list || [];
     return list.slice(0, limit).map(s => {
@@ -733,7 +840,7 @@ async function qqGetHotSingers(limit = 20) {
  */
 async function qqGetAlbumSongs(albumMid, limit = 999) {
   try {
-    const result = await qqMusic.api('album/songs', { albummid: albumMid, begin: 0, num: limit });
+    const result = await safeQQApi('album/songs', { albummid: albumMid, begin: 0, num: limit });
     // 返回结构: { list: [...songInfo], total, albummid }
     const list = result?.list || [];
     return list.map(s => ({
@@ -763,7 +870,7 @@ async function qqGetAlbumSongs(albumMid, limit = 999) {
 async function qqGetLyrics(songmid) {
   if (!songmid) return '';
   try {
-    const result = await qqMusic.api('lyric', { songmid });
+    const result = await safeQQApi('lyric', { songmid });
     const lrc = result?.lyric || result?.data?.lyric || '';
     return lrc;
   } catch (e) {
@@ -777,7 +884,7 @@ async function qqGetLyrics(songmid) {
  */
 async function qqGetPlaylistSongs(id, limit = 200) {
   try {
-    const result = await qqMusic.api('songlist', { id });
+    const result = await safeQQApi('songlist', { id });
     return (result?.songlist || []).slice(0, limit).map(s => {
       // 兼容多种字段：songmid / mid / id
       const songmid = s.songmid || s.mid || s.id || '';
@@ -800,6 +907,48 @@ async function qqGetPlaylistSongs(id, limit = 200) {
 }
 
 module.exports = {
+  // ── PlatformManifest（v3 单一事实来源）──────────────────────
+  id: 'qq',
+  name: 'QQ音乐',
+  nameEn: 'QQ Music',
+  icon: '🎶',
+  badge: { bg: 'rgba(255,204,0,.12)', fg: 'var(--c-warn)', border: 'rgba(255,204,0,.2)' },
+  hosts: { origins: ['https://y.qq.com'] },
+  linkPatterns: [
+    // 单曲新版路由：/n/ryqq/songDetail/MID（mid 是 14 位字母数字）
+    { type: 'song', re: /y\.qq\.com\/n\/ryqq\/(?:songDetail|player)\/([A-Za-z0-9]{10,18})(?:[?/]|$)/, extract: m => m[1] },
+    // 单曲播放页：playsong.html?songmid=XXX
+    { type: 'song', re: /y\.qq\.com\/[^?]*playsong\.html[^"'\s]*?[?&]songmid=([A-Za-z0-9]{10,18})/, extract: m => m[1] },
+    // 专辑：/n/ryqq/albumDetail/MID
+    { type: 'album', re: /y\.qq\.com\/n\/ryqq\/albumDetail\/([A-Za-z0-9]{10,18})(?:[?/]|$)/, extract: m => m[1] },
+  ],
+  // aggregateLimit 10：第二位源，同 netease，改为显式声明
+  policies: { order: 20, fallbackSource: true, probeable: true, aggregateLimit: 10 },
+
+  // ── 实现（方法存在 = 能力存在）──────────────────────────────
+  search: qqSearch,
+  getUrl: qqGetUrl,
+  getLyrics: qqGetLyrics,
+  getSongDetail: qqGetSongDetail,
+  verifyCookie: qqVerifyCookie,
+  searchAlbum: qqSearchAlbum,
+  getAlbumSongs: qqGetAlbumSongs,
+  searchSinger: qqSearchSinger,
+  getSingerSongs: qqGetSingerSongs,
+  getSingerAlbums: qqGetSingerAlbums,
+  // 歌单 / 推荐域（v3 阶段 1 收尾：正式纳入 manifest）
+  getPlaylistSongs: qqGetPlaylistSongs,
+  getRecommendPlaylists: qqGetRecommendPlaylists,
+  getCategoryPlaylists: qqGetCategoryPlaylists,
+  getTopList: qqGetTopList,
+  getNewSongs: qqGetNewSongs,
+  getRadioStations: qqGetRadioStations,
+  getHotSingers: qqGetHotSingers,
+
+  // ── 纯函数（无网单测用）────────────────────────────────────
+  _internal: { mapRadioStations, _radioPayload, _qqEscapeCount, _handleQQEscape },
+
+  // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   qqSearch,
   qqSearchAlbum,
   qqSearchSinger,

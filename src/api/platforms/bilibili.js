@@ -211,6 +211,34 @@ async function bilibiliGetRanking(limit = 10, cookie = '') {
 }
 
 module.exports = {
+  // ── PlatformManifest（v3 单一事实来源）──────────────────────
+  id: 'bilibili',
+  name: 'B站',
+  nameEn: 'Bilibili',
+  icon: '📺',
+  badge: { bg: 'rgba(0,180,230,.12)', fg: 'var(--accent-ui)', border: 'rgba(0,180,230,.2)' },
+  hosts: { origins: ['https://www.bilibili.com'] },
+  linkPatterns: [
+    // 视频：/video/BVxxxx
+    { type: 'song', re: /bilibili\.com\/video\/(BV[A-Za-z0-9]{8,12})(?:[?/\s]|$)/, extract: m => m[1] },
+    // 音频：/audio/auxxxx
+    { type: 'song', re: /bilibili\.com\/audio\/(au\d{5,12})(?:[?/\s]|$)/, extract: m => m[1] },
+  ],
+  // ⚠️ fallbackSource: false —— 唯一不参与跨源换源的平台。
+  // B 站搜索结果的 artist 是 UP 主名，与音乐源的真实歌手永远对不上，
+  // 参与换源只会制造错配（把翻唱合集 / DJ 版误当原曲）。
+  policies: { order: 30, fallbackSource: false, probeable: true, aggregateLimit: 5 },
+
+  // ── 实现（方法存在 = 能力存在）──────────────────────────────
+  search: bilibiliSearch,
+  getUrl: bilibiliGetUrl,
+  getSongDetail: bilibiliGetSongDetail,
+  verifyCookie: bilibiliVerifyCookie,
+  // 排行（v3 阶段 1 收尾：正式纳入 manifest。signature 含 cookie 末位参数，
+  // 由 gateway 的 withCookie 选项负责注入）
+  getRanking: bilibiliGetRanking,
+
+  // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   bilibiliSearch,
   bilibiliGetUrl,
   bilibiliGetSongDetail,

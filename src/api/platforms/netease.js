@@ -319,6 +319,43 @@ async function neteaseGetAlbumSongs(albumId, limit = 999) {
 }
 
 module.exports = {
+  // ── PlatformManifest（v3 单一事实来源）──────────────────────
+  id: 'netease',
+  name: '网易云音乐',
+  nameEn: 'NetEase',
+  icon: '🎵',
+  badge: { bg: 'rgba(230,50,50,.15)', fg: 'var(--c-danger)', border: 'rgba(230,50,50,.2)' },
+  hosts: { origins: ['https://music.163.com'] },
+  linkPatterns: [
+    // 歌曲：/song?id=123 或 /song/#/123（旧版 hash 路由）
+    { type: 'song', re: /music\.163\.com\/song(?:\/#\/|#\/)?(?:\?id=|\/)?(\d{4,15})/, extract: m => m[1] },
+    // 专辑：/album?id=123 或 /album/123
+    { type: 'album', re: /music\.163\.com\/album(?:\?id=|\/)(\d{4,15})/, extract: m => m[1] },
+    // 歌单：/playlist?id=123（当作专辑处理——上层逐首入队）
+    { type: 'playlist', re: /music\.163\.com\/playlist(?:\?id=|\/)(\d{4,15})/, extract: m => m[1] },
+  ],
+  // aggregateLimit 10：首位源（原先由数组下标 i===0/1 隐式决定的 10 条，
+  // 改为显式声明，避免插入新平台时静默改变聚合条数）
+  policies: { order: 10, fallbackSource: true, probeable: true, aggregateLimit: 10 },
+
+  // ── 实现（方法存在 = 能力存在）──────────────────────────────
+  search: neteaseSearch,
+  getUrl: neteaseGetUrl,
+  getLyrics: neteaseGetLyrics,
+  getSongDetail: neteaseGetSongDetail,
+  verifyCookie: neteaseVerifyCookie,
+  searchAlbum: neteaseSearchAlbum,
+  getAlbumSongs: neteaseGetAlbumSongs,
+  searchSinger: neteaseSearchSinger,
+  getSingerSongs: neteaseGetSingerSongs,
+  getSingerAlbums: neteaseGetSingerAlbums,
+  // 歌单 / 推荐域（v3 阶段 1 收尾：正式纳入 manifest，
+  // 使 gateway 与 capabilities 可从方法存在性推导，不再靠硬编码映射表）
+  getPlaylistSongs: neteaseGetPlaylistDetail,
+  getTopList: neteaseGetTopList,
+  getRecommendPlaylists: neteaseGetRecommendPlaylists,
+
+  // ── 老式具名导出（阶段 3 清理前保留）────────────────────────
   neteaseSearch,
   neteaseGetUrl,
   neteaseGetLyrics,

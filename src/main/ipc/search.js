@@ -119,16 +119,29 @@ function register() {
     }
   });
 
+  // ── 平台清单（v3）───────────────────────────────
+  // 渲染层的平台名 / 图标 / 徽标配色 / 下拉选项 / 能力全部由这一次调用驱动。
+  // 渲染层不再持有任何平台 id 清单，新增平台无需改动渲染层一行。
+  ipcMain.handle('get-platforms', () => {
+    try {
+      return api.registry.toClientPayload();
+    } catch (e) {
+      logger.warn('获取平台清单失败:', e.message || e);
+      return [];
+    }
+  });
+
   // ── 源可用性探针（P2）─────────────────────────────
   // 被动健康度快照：getDownloadUrlSmart 各环节记的滑动窗口统计
   ipcMain.handle('get-source-health', () => {
-    return api.getSourceHealthMap(['netease', 'qq', 'kugou', 'kuwo', 'bilibili']);
+    // 探针源清单由 registry 派生（原先此数组在本文件被手抄两遍）
+    return api.getSourceHealthMap(api.registry.getProbeSources());
   });
 
   // 主动探测：各源搜一首公共曲并尝试取流。搜索通=源可达；取流通=源健康。
   // 探测结果记入 sourceHealth 滑动窗口（与真实下载共用同一分数）。
   ipcMain.handle('probe-sources', async () => {
-    const PROBE_SOURCES = ['netease', 'qq', 'kugou', 'kuwo', 'bilibili'];
+    const PROBE_SOURCES = api.registry.getProbeSources();
     const KEYWORD = '周杰伦 晴天';
     const withTimeout = (p) => Promise.race([
       p,

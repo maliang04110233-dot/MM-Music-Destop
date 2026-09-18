@@ -25,6 +25,7 @@ const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const { defaultRegistry, loadPlatformPlugins } = require('../src/api/pluginRegistry');
+const { createPlatformGateway } = require('../src/api/gateway');
 loadPlatformPlugins();
 const reg = defaultRegistry;
 
@@ -365,6 +366,41 @@ test('守卫：api/index.js 不再 require 平台模块（平台清单不得长�
   assert.ok(/loadPlatformPlugins/.test(src), 'api/index.js 应通过 loadPlatformPlugins 自动发现');
 });
 
+test('守卫：换源策略实现只能在 resolveTrackService（api/index.js 只留薄 facade）', () => {
+  const idx = read('src/api/index.js');
+  const svc = read('src/api/services/resolveTrackService.js');
+
+  // 1) 换源决策函数不得再在 api/index.js 里重新实现
+  assert.ok(
+    !/function shouldFallbackToOtherSource/.test(idx),
+    'api/index.js 不应再自带 shouldFallbackToOtherSource —— '
+    + '换源决策已归 resolveTrackService，写回即产生第二份实现',
+  );
+  assert.ok(
+    !/FALLBACK_CODES\s*=\s*new Set/.test(idx),
+    'api/index.js 不应再自带换源错误码集合（应引用 resolveTrackService 的 FALLBACK_CODES）',
+  );
+
+  // 2) api/index.js 的 smart 取流应是**薄委托**（函数体只做 return service.resolve）
+  const m = /async function getDownloadUrlSmart\([\s\S]*?\n\}/.exec(idx);
+  assert.ok(m, 'api/index.js 应保留 getDownloadUrlSmart facade（兼容签名）');
+  assert.ok(
+    /resolveTrack\.resolve\(/.test(m[0]),
+    'getDownloadUrlSmart 应委托给 resolveTrack.resolve —— facade 不得再内联策略',
+  );
+  assert.ok(
+    m[0].split('\n').length < 12,
+    `getDownloadUrlSmart facade 应保持轻薄（当前 ${m[0].split('\n').length} 行）；`
+    + '策略逻辑属于 resolveTrackService',
+  );
+
+  // 3) service 侧：决策函数可被独立导出与断言
+  assert.ok(
+    /function shouldFallbackToOtherSource/.test(svc) && /FALLBACK_CODES/.test(svc),
+    'resolveTrackService 应实现并导出换源决策与错误码集合',
+  );
+});
+
 // ══════════════════════════════════════════════════════════
 // 5. 尚未被 registry 覆盖的耦合点（存在但已被"钉住"）
 // ══════════════════════════════════════════════════════════
@@ -436,6 +472,62 @@ test('守卫：所有消费方均不直连平台模块（gateway 是唯一调用
     offenders, [],
     '以下文件绕过 gateway 直连平台模块（应改走 gateway）：\n  ' + offenders.join('\n  '),
   );
+});
+
+// ── 推荐域：能力由 manifest 推导，gateway 不持有平台→方法字典 ──
+
+test('守卫：gateway 不持有「平台 id → 实现名」字典（能力须由 manifest 推导）', () => {
+  const src = read('src/api/gateway.js');
+  // 过渡期的 RECOMMEND_METHODS 字典已删除；一旦有人写回即红。
+  assert.ok(
+    !/RECOMMEND_METHODS/.test(src),
+    'gateway 不应再持有平台→实现名的映射字典：'
+    + '推荐域方法应由 manifest 标准名直接推导（见 CAPABILITY_METHODS）',
+  );
+  // 反向守卫：gateway 文件内不应出现平台 id 字面量作为映射键。
+  const ids = reg.getIds();
+  const hardcoded = ids.filter((id) => new RegExp(`^\\s*${id}\\s*:\\s*\\{`, 'm').test(src));
+  assert.deepStrictEqual(
+    hardcoded, [],
+    `gateway.js 出现平台 id 映射表（${hardcoded.join(', ')}）—— `
+    + '平台清单必须只存在于 platforms/ 目录',
+  );
+});
+
+test('守卫：registry 能力表覆盖 gateway 暴露的全部推荐域方法', () => {
+  // gateway 的推荐域接口名 → registry 能力位名。
+  // 两者必须一一对应：少一个能力位，该接口在 platformsWith 下就会消失。
+  const EXPECTED = {
+    getTopList: 'topList',
+    getRecommendPlaylists: 'recommendPlaylists',
+    getCategoryPlaylists: 'categoryPlaylists',
+    getNewSongs: 'newSongs',
+    getRadioStations: 'radioStations',
+    getHotSingers: 'hotSingers',
+    getRanking: 'ranking',
+    getPlaylistSongs: 'playlistSongs',
+  };
+
+  const gw = createPlatformGateway({ registry: reg });
+  for (const [method, cap] of Object.entries(EXPECTED)) {
+    assert.strictEqual(typeof gw[method], 'function', `gateway 应暴露 ${method}()`);
+
+    // 真实推导验证：注册一个只实现该方法的桩平台，
+    // registry 必须能由方法存在性推导出对应能力位。
+    const id = `probe_${cap}`;
+    reg.register({
+      id, name: id,
+      hosts: { origins: ['https://example.com'] },
+      policies: { order: 1 },
+      search: async () => [], getUrl: async () => ({}),
+      [method]: async () => [],
+    });
+    assert.strictEqual(
+      reg.getCapabilities(id)[cap], true,
+      `registry 未从 ${method}() 推导出 ${cap} 能力位 —— `
+      + '请把该映射补进 pluginRegistry.CAPABILITY_METHODS',
+    );
+  }
 });
 
 test('守卫：settings.js 的 Cookie 账号卡 == registry 的 cookie 能力平台 == index.html 的卡片', () => {
