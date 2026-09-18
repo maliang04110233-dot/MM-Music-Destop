@@ -1354,3 +1354,12 @@
 .dl-template-path { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: monospace; }
 .dl-template-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
 .dl-template-item:hover .dl-template-actions { opacity: 1; }
+
+/* ── 红心收藏 ───────────────────────────────────── */
+/* 已收藏的心常驻高亮，不受行的 hover-reveal 影响 */
+.heart-btn { color: var(--neon-dim); font-size: 15px; line-height: 1; }
+.heart-btn:hover { color: var(--neon-pink); }
+.heart-btn.fav-on { color: var(--neon-pink); opacity: 1; }
+.heart-btn.fav-on:hover { color: var(--neon-dim); }
+.top-song-action.heart-btn { font-size: 13px; }
+

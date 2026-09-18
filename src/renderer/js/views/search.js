@@ -3,6 +3,7 @@
  */
 
 import { logger } from '../logger.js';
+import { heartBtnHtml } from '../favorites.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -591,7 +592,8 @@ async function downloadAlbum(albumMid, source) {
   try {
     const songs = await api.getAlbumSongs(source || 'qq', albumMid, 999);
     if (!songs.length) { showToast('专辑无歌曲', 'warn'); return; }
-    const quality = document.getElementById('qualitySelect').value;
+    // 整张专辑同源，取首首的 source 解析
+    const quality = resolveQuality((songs[0] && songs[0].source) || source || 'qq');
     const saveDir = getState('saveDir');
     let queued = 0, dlSkipped = 0;
     for (const s of songs) {
@@ -727,6 +729,7 @@ function renderSongList(list) {
       <span class="song-duration">${fmtDuration(s.duration)}</span>
       <span class="source-badge badge-${s.source}">${srcLabel(s.source)}</span>
       <div class="song-actions">
+        ${heartBtnHtml(s)}
         <button class="action-btn" title="试听" onclick="playSong(${i})">▶</button>
         <button class="action-btn download-btn" title="下载" onclick="addDownload(${i})">⬇</button>
       </div>
@@ -781,7 +784,6 @@ async function batchDownload() {
   if (!selected.size) { showToast('请先勾选要下载的歌曲', 'warn'); return; }
 
   const toAdd = Array.from(selected).map(i => songs[i]).filter(Boolean);
-  const quality = document.getElementById('qualitySelect').value;
   const saveDir = getState('saveDir');
   let queued = 0, skipped = 0, dlSkipped = 0;
   const total = toAdd.length;
@@ -803,7 +805,7 @@ async function batchDownload() {
     if (existing) { skipped++; } else {
       try {
         // 批量场景：历史已下载且文件还在 → 主进程静默跳过，这里只计数
-        const r = await api.addToQueue({ ...s, saveDir, quality });
+        const r = await api.addToQueue({ ...s, saveDir, quality: resolveQuality(s.source) });
         if (r && r.queued) queued++;
         else if (r && r.alreadyDownloaded) dlSkipped++;
       } catch (e) { logger.warn('加入队列失败:', s.title, e.message); }
@@ -849,7 +851,8 @@ async function addDownload(idx) {
     const existing = (state.get('queueSnapshot') || []).find(q =>
       q.id === s.id && q.source === s.source && q.status !== 'done');
     if (existing) { showToast(`「${s.title}」已在队列中`, 'warn', 2500); return; }
-    const quality = document.getElementById('qualitySelect').value;
+    // 单曲下载：按这首歌自身的平台解析音质
+    const quality = resolveQuality(s.source);
     const saveDir = getState('saveDir');
     const r = await api.addToQueue({ ...s, saveDir, quality });
     if (r && r.duplicated) { showToast(`「${s.title}」已在下载队列中`, 'warn', 2500); return; }
@@ -875,7 +878,7 @@ async function playSong(idx) {
   const songs = getState('songs');
   const s = songs[idx];
   if (!s) { showToast('未找到歌曲', 'warn'); return; }
-  const quality = document.getElementById('qualitySelect')?.value || 'standard';
+  const quality = resolveQuality(s.source);
   showToast(`正在准备音源：${s.title}`, 'info');
   const reqId = ++_searchPlayRequestId;
   try {

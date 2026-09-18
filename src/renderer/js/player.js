@@ -6,6 +6,7 @@
  */
 
 import { logger } from './logger.js';
+import { resolveQuality } from './quality.js';
 import {
   addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
   restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
@@ -374,7 +375,7 @@ let _playRequestId = 0;
 
 async function playSongByIdx(idx, song) {
   if (!song) return;
-  const quality = document.getElementById('qualitySelect')?.value || 'standard';
+  const quality = resolveQuality(song.source);
   const reqId = ++_playRequestId;
   try {
     const result = await api.getDownloadUrlSmart(song, quality);

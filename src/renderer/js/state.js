@@ -201,13 +201,42 @@ const store = {
   getComputed,
 };
 
+/**
+ * 收藏（红心）派生状态
+ *
+ * 收藏歌单是 userPlaylists 里 id 为 favorites 的系统歌单（见 main/ipc/playlist.js），
+ * 红心状态一律从它派生，不维护第二份集合 —— 否则两处必然漂移。
+*/
+
+const FAVORITES_PLAYLIST_ID = 'favorites';
+
+function favKey(source, id) {
+  return String(id) + ':' + String(source || '');
+}
+
+function favoritesPlaylistOf(pls) {
+  return (Array.isArray(pls) ? pls : []).find(pl => pl && pl.id === FAVORITES_PLAYLIST_ID) || null;
+}
+
+/** 收藏歌曲键集合，键为 "id:source"，与主进程 songKey 一致 */
+function favoriteKeysOf(pls) {
+  const pl = favoritesPlaylistOf(pls);
+  const keys = new Set();
+  for (const s of (pl && pl.songs) || []) keys.add(String(s.id) + ':' + String(s.source || ''));
+  return keys;
+}
+
+computed('favoriteKeys', ['userPlaylists'], favoriteKeysOf);
+computed('favoritesPlaylist', ['userPlaylists'], favoritesPlaylistOf);
+
 // 代理访问常用顶层变量
 function getState(key) { return store.get(key); }
 function setState(key, val) { return store.set(key, val); }
 function notify(key) { store.emit(key); }
 
 // ── ES Module 导出 ──────────────────────────────────────
-export { __state, store, getState, setState, subscribe, notify, batch, computed, getComputed };
+export { __state, store, getState, setState, subscribe, notify, batch, computed, getComputed,
+  FAVORITES_PLAYLIST_ID, favKey };
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.__state = __state;

@@ -53,7 +53,7 @@ const SAFE_CHANNELS_INVOKE = new Set([
   'preview-naming-template',
   'get-search-history', 'set-search-history',
   'get-user-playlists', 'save-user-playlist', 'delete-user-playlist',
-  'add-to-user-playlist', 'remove-from-user-playlist',
+  'add-to-user-playlist', 'remove-from-user-playlist', 'toggle-favorite',
   'export-playlist', 'delete-file', 'rename-file',
   'check-for-update', 'download-update', 'restart-and-install',
   'flush-prefs', 'flush-history',
@@ -152,6 +152,7 @@ const METHOD_MAP = {
   deleteUserPlaylist: 'delete-user-playlist',
   addToUserPlaylist: 'add-to-user-playlist',
   removeFromUserPlaylist: 'remove-from-user-playlist',
+  toggleFavorite: 'toggle-favorite',
   // 云
   exportAllData: 'export-all-data',
   importAllData: 'import-all-data',

@@ -17,6 +17,7 @@ import './router.js';
 
 // 播放器和快捷键
 import { updateProgress, onAudioEnded, parseLrc, showNoLyrics } from './player.js';
+import { heartBtnHtml } from './favorites.js';
 import './shortcuts.js';
 
 // 播放状态外发同步 + 队列恢复（自 init() 内闭包提出，等价迁移）
@@ -37,6 +38,7 @@ import './views/ai-music.js';
 import './converter-core.js';
 import './views/converter.js';
 import './views/playlist.js';
+import './favorites.js';
 import './player-controls.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
@@ -666,6 +668,7 @@ function renderPlaylistModal(songs) {
       </div>
       <span class="source-badge badge-${s.source}">${srcLabel(s.source)}</span>
       <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendSong(state.getPlaylistSongs()[${i}])">▶</button>
+      ${heartBtnHtml(s, 'top-song-action')}
       <button class="top-song-action" title="下载" onclick="event.stopPropagation();addSingleToQueue(${i})">⬇</button>
     </div>
   `;
@@ -733,9 +736,8 @@ async function addSingleToQueue(idx) {
   const s = state.getPlaylistSongs()[idx];
   if (!s) return;
   try {
-    const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    const task = { ...s, ...playlistTaskMeta(idx), saveDir, quality };
+    const task = { ...s, ...playlistTaskMeta(idx), saveDir, quality: resolveQuality(s.source) };
     const r = await api.addToQueue(task);
     if (r && r.duplicated) {
       showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
@@ -779,9 +781,9 @@ async function addPlaylistToQueueClick(skipExisting) {
     return;
   }
   try {
-    const quality = document.getElementById('qualitySelect')?.value || 'standard';
     const saveDir = getState('saveDir');
-    const payload = { songs: toAdd.map(({ s, idx }) => ({ ...s, ...playlistTaskMeta(idx), saveDir, quality })) };
+    // 每首歌按自身平台解析：分平台模板优先，未定制的平台沿用搜索栏选择
+    const payload = { songs: toAdd.map(({ s, idx }) => ({ ...s, ...playlistTaskMeta(idx), saveDir, quality: resolveQuality(s.source) })) };
     const r = await api.addPlaylistToQueue(payload);
     const dlSkipped = r && r.skippedDownloaded ? r.skippedDownloaded : 0;
     let msg = `已加入 ${r.queued} 首`;

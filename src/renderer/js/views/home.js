@@ -16,6 +16,8 @@
  */
 
 import { logger } from '../logger.js';
+import { heartBtnHtml } from '../favorites.js';
+import { resolveQuality } from '../quality.js';
 
 // ── 分区注册表 ────────────────────────────────────────────
 // 新增一个区块 = 这里加一行；DOM、锚点、懒加载、状态统计自动跟上
@@ -434,6 +436,7 @@ function songRowsHtml(meta, songs) {
       <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendById('${escAttr(meta.sec)}',${i})">▶</button>
       <button class="top-song-action" title="下载" onclick="event.stopPropagation();addRecommendDownload('${escAttr(meta.sec)}',${i})">⬇</button>
       <button class="top-song-action" title="添加到歌单" onclick="event.stopPropagation();quickAddRecommendToPlaylist('${escAttr(meta.sec)}',${i})">📋</button>
+      ${heartBtnHtml(s, 'top-song-action')}
     </div>
   `).join('');
 }
@@ -458,7 +461,7 @@ async function playRecommendById(sec, idx) {
 
 async function playRecommendSong(song) {
   if (!song) return;
-  const quality = document.getElementById('qualitySelect')?.value || 'standard';
+  const quality = resolveQuality(song.source);
   showToast(`正在准备音源：${song.title}`, 'info');
   try {
     const result = await api.getDownloadUrlSmart(song, quality);
@@ -505,7 +508,7 @@ async function addRecommendDownload(sec, idx) {
     return;
   }
   try {
-    const quality = document.getElementById('qualitySelect')?.value || 'standard';
+    const quality = resolveQuality(song.source);
     const saveDir = getState('saveDir');
     const r = await api.addToQueue({ ...song, saveDir, quality });
     if (r && r.duplicated) {

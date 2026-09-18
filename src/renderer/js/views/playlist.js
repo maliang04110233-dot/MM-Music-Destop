@@ -10,6 +10,8 @@
 
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
+import { HEART_ON } from '../favorites.js';
+import { resolveQuality } from '../quality.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -47,7 +49,7 @@ function renderPlaylistList(playlists) {
   container.innerHTML = playlists.map(pl => `
     <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escAttr(pl.id)}')">
       <div class="playlist-card-cover">
-        ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : '<div class="playlist-card-placeholder">📋</div>'}
+        ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : `<div class="playlist-card-placeholder">${pl.system ? HEART_ON : '📋'}</div>`}
         <div class="playlist-card-overlay">
           <span class="playlist-card-count">${pl.songs?.length || 0} 首</span>
         </div>
@@ -57,8 +59,10 @@ function renderPlaylistList(playlists) {
         ${pl.desc ? `<div class="playlist-card-desc">${esc(pl.desc)}</div>` : ''}
       </div>
       <div class="playlist-card-actions" onclick="event.stopPropagation()">
-        <button class="action-btn" onclick="editPlaylist('${escAttr(pl.id)}')" title="编辑">✏️</button>
-        <button class="action-btn" onclick="deletePlaylist('${escAttr(pl.id)}')" title="删除">🗑️</button>
+        ${pl.system
+          ? ''
+          : `<button class="action-btn" onclick="editPlaylist('${escAttr(pl.id)}')" title="编辑">✏️</button>
+        <button class="action-btn" onclick="deletePlaylist('${escAttr(pl.id)}')" title="删除">🗑️</button>`}
       </div>
     </div>
   `).join('');
@@ -111,7 +115,7 @@ function renderPlaylistDetailSongs(songs) {
       <div class="song-actions">
         <button class="action-btn" onclick="playPlaylistSong(${idx})" title="播放">▶</button>
         <button class="action-btn" onclick="addPlaylistSongToQueue(${idx})" title="加入播放队列">➕</button>
-        <button class="action-btn" onclick="removeSongFromPlaylist('${escAttr(String(song.id))}')" title="从歌单移除">✕</button>
+        <button class="action-btn" onclick="removeSongFromPlaylist('${escQ(String(song.id))}','${escQ(String(song.source || ''))}')" title="从歌单移除">✕</button>
       </div>
     </div>
   `).join('');
@@ -122,7 +126,7 @@ async function playPlaylistSong(idx) {
   const songs = _currentDetailSongs;
   const song = songs[idx];
   if (!song) { showToast('未找到歌曲', 'warn'); return; }
-  const quality = document.getElementById('qualitySelect')?.value || 'standard';
+  const quality = resolveQuality(song.source);
   showToast(`正在准备音源：${song.title}`, 'info');
   const reqId = ++_playlistPlayRequestId;
   try {
@@ -176,15 +180,19 @@ function addPlaylistSongToQueue(idx) {
 }
 
 // ── 从歌单移除歌曲 ─────────────────────────────────────
-async function removeSongFromPlaylist(songId) {
+async function removeSongFromPlaylist(songId, source) {
   if (!_currentPlaylistId) return;
   try {
-    const result = await api.removeFromUserPlaylist(_currentPlaylistId, String(songId));
+    const result = await api.removeFromUserPlaylist(_currentPlaylistId, String(songId), String(source || ''));
     if (result.success) {
       const playlists = getState('userPlaylists') || [];
       const pl = playlists.find(p => p.id === _currentPlaylistId);
       if (pl) {
-        pl.songs = pl.songs.filter(s => String(s.id) !== String(songId));
+        pl.songs = pl.songs.filter(s => !(
+          String(s.id) === String(songId) &&
+          String(s.source || '') === String(source || '')
+        ));
+        setState('userPlaylists', playlists);
         renderPlaylistDetailSongs(pl.songs);
         renderPlaylistList(playlists);
       }
