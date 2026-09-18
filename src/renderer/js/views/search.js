@@ -4,7 +4,7 @@
 
 import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
-import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
+import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -153,6 +153,16 @@ function hideSearchSuggestions() {
 // 输入框外（搜索页激活）：↑/↓ 高亮结果行，Enter 将高亮曲加入下载队列
 let _kbdIdx = -1;
 let _rowIdx = -1;
+let _visibleIdxMap = [];        // 当前可见行 → 原始 songs 索引（「隐藏已下载」过滤后不回移）
+let _hideDownloaded = false;    // 搜索页过滤开关
+
+/** 「隐藏已下载」切换：会话级开关，仅影响渲染，不动数据 */
+function toggleHideDownloaded() {
+  _hideDownloaded = !_hideDownloaded;
+  const btn = document.getElementById('hideDlToggle');
+  if (btn) btn.classList.toggle('active', _hideDownloaded);
+  if (_dlLastList) renderSongList(_dlLastList);
+}
 let _lastRenderedSongList = null;
 
 function searchInputKey(e) {
@@ -228,7 +238,7 @@ function searchListKey(e) {
   }
   if (e.key === 'Enter' && _rowIdx >= 0 && _rowIdx < rows.length) {
     e.preventDefault();
-    addDownload(_rowIdx);
+    addDownload(_visibleIdxMap[_rowIdx] ?? _rowIdx);
     return true;
   }
   return false;
@@ -819,8 +829,26 @@ function renderSongList(list) {
   } else {
     el.classList.remove('batch-mode');
   }
+  // 「隐藏已下载」：过滤掉徽标已是 done 的行；行内 onclick 全部用原始索引，
+  // 可见行 → 原始索引的映射存 _visibleIdxMap 供键盘导航回查
+  let pairs = list.map((s, i) => [s, i]);
+  let hiddenCount = 0;
+  if (_hideDownloaded && _searchType === 'song') {
+    const kept = pairs.filter(([s]) => dlStatusFor(s, _dlQueue) !== 'done');
+    hiddenCount = pairs.length - kept.length;
+    pairs = kept;
+  }
+  _visibleIdxMap = pairs.map(p => p[1]);
+  if (!pairs.length && hiddenCount) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">✔</div>
+      <div class="empty-text">本页 ${hiddenCount} 首都已下载</div>
+      <div class="empty-hint"><button class="btn-sm" onclick="toggleHideDownloaded()">取消隐藏</button></div>
+    </div>`;
+    return;
+  }
   const selected = getState('selectedSongs') || new Set();
-  el.innerHTML = list.map((s, i) => {
+  el.innerHTML = pairs.map(([s, i]) => {
     const checked = selected.has(i) ? 'checked' : '';
     return `
     <div class="song-row" ondblclick="playSong(${i})">
@@ -1110,6 +1138,7 @@ window.switchSource = switchSource;
 window.addDownload = addDownload;
 window.searchInputKey = searchInputKey;
 window.searchListKey = searchListKey;
+window.toggleHideDownloaded = toggleHideDownloaded;
 window.showSearchHistory = showSearchHistory;
 window.hideSearchHistory = hideSearchHistory;
 window.clearSearchHistory = clearSearchHistory;
