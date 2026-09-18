@@ -210,6 +210,12 @@ async function downloadPlaylistSong(idx) {
   }
 }
 
+/** 「▶ 播放全部」：整单进播放队列从第一首起连播（复用 playPlaylistSong 全语义） */
+async function playAllPlaylist() {
+  if (!_currentDetailSongs.length) { showToast('歌单为空', 'warn'); return; }
+  await playPlaylistSong(0);
+}
+
 async function downloadAllPlaylist() {
   const songs = _currentDetailSongs.slice();
   if (!songs.length) { showToast('歌单为空', 'warn'); return; }
@@ -449,6 +455,7 @@ window.playPlaylistSong = playPlaylistSong;
 window.addPlaylistSongToQueue = addPlaylistSongToQueue;
 window.downloadPlaylistSong = downloadPlaylistSong;
 window.downloadAllPlaylist = downloadAllPlaylist;
+window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
 window.closePlaylistEditor = closePlaylistEditor;
