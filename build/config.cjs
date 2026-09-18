@@ -28,10 +28,72 @@ module.exports = {
     'scripts/**/*',
     'assets/**/*',
     'package.json',
+    // ⚠️ package-lock.json 无法通过这里打进包 —— app-builder-lib 在
+    // fileMatcher 的默认忽略清单里硬编码排除了它（连同 yarn.lock /
+    // pnpm-lock.yaml / bun.lock），优先级高于本 files 数组，写了也无效。
+    // 故版本号一致性只能靠 scripts/version-bump.js 在源头同步，
+    // 并由 scripts/smoke-asar.js 以「缺失即跳过」的方式记录，不当作失败。
     '!**/test/**',
     '!**/__tests__/**',
     '!**/*.map',
     '!**/*.tsbuildinfo',
+
+    // ── 剔除 jade 模版引擎依赖链（asar 减重 3.70 MB / 10.1%）──────
+    // 来源：qq-music-api 的 dependencies 声明了 jade ~1.11.0，但该 SDK
+    // 被本仓使用的入口是 node/index.js（main 字段），其 require 链为
+    //   node/index.js → ./routes、../util/cache、../util/request
+    // 全程不碰 jade；jade 只服务于该 SDK 自带的 express web server
+    // （server.js，本仓从不加载）。属上游多声明的装饰性依赖。
+    //
+    // 判定依据（三重验证，均可复现）：
+    //   1. 运行时插桩：hook Module._load 遍历 src/ 全部 58 个模块 +
+    //      两个 SDK 入口，jade 及下列包**从未被 require**；
+    //   2. 静态扫描：全仓（src + 各 SDK + express 等）grep jade 链包的
+    //      require 点，jade 链外部命中数为 0；
+    //   3. 归属确认：uglify-js / with / clean-css / transformers /
+    //      constantinople 仅被 jade 引用，source-map 与 acorn 亦只被
+    //      uglify-js 引用，均无旁路依赖。
+    //
+    // ⚠️ 与 express 的区别：express 虽也只被 server.js 使用，但
+    // NeteaseCloudMusicApi/main.js 末尾有一句**无条件的**
+    //   Object.assign(module.exports, require('./server'))
+    // 会在加载即拉入 express 整棵树 —— 故 express/body-parser/raw-body/
+    // finalhandler/serve-static 等**不可删**。切勿照着「server 才用」
+    // 的直觉一刀切。
+    //
+    // 维护提示：若将来升级 qq-music-api 到改用 jade 渲染的接口，需先
+    // 运行 scripts/check-dead-deps.cjs 复验，再移除本段排除项。
+    '!node_modules/jade/**',
+    '!node_modules/uglify-js/**',
+    '!node_modules/with/**',
+    '!node_modules/clean-css/**',
+    '!node_modules/transformers/**',
+    '!node_modules/constantinople/**',
+    '!node_modules/character-parser/**',
+    '!node_modules/is-promise/**',
+    '!node_modules/jstransformer/**',
+    '!node_modules/promise/**',
+    '!node_modules/asap/**',
+    '!node_modules/acorn/**',
+    '!node_modules/acorn-globals/**',
+    '!node_modules/css/**',
+    '!node_modules/css-parse/**',
+    '!node_modules/css-stringify/**',
+    '!node_modules/void-elements/**',
+    '!node_modules/align-text/**',
+    '!node_modules/center-align/**',
+    '!node_modules/right-align/**',
+    '!node_modules/longest/**',
+    '!node_modules/repeat-string/**',
+    '!node_modules/kind-of/**',
+    '!node_modules/lazy-cache/**',
+    '!node_modules/uglify-to-browserify/**',
+    '!node_modules/window-size/**',
+    '!node_modules/amdefine/**',
+    '!node_modules/optimist/**',
+    '!node_modules/wordwrap/**',
+    '!node_modules/decamelize/**',
+    '!node_modules/source-map/**',
   ],
 
   // ── ASAR 压缩 ──────────────────────────────────────
@@ -71,6 +133,9 @@ module.exports = {
   },
 
   // ── Linux ──────────────────────────────────────────
+  // ⚠️ electron-builder 26 起 schema 已移除 `linux.desktop`（自定义 .desktop 字段）。
+  // 校验是全 config 生效的 —— 即使只打 --win，残留该字段也会直接
+  // 「Invalid configuration object」打包失败。Name/Categories 由 productName 与 category 自动生成。
   linux: {
     icon: 'assets',
     target: [
@@ -78,11 +143,6 @@ module.exports = {
       { target: 'deb', arch: ['x64'] },
     ],
     category: 'AudioVideo',
-    desktop: {
-      Name: 'MusicDL',
-      Categories: 'Audio;Music;Player;',
-      Icon: 'assets/icon.png',
-    },
   },
 
   // ── macOS ──────────────────────────────────────────

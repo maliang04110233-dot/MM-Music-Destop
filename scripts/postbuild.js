@@ -60,4 +60,15 @@ for (const page of standalonePages) {
   }
 }
 
+// 独立窗口（mini-player / desktop-lyric）不在 Vite 入口内，其 <link href="./styles/base.css">
+// 必须让 dist 下真有该文件：主 index.html 的样式会被 Vite 合并成 assets/index-<hash>.css，
+// 独立窗口无法引用那个 hash 名。只复制 base.css（令牌 + 重置 + 通用组件）以保持令牌单源。
+const sharedCss = path.join(src, 'renderer', 'styles', 'base.css');
+const sharedCssDest = path.join(dist, 'renderer', 'styles', 'base.css');
+if (fs.existsSync(sharedCss)) {
+  fs.mkdirSync(path.dirname(sharedCssDest), { recursive: true });
+  fs.copyFileSync(sharedCss, sharedCssDest);
+  console.log('  copied: src/renderer/styles/base.css -> dist/renderer/styles/base.css');
+}
+
 console.log('[postbuild] done');

@@ -1,0 +1,100 @@
+# CI —— 提交与 PR 的质量闸门
+#
+# 分层设计（快 → 慢），越靠前的失败越早反馈：
+#   jobs.lint-test  : 纯源码检查，秒级，主战场
+#   jobs.build-smoke: 真实构建 + asar 解包校验，分钟级
+#
+# 为什么不把 build-smoke 合进 lint-test：
+#   electron-builder 的打包在 CI 上要几分钟（下载 Electron 二进制 + 压缩），
+#   而 95% 的回归（逻辑、契约、平台清单漂移）在 lint-test 就已暴露。
+#   分开可让日常提交快速拿到反馈，同时保住「产物正确性」这层不被跳过。
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一轮未跑完的 —— 省钱且避免过期结果覆盖新结果
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 第一层：ESLint + 单元测试 ──────────────────────────
+  lint-test:
+    name: Lint & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22：package-lock 是 lockfileVersion 3，且 urlGuard 的
+      # makePinnedLookup 需要 Node 20+ 的 autoSelectFamily 双形态回调
+      # （见 src/utils/urlGuard.js）—— 用 Node 18 会在这里假失败。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # npm ci 而非 install：lock 与 package.json 不一致时**直接失败**，
+      # 这正是我们要的 —— 依赖漂移必须在 CI 拦下，而不是悄悄装出另一套树。
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      # 测试全部离线（不触网），故 Ubuntu runner 上可稳定跑通
+      - name: Unit tests
+        run: npm test
+
+  # ── 第二层：构建 + asar 冒烟 ───────────────────────────
+  build-smoke:
+    name: Build & Asar Smoke
+    runs-on: windows-latest
+    needs: lint-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # vite build + scripts/postbuild.js（拷贝 api/utils/shared/main-ipc
+      # 与独立窗口的 base.css —— 漏拷只在打包后复现）
+      - name: Build
+        run: npm run build
+
+      # 只打 --dir（解开目录），不打 nsis 安装包：
+      #   - smoke test 校验的是 app.asar 内容，--dir 产物里已有
+      #   - nsis 步骤要跑 makensis、签名、生成卸载器，几分钟且对 CI 无增量价值
+      #   - 本地实测 nsis 收尾阶段会触发文件清理问题导致退出非 0，
+      #     会把「内容正确」误报成构建失败
+      - name: Package (win, dir only)
+        run: npx electron-builder --config build/config.cjs --win --x64 --dir --publish never
+        env:
+          # 跳过 electron-builder 的代码签名探测（CI 无证书，不跳会报错）
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Asar smoke test
+        run: npm run smoke:asar
+
+      # 产物留存：CI 挂了可以直接下载现场排查，不必本地重打一遍
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-asar-${{ github.sha }}
+          path: release/win-unpacked/resources/app.asar
+          if-no-files-found: warn
+          retention-days: 7
