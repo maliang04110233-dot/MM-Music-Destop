@@ -13,6 +13,7 @@ import { loadAndPlay } from '../player.js';
 import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
+import { openSongRowMenu } from '../songMenu.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -107,7 +108,7 @@ function renderPlaylistDetailSongs(songs) {
   }
 
   list.innerHTML = songs.map((song, idx) => `
-    <div class="song-row" ondblclick="playPlaylistSong(${idx})">
+    <div class="song-row" data-pidx="${idx}" ondblclick="playPlaylistSong(${idx})">
       <span class="song-num" style="color:var(--neon-dim);font-size:12px;width:22px;text-align:right;flex-shrink:0;">${idx + 1}</span>
       <div class="song-info">
         <div class="song-title" title="${esc(song.title)}">${esc(song.title) || '未知'}</div>
@@ -124,6 +125,26 @@ function renderPlaylistDetailSongs(songs) {
     </div>
   `).join('');
 }
+
+// ── 行右键菜单（业务项在 ../songMenu.js 共享）──────────
+function playlistRowContext(e) {
+  const list = document.getElementById('playlistDetailSongs');
+  const row = e.target && e.target.closest ? e.target.closest('.song-row') : null;
+  if (!list || !row || !list.contains(row)) return;
+  const idx = Number(row.getAttribute('data-pidx'));
+  const song = _currentDetailSongs[idx];
+  if (!song) return;
+  openSongRowMenu(e, song, {
+    play: () => playPlaylistSong(idx),
+    download: () => downloadPlaylistSong(idx),
+    addToQueue: () => addPlaylistSongToQueue(idx),
+    extra: [{
+      icon: '✕', label: '从歌单移除', danger: true,
+      onClick: () => removeSongFromPlaylist(String(song.id), String(song.source || '')),
+    }],
+  });
+}
+document.addEventListener('contextmenu', playlistRowContext);
 
 // ── 播放歌单中的歌曲 ──────────────────────────────────
 async function playPlaylistSong(idx) {

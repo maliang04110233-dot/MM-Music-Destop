@@ -3,10 +3,9 @@
  */
 
 import { logger } from '../logger.js';
-import { heartBtnHtml, isFavorite, toggleFavoriteByKey } from '../favorites.js';
+import { heartBtnHtml } from '../favorites.js';
 import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
-import { showContextMenu } from '../contextMenu.js';
-import { favKey } from '../state.js';
+import { openSongRowMenu } from '../songMenu.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -889,25 +888,7 @@ function _markPlayingRows() {
 // audio 的 play 事件不冒泡但可捕获；换曲/续播都会经过它，无需各处埋点
 document.addEventListener('play', () => { try { _markPlayingRows(); } catch (_e) { /* 列表不在搜索页时忽略 */ } }, true);
 
-// ── 行右键菜单 ────────────────────────────────────────
-/** 「下一首播放」：插到当前曲之后；已在队列则移动而非重复插入 */
-function playNextHere(song, listIdx) {
-  const q = (getState('playQueue') || []).slice();
-  let curIdx = getState('playIdx');
-  if (curIdx == null || curIdx < 0 || !q[curIdx]) { playSong(listIdx); return; } // 未在播放 → 直接播
-  const isSame = x => x && String(x.id) === String(song.id) && x.source === song.source;
-  const at = q.findIndex(isSame);
-  if (at !== -1) {
-    if (at === curIdx + 1) { showToast('它已经在下一首了', 'info', 1500); return; }
-    q.splice(at, 1);
-    if (at < curIdx) curIdx--;
-  }
-  q.splice(curIdx + 1, 0, song);
-  setState('playQueue', q);
-  setState('playIdx', curIdx);
-  showToast(`⤳ 下一首播放：${song.title}`, 'success', 2000);
-}
-
+// ── 行右键菜单（业务项在 ../songMenu.js 共享）──────────
 function songListContext(e) {
   const list = _dom.songList;
   const row = e.target && e.target.closest ? e.target.closest('.song-row') : null;
@@ -916,16 +897,7 @@ function songListContext(e) {
   const orig = _visibleIdxMap[pos] != null ? _visibleIdxMap[pos] : pos;
   const s = (getState('songs') || [])[orig];
   if (!s) return;
-  e.preventDefault();
-  const on = isFavorite(s);
-  showContextMenu(e.clientX, e.clientY, [
-    { icon: '▶', label: '立即播放', onClick: () => playSong(orig) },
-    { icon: '⤳', label: '下一首播放', onClick: () => playNextHere(s, orig) },
-    { sep: true },
-    { icon: '⬇', label: '下载', onClick: () => addDownload(orig) },
-    { icon: on ? '💔' : '♥', label: on ? '取消收藏' : '收藏', onClick: () => toggleFavoriteByKey(favKey(s.source, s.id)) },
-    { icon: '➕', label: '添加到歌单', onClick: () => { if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(s); } },
-  ]);
+  openSongRowMenu(e, s, { play: () => playSong(orig), download: () => addDownload(orig) });
 }
 document.addEventListener('contextmenu', songListContext);
 
