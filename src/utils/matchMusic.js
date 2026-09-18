@@ -16,9 +16,23 @@
  */
 
 const logger = require('./logger');
+const { defaultRegistry, loadPlatformPlugins } = require('../api/pluginRegistry');
 
-// 候选源及其 VIP 标记字段（无 Cookie 时需过滤，否则拿到 30s 试听 URL 误判成功）
-const CANDIDATE_SOURCES = ['netease', 'qq', 'kugou', 'kuwo'];
+// ── 换源候选源（由 registry 派生：policies.fallbackSource）──────
+// B 站不入候选——其"歌名"是视频标题，同曲匹配会把翻唱合集、DJ 版误当原曲。
+// 该策略现在显式声明在 platforms/bilibili.js 的 policies 里（原先只活在注释里）。
+//
+// ⚠️ 必须惰性求值：单测会直接 require 本模块（不先加载 api/index），
+// 若在模块顶层派生，此时 registry 还是空的 ⇒ 候选集静默变成空数组。
+// loadPlatformPlugins() 是幂等的，谁先来谁触发扫描，结果一致。
+let _candidateSources = null;
+function getCandidateSources() {
+  if (!_candidateSources) {
+    loadPlatformPlugins();
+    _candidateSources = defaultRegistry.getFallbackSources();
+  }
+  return _candidateSources;
+}
 const SEARCH_TIMEOUT_MS = 15000;
 const NEGATIVE_TTL_MS = 60 * 1000; // 失败结果缓存时长
 const CACHE_MAX = 200;             // LRU 上限
@@ -156,7 +170,7 @@ function filterCandidates(songs, origSong, hasCookie) {
   for (const cand of songs) {
     if (!cand || cand.id == null || cand.id === '' || !cand.source) continue;
     if (cand.source === origSong.source) continue; // 跳过原源
-    if (CANDIDATE_SOURCES.includes(cand.source) === false) continue; // 只认音乐源
+    if (getCandidateSources().includes(cand.source) === false) continue; // 只认音乐源
     if (matchScore(origSong, cand) < 2) continue;
     // 无 Cookie 时付费候选降权而非丢弃：QQ 无登录时大量正版曲全 paid，
     // 直接过滤会导致换源 0 候选（原歌付费 → 其他源同曲也付费 → 全被滤掉）。
@@ -219,7 +233,7 @@ async function findMatchedCandidates(deps, song) {
       new Promise(r => setTimeout(() => r([]), SEARCH_TIMEOUT_MS)),
     ]);
 
-    const sources = CANDIDATE_SOURCES.filter(s => s !== song.source);
+    const sources = getCandidateSources().filter(s => s !== song.source);
     const results = await Promise.allSettled(
       sources.map(src => withTimeout(
         Promise.resolve(deps.searchFn(src, keyword)).catch(e => {
@@ -251,7 +265,8 @@ module.exports = {
   matchScore,
   isPaidCandidate,
   findMatchedCandidates,
-  CANDIDATE_SOURCES,
+  // getter：解构时求值并触发平台加载；保持数组形态以兼容既有 .includes/.length 断言
+  get CANDIDATE_SOURCES() { return getCandidateSources(); },
   splitBiliTitle,
   _resetForTest,
 };

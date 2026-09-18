@@ -178,8 +178,10 @@ test('findMatchedCandidates: 缓存命中——第二次不再搜索', async () 
   const a = await findMatchedCandidates(deps, song);
   const b = await findMatchedCandidates(deps, song);
   assert.strictEqual(calls, CANDIDATE_SOURCES.length - 1); // 只首轮：各候选源搜一次，缓存轮 0 次
-  // searchFn 不分源都返回 n1（source:'netease'），每个源的结果都贡献同一个候选
-  assert.strictEqual(a.length, CANDIDATE_SOURCES.length - 1);
+  // searchFn 不分源都返回 n1（source:'netease'），每个源的结果都贡献同一个候选。
+  // ⚠️ filterCandidates 末尾有 slice(0,5) 的**整体**上限，故候选数 =
+  //    min(候选源数, 5) —— 直接写 CANDIDATE_SOURCES.length - 1 只在候选源 ≤5 时成立
+  assert.strictEqual(a.length, Math.min(CANDIDATE_SOURCES.length - 1, 5));
   assert.deepStrictEqual(a.map(x => x.id), b.map(x => x.id));
 });
 

@@ -151,3 +151,65 @@ test('makePinnedLookup: 返回固定的已校验 IP（防 rebinding）', async (
     });
   });
 });
+
+// 回归守卫：Node 20+ 的 net 在 autoSelectFamily（Happy Eyeballs）路径下用
+// { all: true } 调用 lookup 并期望数组回调。旧实现只支持单值形态，导致
+// Node 24（Electron 44）连接阶段抛 ERR_INVALID_IP_ADDRESS: undefined。
+test('makePinnedLookup: 支持 net 的 all:true 数组形态（Node 20+ 回归守卫）', async () => {
+  const { makePinnedLookup } = require('../src/utils/urlGuard');
+  const lookup = makePinnedLookup(['8.8.8.8', '2001:4860:4860::8888']);
+  const list = await new Promise((resolve, reject) => {
+    lookup('example.com', { all: true }, (err, addresses) => (err ? reject(err) : resolve(addresses)));
+  });
+  assert.ok(Array.isArray(list), 'all:true 必须回数组，否则 Node 24 抛 ERR_INVALID_IP_ADDRESS');
+  assert.strictEqual(list.length, 2);
+  assert.ok(list.every((e) => typeof e.address === 'string' && (e.family === 4 || e.family === 6)));
+  assert.strictEqual(list[0].family, 4, 'IPv4 必须排前（IPv6 不可达时避免首连超时）');
+});
+
+test('makePinnedLookup: 非法 IP 被过滤，全部非法时退回系统解析', async () => {
+  const { makePinnedLookup } = require('../src/utils/urlGuard');
+  const lookup = makePinnedLookup(['not-an-ip', undefined, '']);
+  const list = await new Promise((resolve, reject) => {
+    lookup('localhost', { all: true }, (err, addresses) => (err ? reject(err) : resolve(addresses)));
+  });
+  assert.ok(Array.isArray(list) && list.length > 0, '退回 dns.lookup 后仍须回数组');
+});
+
+test('makePinnedLookup: all:true 下 family 过滤，过滤为空则退回全部', async () => {
+  const { makePinnedLookup } = require('../src/utils/urlGuard');
+  const only6 = makePinnedLookup(['2001:4860:4860::8888']);
+  const r = await new Promise((resolve, reject) => {
+    only6('example.com', { all: true, family: 4 }, (err, a) => (err ? reject(err) : resolve(a)));
+  });
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].family, 6, '没有 IPv4 时不能回空数组');
+});
+
+// 端到端形态验证：真实走一次 net 的连接路径（修复前此项必失败）
+test('makePinnedLookup: 端到端真实 HTTP 连接可用', async () => {
+  const http = require('http');
+  const { makePinnedLookup } = require('../src/utils/urlGuard');
+  const server = http.createServer((_req, res) => { res.writeHead(200); res.end('ok'); });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const body = await new Promise((resolve, reject) => {
+      const req = http.get({
+        hostname: 'localhost',
+        port,
+        path: '/',
+        lookup: makePinnedLookup(['127.0.0.1']),
+      }, (res) => {
+        let d = '';
+        res.on('data', (c) => { d += c; });
+        res.on('end', () => resolve(d));
+      });
+      req.on('error', reject);
+      req.setTimeout(5000, () => req.destroy(new Error('timeout')));
+    });
+    assert.strictEqual(body, 'ok');
+  } finally {
+    server.close();
+  }
+});

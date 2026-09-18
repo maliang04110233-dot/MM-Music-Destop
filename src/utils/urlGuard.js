@@ -190,14 +190,39 @@ async function assertPublicHttpUrl(rawUrl) {
  * 设置 headers.Host 并把 servername 设为原域名（TLS SNI）。
  */
 function makePinnedLookup(ips) {
-  const primary = ips && ips[0];
+  // 只保留合法 IP，并让 IPv4 排在前面：Single 形态下优先连接 IPv4（部分网络
+  // IPv6 不可达，首连会白白超时）；all 形态（Happy Eyeballs）下顺序即优先级。
+  const entries = (ips || [])
+    .map((ip) => ({ address: ip, family: net.isIP(ip) }))
+    .filter((e) => e.family === 4 || e.family === 6)
+    .sort((a, b) => (a.family === b.family ? 0 : a.family === 4 ? -1 : 1));
+
+  /** 按 family 过滤；过滤后为空则退回全部（宁可多试也不能一个都不给） */
+  function pickByFamily(list, family) {
+    if (family !== 4 && family !== 6) return list;
+    const filtered = list.filter((e) => e.family === family);
+    return filtered.length ? filtered : list;
+  }
+
   return function pinnedLookup(hostname, options, callback) {
     if (typeof options === 'function') { callback = options; options = {}; }
-    if (!primary) {
-      return dns.lookup(hostname, { ...options, all: true }, callback);
+    const opts = options || {};
+
+    if (!entries.length) {
+      // 理论上不可达（assertPublicHttpUrl 已保证 ips 非空）；保守退回系统解析，
+      // 由 dns.lookup 依据 opts.all 自行决定回调形态
+      return dns.lookup(hostname, opts, callback);
     }
-    const family = net.isIP(primary);
-    callback(null, primary, family || 4);
+
+    // Node 20+ 的 net 在 autoSelectFamily（Happy Eyeballs，默认开启）路径下会用
+    // { all: true } 调用 lookup，并期望回调形如 (err, [{ address, family }])；
+    // 而旧路径（含 Node 18）期望 (err, address, family)。两种形态都必须支持——
+    // 只支持单值会让 Node 24 把字符串当数组解析，抛 ERR_INVALID_IP_ADDRESS。
+    if (opts.all) {
+      return callback(null, pickByFamily(entries, opts.family).slice());
+    }
+    const picked = pickByFamily(entries, opts.family)[0];
+    return callback(null, picked.address, picked.family);
   };
 }
 
