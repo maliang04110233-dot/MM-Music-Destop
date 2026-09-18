@@ -741,7 +741,12 @@
             <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.filenameTmpl">文件名模板</label>
               <input class="setting-input setting-input--wide" id="settingFilenameTmpl" value="{artist} - {title}">
-              <span class="setting-hint" data-i18n="settings.general.filenameTmplHint">支持 {artist} {title} {album} {source}</span>
+              <span class="setting-hint" data-i18n="settings.general.filenameTmplHint">支持 {artist} {title} {album} {source} {id} {quality} {bitrate} {trackNo} {year} {playlist} {date}</span>
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.filenameTmplPreview">命名预览</label>
+              <span class="setting-hint" id="filenameTmplPreview" style="color:var(--neon-cyan);font-family:monospace;">—</span>
+              <span class="setting-hint" id="filenameTmplWarn" style="color:var(--neon-pink);font-size:11px;"></span>
             </div>
           </div>
 
