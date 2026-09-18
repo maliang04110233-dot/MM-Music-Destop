@@ -1,14 +1,13 @@
 const { app, BrowserWindow, ipcMain, session, Menu, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const path = require('path');
-const fs = require('fs');
 const { setCookieStore } = require('../api');
 const logger = require('../utils/logger');
-const { downloadFileWithRetry, embedId3Tags } = require('../utils/downloader');
+const { installRejectionGuard } = require('../utils/rejectionGuard');
 const cookieStore = require('../utils/cookieStore');
 const { setOnlineLrcNotifier } = require('../utils/onlineLrc');
 const { getDownloadUrlSmart, getLyrics } = require('../api');
-const { renderFileName } = require('../utils/naming');
 const { init: initContext, safeSend: ctxSafeSend } = require('./context');
+const { createDownloadQueueEngine } = require('./downloadQueue');
 const playCache = require('./playCache');
 const history = require('../utils/history');
 const prefs = require('../utils/prefs');
@@ -31,10 +30,20 @@ const ipcCloudSync = require('./ipc/cloudSync');
 // 修复 B15：使用 context.js 提供的统一 safeSend，避免代码漂移
 const safeSend = ctxSafeSend;
 
+// ─── 全局未捕获拒绝归口 ─────────────────────────────────
+// 「为什么需要它、为什么按栈帧分流」见 utils/rejectionGuard.js 顶部说明。
+installRejectionGuard({ logger });
+
 let mainWindow;
 let tray = null;
 let isQuitting = false;
-const downloadQueue = [];
+
+// ── 下载队列引擎（Sprint C：已从本文件抽到 main/downloadQueue.js）──
+// 队列状态 / 持久化 / 并发调度 / 单曲处理（取流→落盘→ID3→歌词→历史→通知）
+// 全部归 downloadQueue.js；本文件只负责组装依赖并接进 context。
+let downloadQueueEngine = null;
+/** 队列引用：引擎创建后与其内部数组同一引用，供 context / IPC 消费 */
+let downloadQueue = [];
 
 // ─── 单实例锁 ──────────────────────────────────────────
 // 没有它时每次启动都是一个完全独立的进程：各自的托盘图标、各自的下载队列，
@@ -53,84 +62,13 @@ if (!app.requestSingleInstanceLock()) {
     if (!mainWindow.isFocused()) mainWindow.focus();
   });
 }
-// 修复 P1-8：用 activeDownloads 计数替代旧的 isDownloading 标志
-// 旧实现是 1 首歌下完才下 1 首；现在最多并发 3 首，5MB 歌曲不用等 50MB 视频
-let activeDownloads = 0;
-// 并发数不再用模块级常量缓存：processQueue 每轮动态读 prefs.get('concurrency')
-let processTimer = null;
-let _processQueueRunning = false; // 防止 processQueue 重入
-let queuePersistTimer = null;
+
+// ── 下载队列：状态 / 持久化 / 调度已抽到 main/downloadQueue.js ──
+// 本文件只保留「播放队列持久化」与「引擎装配」。
 let playQueuePersistTimer = null;
-const QUEUE_FILE = () => path.join(app.getPath('userData'), 'queue.json');
 const PLAY_QUEUE_FILE = () => path.join(app.getPath('userData'), 'play-queue.json');
 
-// 持久化队列（防抖：500ms 内多次变更合并写入；原子写防半写损坏）
-// done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长
-const MAX_DONE_RETAINED = 200;
-function _trimDoneTasks() {
-  const doneCount = downloadQueue.filter(s => s && s.status === 'done').length;
-  if (doneCount <= MAX_DONE_RETAINED) return;
-  let toDrop = doneCount - MAX_DONE_RETAINED;
-  // 队列顺序即展示顺序：正序找最早入队的 done 逐个删除
-  for (let i = 0; i < downloadQueue.length && toDrop > 0; ) {
-    if (downloadQueue[i] && downloadQueue[i].status === 'done') {
-      downloadQueue.splice(i, 1);
-      toDrop--;
-    } else {
-      i++;
-    }
-  }
-}
-function persistQueue() {
-  if (queuePersistTimer) return;
-  queuePersistTimer = setTimeout(() => {
-    queuePersistTimer = null;
-    try {
-      _trimDoneTasks();
-      atomicWriteJson(QUEUE_FILE(), downloadQueue);
-    } catch (e) {
-      logger.warn('队列持久化失败:', e.message);
-    }
-  }, 500);
-}
-
 // 启动时加载队列（异常关闭后恢复；损坏文件备份 .bak 后放弃）
-async function loadPersistedQueue() {
-  try {
-    const fp = QUEUE_FILE();
-    const res = safeReadJson(fp);
-    if (!res.ok) {
-      logger.warn('队列文件损坏，已备份为 queue.json.bak，从空队列恢复');
-      return;
-    }
-    if (res.empty) return;
-    const list = res.data;
-    if (!Array.isArray(list)) return;
-    // 重启时：downloading 视为异常关闭 -> error
-    //           pending 超过 1 天没动 -> error（避免阻塞"加入新歌单"）
-    //           pending 不到 1 天 -> 保留
-    //           error 保留
-    //           done 保留
-    const STALE_PENDING_MS = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    for (const item of list) {
-      if (item.status === 'downloading') {
-        item.status = 'error';
-        item.error = '应用异常关闭，请重试';
-      } else if (item.status === 'pending' && item.addedAt && (now - item.addedAt > STALE_PENDING_MS)) {
-        item.status = 'error';
-        item.error = '排队超过 24 小时未启动，已标记失败（可重试）';
-      }
-      downloadQueue.push(item);
-    }
-    if (downloadQueue.length) {
-      logger.log(`[Queue] 从磁盘恢复 ${downloadQueue.length} 个任务`);
-    }
-  } catch (e) {
-    logger.warn('队列加载失败:', e.message);
-  }
-}
-
 // ── 播放队列持久化 ────────────────────────────────────
 let _pendingPlayQueueData = null;
 function persistPlayQueue(data) {
@@ -495,6 +433,36 @@ app.whenReady().then(async () => {
   // 初始化下载历史持久化
   history.init(app.getPath('userData'));
 
+  // ── 装配下载队列引擎（Sprint C：实现见 main/downloadQueue.js）──
+  // 必须在 registerAllIpcHandlers 之前：IPC handler 通过 context.getDownloadQueue()
+  // 拿队列引用，而该引用来自引擎。
+  downloadQueueEngine = createDownloadQueueEngine({
+    userDataDir: () => app.getPath('userData'),
+    safeSend,
+    getDownloadUrlSmart,
+    getLyrics,
+    onQueueChanged: () => {
+      // 队列变更时同步托盘菜单（下载进度/数量展示）
+      try { updateTrayMenu(); } catch (_e) { /* 托盘未就绪可忽略 */ }
+    },
+    notifier: {
+      notifyDownloadDone: (song, savePath) => {
+        const n = new Notification({
+          title: '下载完成',
+          body: `${song.title} - ${song.artist || '未知艺术家'}`,
+          silent: false,
+        });
+        n.on('click', () => {
+          const { shell } = require('electron');
+          shell.showItemInFolder(savePath);
+        });
+        n.show();
+      },
+    },
+  });
+  // 让共享引用指向引擎内部数组（context / IPC 用的是同一个数组）
+  downloadQueue = downloadQueueEngine.getQueue();
+
   // 确保默认下载目录存在（如果有用户自定义的 saveDir 则用之，否则用系统默认）
   const defaultDir = prefs.get('saveDir') || path.join(app.getPath('music'), 'MusicDownloader');
   await fsa.ensureDir(defaultDir); // mkdir recursive 本身幂等，无需先探测
@@ -518,7 +486,7 @@ app.whenReady().then(async () => {
 
   // 启动时恢复队列
   try {
-    await loadPersistedQueue();
+    await downloadQueueEngine.loadPersistedQueue();
   } catch (e) {
     logger.warn('[index] 恢复队列失败:', e.message);
   }
@@ -554,24 +522,23 @@ app.whenReady().then(async () => {
   // 安装自定义应用菜单（屏蔽开发者工具菜单项及其加速键）
   buildAppMenu();
 
-  // CORS 白名单：仅允许本地和已知音乐 CDN 域名
-  const ALLOWED_ORIGINS = new Set([
-    'http://localhost',
-    'http://127.0.0.1',
-    'https://music.163.com',
-    'https://y.qq.com',
-    'https://www.bilibili.com',
-    'https://www.kugou.com',
-    // 酷我：搜索(www) / 取流(antiserver) / 歌词(m) / 封面(img4)
-    'http://www.kuwo.cn',
-    'http://antiserver.kuwo.cn',
-    'http://m.kuwo.cn',
-    'https://img4.kuwo.cn',
-  ]);
+  // CORS 白名单：本地来源 + 各平台 manifest 声明的域名（派生）
+  // ⚠️ 这是本工程唯一的安全边界 —— 它决定哪些源能拿到非 null 的
+  //    Access-Control-Allow-Origin。改动后必须与历史枚举逐条相等，
+  //    由 .preview/verify-platform-v3.cjs 的集合相等断言守住（不允许新增项）。
+  const LOCAL_ORIGINS = ['http://localhost', 'http://127.0.0.1'];
+  const { origins: platformOrigins, suffixes: platformSuffixes } =
+    require('../api').registry.getAllowedOrigins();
+  const ALLOWED_ORIGINS = new Set([...LOCAL_ORIGINS, ...platformOrigins]);
+  // 部分平台的 CDN 子域是动态的（douyinvod 按地域/节点变化、kugou 音频域有多个前缀），
+  // 精确匹配枚举不完，故额外做后缀匹配。后缀带前导点，
+  // `evil-douyinvod.com` 这类不会以 `.douyinvod.com` 结尾，不会被误放行。
+  const ALLOWED_ORIGIN_SUFFIXES = [...platformSuffixes];
   const ses = session.defaultSession;
   ses.webRequest.onHeadersReceived((details, callback) => {
     const origin = details.url ? new URL(details.url).origin : '';
-    const isAllowed = ALLOWED_ORIGINS.has(origin);
+    const isAllowed = ALLOWED_ORIGINS.has(origin)
+      || ALLOWED_ORIGIN_SUFFIXES.some((sfx) => origin.endsWith(sfx));
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -588,8 +555,10 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (processTimer) { clearTimeout(processTimer); processTimer = null; }
-  if (queuePersistTimer) { clearTimeout(queuePersistTimer); queuePersistTimer = null; }
+  // 下载队列引擎：立即落盘待写队列 + 停定时器（防抖窗口内的最后一次变更会丢）
+  try { if (downloadQueueEngine) downloadQueueEngine.dispose(); } catch (e) {
+    logger.warn('[index] 队列引擎清理失败:', e.message);
+  }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
   unregisterGlobalShortcuts();
   try { prefs.flush(); } catch (e) { logger.warn('prefs.flush 失败:', e.message); }
@@ -607,10 +576,10 @@ function registerAllIpcHandlers() {
     getMainWindow:    () => mainWindow,
     app,
     getDownloadQueue: () => downloadQueue,
-    persistQueue,
+    persistQueue:     () => downloadQueueEngine.persistQueue(),
     persistPlayQueue,
     loadPersistedPlayQueue,
-    processQueue,
+    processQueue:     () => downloadQueueEngine.processQueue(),
   });
   ipcWindow.register();
   ipcSearch.register();
@@ -656,238 +625,11 @@ function registerAllIpcHandlers() {
 
 // ⚠️ 此处下方整段（30+ 个 ipcMain.handle/on + proxy-play/play_cache/LRC 解码）
 // 已在 P2-1 拆分到 src/main/ipc/{window,search,download,cookie,library}.js
-// 下面只保留 processQueue / processOneSong / sanitizeFilename（共享状态太多，未拆）
 
-
-// 调度下载队列（修复 P1-8：最多并发 3 首）
-// 修复：添加 _processQueueRunning 防止重入，避免多线程同时调度导致 activeDownloads 计数混乱
-async function processQueue() {
-  if (_processQueueRunning) return;
-  _processQueueRunning = true;
-  // 动态读取并发数（设置变更后实时生效）
-  const concurrency = (() => { try { const v = prefs.get('concurrency'); return (v >= 1 && v <= 10) ? v : 3; } catch (_e) { return 3; } })();
-  try {
-    while (activeDownloads < concurrency) {
-      const song = downloadQueue.find(s => s.status === 'pending');
-      if (!song) break;
-      song.status = 'downloading';
-      song.error = null;
-      song.progress = 0;
-      activeDownloads++;
-      safeSend('queue-updated', downloadQueue);
-      persistQueue();
-      // 异步处理（不阻塞调度）
-      processOneSong(song).finally(() => {
-        activeDownloads--;
-        safeSend('queue-updated', downloadQueue);
-        persistQueue();
-        // 还有 pending 时调度下一批（统一使用 processTimer，避免重复 setTimeout）
-        if (downloadQueue.some(s => s.status === 'pending')) {
-          if (processTimer) clearTimeout(processTimer);
-          processTimer = setTimeout(() => {
-            processTimer = null;
-            _processQueueRunning = false;
-            processQueue();
-          }, 100);
-        } else {
-          _processQueueRunning = false;
-        }
-      });
-    }
-  } finally {
-    // 如果循环正常结束（没有 pending 歌曲），重置标志
-    if (activeDownloads < concurrency) {
-      _processQueueRunning = false;
-    }
-  }
-}
-
-// 处理单个下载任务（包含重试循环 + 致命错误短路）
-// 修复 B7：urlInfo.fatal=true 时直接退出，不浪费 MAX_RETRY 配额
-// 修复 B8：extraHeaders 通过 downloadFile 内部重定向递归传递
-async function processOneSong(song) {
-  const MAX_RETRY = 2;
-  let lastError = null;
-  let isFatal = false;
-
-  for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
-    try {
-      logger.log(`[processOneSong] ▶ ${song.source} "${song.title}" - "${song.artist}" id=${song.id} quality=${song.quality || 'standard'}`);
-      const urlInfo = await getDownloadUrlSmart(song, song.quality || 'standard');
-      logger.log(`[processOneSong]   urlInfo keys =`, urlInfo ? Object.keys(urlInfo).join(',') : 'null', 'hasUrl =', !!(urlInfo && urlInfo.url));
-      if (!urlInfo || !urlInfo.url) {
-        // 修复 B7：fatal 错误（VIP/Auth/Audio 流缺失）直接退出，不进重试循环
-        if (urlInfo?.fatal) {
-          isFatal = true;
-          lastError = new Error(urlInfo.error || '无法获取下载链接');
-          song.errorCode = urlInfo.code || 'UNKNOWN';
-          logger.warn(`[processOneSong] ✗ ${song.source} ${song.title} - ${song.artist} 失败: ${lastError.message} (code=${urlInfo.code})`);
-          break;
-        }
-        throw new Error(urlInfo?.error || '无法获取下载链接');
-      }
-      // 换源成功：记回歌曲供下次直试 + 队列可见（文件名仍用原歌信息，歌没变只是取流渠道变了）
-      if (urlInfo.matchedSong) {
-        song._altSource = { source: urlInfo.matchedSong.source, id: String(urlInfo.matchedSong.id) };
-        logger.log(`[processOneSong] ↻ 已换源: ${urlInfo.matchedFrom} → ${urlInfo.matchedSong.source}`);
-        safeSend('queue-updated', downloadQueue);
-      }
-
-      const ext = (urlInfo.ext || 'mp3').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'mp3';
-      // 命名模板：从 preferences 读取，支持 {title} {artist} {album} {source} {id}
-      const { get: getPref } = require('../utils/prefs');
-      const namingTemplate = getPref('namingTemplate') || '{artist} - {title}';
-      // saveDir 兜底：用户从未选过下载目录时渲染层传 null，path.join(null) 直接
-      // 崩溃（必现 "The path argument must be of type string. Received null"）。
-      // 回退顺序与启动时 defaultDir 逻辑一致：song → prefs → 系统默认目录
-      const saveDir = song.saveDir || prefs.get('saveDir') || path.join(app.getPath('music'), 'MusicDownloader');
-      const savePath = path.join(saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
-
-      await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
-        logger.warn('[processOneSong] 创建下载目录失败:', saveDir, e.message);
-      });
-
-      // 修复 B8：携带 extraHeaders（Referer 等），downloadFile 内部重定向会递归传递
-      // B 站 DASH CDN 要求 Referer: https://www.bilibili.com/，否则可能 403
-      // 修复 B2：用 taskId 而非 id 推送进度（前端 DOM id="prog-${taskId}"）
-      const extraHeaders = urlInfo.referer ? { 'Referer': urlInfo.referer } : {};
-      // 读取限速设置（KB/s → bytes/s）
-      const speedLimitKB = prefs.get('speedLimit') || 0;
-      const speedLimit = speedLimitKB > 0 ? speedLimitKB * 1024 : 0;
-      await downloadFileWithRetry(urlInfo.url, savePath, (progress) => {
-        song.progress = progress;
-        safeSend('download-progress', { id: song.taskId, progress });
-      }, extraHeaders, { speedLimit });
-
-      // 歌词（换源成功时优先用匹配源的 id 同源拿，更准）
-      let lrc = '';
-      try {
-        const lyricId = urlInfo.matchedSong ? urlInfo.matchedSong.id : song.id;
-        const lyricSource = urlInfo.matchedSong ? urlInfo.matchedSong.source : song.source;
-        const lyricsResult = await getLyrics(lyricId, lyricSource, song.title, song.artist);
-        lrc = lyricsResult.lrc || '';
-      } catch (_e) { /* 歌词获取失败不影响下载 */ }
-
-      // ID3 标签（修复 B6：embedId3Tags 内部只对 mp3 生效，跳过 m4a/flac）
-      await embedId3Tags(savePath, {
-        title: song.title,
-        artist: song.artist,
-        album: song.album || '',
-        coverUrl: song.cover,
-        lrc,
-      });
-
-      // LRC 歌词文件（独立 try-catch：写歌词失败不应覆盖已成功的下载）
-      if (lrc) {
-        const lrcPath = savePath.replace(/\.[^.]+$/, '.lrc');
-        fs.promises.writeFile(lrcPath, lrc, 'utf8').catch(lrcErr => {
-          logger.warn('[processOneSong] LRC 写入失败（不影响下载结果）:', lrcErr.message);
-        });
-      }
-
-      song.status = 'done';
-      song.progress = 100;
-      song.savePath = savePath;
-      song.error = null;
-      lastError = null;
-
-      // 下载完成通知
-      const notifEnabled = prefs.get('notifications');
-      if (notifEnabled !== false) { // 默认开启
-        try {
-          const n = new Notification({
-            title: '下载完成',
-            body: `${song.title} - ${song.artist || '未知艺术家'}`,
-            silent: false,
-          });
-          n.on('click', () => {
-            const { shell } = require('electron');
-            shell.showItemInFolder(savePath);
-          });
-          n.show();
-        } catch (e) {
-          logger.warn('[Notification] 显示失败:', e.message);
-        }
-      }
-
-      // 写入下载历史（换源成功时记实际取流源，便于排查与统计）
-      try {
-        const stat = await fsa.statOrNull(savePath);
-        history.add({
-          id: String(song.id),
-          source: urlInfo.matchedSong ? urlInfo.matchedSong.source : song.source,
-          matchedFrom: urlInfo.matchedSong ? song.source : undefined,
-          title: song.title,
-          artist: song.artist || '',
-          album: song.album || '',
-          savePath,
-          ext,
-          quality: song.quality || 'standard',
-          size: stat ? stat.size : 0,
-          duration: song.duration || 0,
-          status: 'done',
-          finishedAt: Date.now(),
-        });
-      } catch (e) {
-        logger.warn('[history.add] 写历史失败:', e.message);
-      }
-      return; // 成功，退出函数
-    } catch (e) {
-      lastError = e;
-      const msg = e.message || String(e);
-      const isRetriable = /HTTP\s*(403|404|410)/i.test(msg);
-      logger.warn(`下载失败 (尝试 ${attempt}/${MAX_RETRY}):`, msg);
-
-      // 只对 403/404/410 重试（CDN URL 签名过期，重拿 URL 再下），其他错误直接放弃
-      if (attempt < MAX_RETRY && isRetriable) {
-        song.status = 'pending';
-        song.progress = 0;
-        safeSend('queue-updated', downloadQueue);
-        persistQueue();
-        await new Promise(r => setTimeout(r, 500));
-        continue;
-      }
-      break; // 不可重试或重试用尽
-    }
-  }
-
-  if (lastError) {
-    song.status = 'error';
-    song.error = lastError.message;
-    // 写历史：失败
-    try {
-      history.add({
-        id: String(song.id),
-        source: song.source,
-        title: song.title,
-        artist: song.artist || '',
-        album: song.album || '',
-        savePath: '',
-        ext: '',
-        quality: song.quality || 'standard',
-        size: 0,
-        duration: song.duration || 0,
-        status: 'error',
-        error: lastError.message,
-        finishedAt: Date.now(),
-      });
-    } catch (e) {
-      logger.warn('[history.add] 写历史失败:', e.message);
-    }
-    // 修复 B7：通知前端标记为 fatal，前端可选择弹更友好的 toast（如"该歌曲需要 VIP"）
-    safeSend('download-error', {
-      id: song.taskId || song.id,
-      title: song.title,
-      artist: song.artist,
-      error: lastError.message,
-      fatal: isFatal,
-    });
-  }
-}
-
-function sanitizeFilename(name) {
-  return name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 200);
-}
+// ─── 下载队列调度（Sprint C：已抽到 main/downloadQueue.js）───────────────────
+// processQueue / processOneSong / sanitizeFilename 的完整实现见
+// src/main/downloadQueue.js（引擎在 bootstrap 处装配并接进 context）。
+// 这样「下载」这条核心链路可被独立阅读与测试，不再与窗口/托盘/生命周期混居。
 
 // ⚠️ 此处下方的旧本地音乐库 IPC（scan-local-library / read-local-metadata /
 //   read-local-lrc / update-id3-tags / update-id3-cover）+ LRC 解码函数

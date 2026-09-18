@@ -33,7 +33,7 @@ const SAFE_CHANNELS_RECEIVE = new Set([
 const SAFE_CHANNELS_INVOKE = new Set([
   'search-music', 'search-album', 'search-singer',
   'get-singer-songs', 'get-singer-albums', 'get-album-songs', 'get-song-by-link',
-  'get-source-health', 'probe-sources',
+  'get-source-health', 'probe-sources', 'get-platforms',
   'get-home-recommendations', 'get-home-section', 'get-playlist-songs',
   'get-download-url', 'get-download-url-smart', 'add-to-queue', 'cancel-download', 'retry-download',
   'remove-queue-item', 'clear-finished-queue', 'clear-all-queue',
@@ -50,6 +50,7 @@ const SAFE_CHANNELS_INVOKE = new Set([
   'ai-history', 'ai-add-history', 'ai-clear-history', 'ai-translate-lyrics',
   'export-all-data', 'import-all-data', 'get-download-templates',
   'save-download-template', 'delete-download-template', 'set-active-template',
+  'preview-naming-template',
   'get-search-history', 'set-search-history',
   'get-user-playlists', 'save-user-playlist', 'delete-user-playlist',
   'add-to-user-playlist', 'remove-from-user-playlist',
@@ -93,6 +94,7 @@ const METHOD_MAP = {
   saveDownloadTemplate: 'save-download-template',
   deleteDownloadTemplate: 'delete-download-template',
   setActiveDownloadTemplate: 'set-active-template',
+  previewNamingTemplate: 'preview-naming-template',
   // 歌词
   getLyrics: 'get-lyrics',
   // Cookie
@@ -167,6 +169,7 @@ const METHOD_MAP = {
   setGlobalShortcuts: 'set-global-shortcuts',
   getSourceHealth: 'get-source-health',
   probeSources: 'probe-sources',
+  getPlatforms: 'get-platforms',
 };
 
 // ── 核心 musicAPI（渲染层 → 主进程的 IPC 桥）────────────

@@ -74,6 +74,17 @@ function register() {
     return { success: true, active: templateId };
   });
 
+  // 文件名模板预览：renderFileName 依赖 src/utils/naming，renderer 无法直接 require，
+  // 预览必须在主进程算。顺带返回未知变量列表，设置页据此提示拼写错误。
+  ipcMain.handle('preview-naming-template', (_, template) => {
+    const naming = require('../../utils/naming');
+    const src = typeof template === 'string' && template.trim() ? template : naming.DEFAULT_TEMPLATE;
+    return {
+      preview: naming.previewTemplate(src),
+      unknown: naming.unknownPlaceholders(src),
+    };
+  });
+
   // 应用模板路径（替换变量）
   ipcMain.handle('apply-path-template', (_, { templateId, song }) => {
     const templates = prefs.get(TEMPLATE_KEY) || [];
