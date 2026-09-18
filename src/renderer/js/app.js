@@ -16,7 +16,7 @@ import './utils.js';
 import './router.js';
 
 // 播放器和快捷键
-import { updateProgress, onAudioEnded, parseLrc, showNoLyrics } from './player.js';
+import { updateProgress, onAudioEnded, parseLrc, showNoLyrics, loadAndPlay } from './player.js';
 import { initMediaSession } from './player/mediaSession.js';
 import { heartBtnHtml } from './favorites.js';
 import './shortcuts.js';
@@ -44,6 +44,7 @@ import './views/clipboard.js';
 import './views/welcome.js';
 import './views/dragdrop.js';
 import { dlObserveQueue, dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from './dlStatus.js';
+import { openSongRowMenu } from './songMenu.js';
 import './favorites.js';
 import './player-controls.js';
 
@@ -699,6 +700,7 @@ function renderPlaylistModal(songs) {
       </label>
       <span class="pl-toolbar-info" id="plToolbarInfo">已选 ${checkedCount} / ${songs.length}，本地已存在 ${localCount}</span>
       <div class="pl-toolbar-actions">
+        <button class="btn-sm" onclick="playPlaylistModalAll()">▶ 播放全部</button>
         <button class="btn-sm" onclick="invertSelection()">反选</button>
         <button class="btn-sm" id="plSubscribeBtn" title="新歌发布时提醒我" onclick="subscribeCurrentPlaylist()">📡 订阅</button>
         <button class="btn-sm" onclick="addPlaylistToQueueClick(false)">加入队列</button>
@@ -722,7 +724,7 @@ function renderPlaylistModal(songs) {
       </div>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       ${dlBadgeHtml(s, dlQueue)}
-      <button class="top-song-action" title="播放" onclick="event.stopPropagation();playRecommendSong(state.getPlaylistSongs()[${i}])">▶</button>
+      <button class="top-song-action" title="播放" onclick="event.stopPropagation();playPlaylistModalSong(${i})">▶</button>
       ${heartBtnHtml(s, 'top-song-action')}
       <button class="top-song-action" title="下载" onclick="event.stopPropagation();addSingleToQueue(${i})">⬇</button>
     </div>
@@ -732,6 +734,77 @@ function renderPlaylistModal(songs) {
   body.innerHTML = toolbar + list;
   updatePlToolbarInfo();
 }
+
+// ── 弹层整单连播 ──────────────────────────────────────
+// 语义对齐 playlist.js 的 playPlaylistSong：智能取流换源回写 _altSource、
+// proxyPlay 本地化流量、整单进 playQueue 从点击曲连播（而非孤播一首）。
+// 请求序号做竞态守卫，快速连点只认最后一次。
+let _plModalPlayRequestId = 0;
+async function playPlaylistModalSong(idx) {
+  const songs = state.getPlaylistSongs();
+  const song = songs[idx];
+  if (!song) { showToast('未找到歌曲', 'warn'); return; }
+  const quality = resolveQuality(song.source);
+  showToast(`正在准备音源：${song.title}`, 'info');
+  const reqId = ++_plModalPlayRequestId;
+  try {
+    const result = await api.getDownloadUrlSmart(song, quality);
+    if (reqId !== _plModalPlayRequestId) return;
+    if (!result || !result.url) {
+      if (result && result.code === 'VIP_REQUIRED') {
+        showToast('⚠️ 该歌曲为 VIP 专享，请登录后重试', 'warn', 5000);
+      } else {
+        showToast('⚠️ 暂无法获取音源，请稍后重试', 'warn', 5000);
+      }
+      return;
+    }
+    if (result.matchedSong) {
+      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
+      song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
+    }
+    const playSource = result.matchedSong?.source || song.source;
+    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
+                  : playSource === 'qq' ? 'https://y.qq.com/'
+                  : playSource === 'netease' ? 'https://music.163.com/' : '';
+    const proxied = await api.proxyPlay(result.url, referer);
+    if (reqId !== _plModalPlayRequestId) return;
+    if (!proxied || !proxied.fileUrl) {
+      showToast('⚠️ 音源获取失败', 'error', 5000);
+      return;
+    }
+    setState('playQueue', songs.slice());
+    setState('playIdx', idx);
+    setState('currentPlaying', song);
+    await loadAndPlay(song, proxied.fileUrl, true);
+    showToast('▶ 正在播放：' + song.title, 'success', 2500);
+  } catch (e) {
+    if (reqId === _plModalPlayRequestId) {
+      logger.warn('弹层播放失败:', e);
+      showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+    }
+  }
+}
+
+/** 「▶ 播放全部」：整单进队列从第一首连播 */
+async function playPlaylistModalAll() {
+  const songs = state.getPlaylistSongs();
+  if (!songs.length) { showToast('歌单为空', 'warn'); return; }
+  await playPlaylistModalSong(0);
+}
+
+// ── 弹层行右键菜单（业务项在 ./songMenu.js 共享）──────
+document.addEventListener('contextmenu', (e) => {
+  const body = document.getElementById('playlistModalBody');
+  const row = e.target && e.target.closest ? e.target.closest('.pl-row') : null;
+  if (!body || !row || !body.contains(row)) return;
+  const idx = Number(row.getAttribute('data-idx'));
+  const song = state.getPlaylistSongs()[idx];
+  if (!song) return;
+  openSongRowMenu(e, song, {
+    play: () => playPlaylistModalSong(idx),
+    download: () => addSingleToQueue(idx),
+  });
+});
 
 // 弹层打开期间队列/历史变化 → 防抖重渲染徽标（勾选与本地检测结果均从 state 还原，不丢失）
 let _plDlTimer = null;
@@ -961,6 +1034,8 @@ export {
   toggleSongCheck,
   invertSelection,
   addSingleToQueue,
+  playPlaylistModalSong,
+  playPlaylistModalAll,
   addPlaylistToQueueClick,
   downloadSongFromList,
   openAlbumView,
@@ -986,6 +1061,8 @@ window.toggleSelectAll = toggleSelectAll;
 window.toggleSongCheck = toggleSongCheck;
 window.invertSelection = invertSelection;
 window.addSingleToQueue = addSingleToQueue;
+window.playPlaylistModalSong = playPlaylistModalSong;
+window.playPlaylistModalAll = playPlaylistModalAll;
 window.addPlaylistToQueueClick = addPlaylistToQueueClick;
 window.downloadSongFromList = downloadSongFromList;
 window.openAlbumView = openAlbumView;
