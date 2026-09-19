@@ -107,6 +107,11 @@ const COMMANDS = [
   { id: 'misc-sort', icon: '↕', group: '其他', label: '切换搜索结果排序（时长/来源）', keywords: ['sort', '排序', 'duration'], run: () => _call('cycleSearchSort') },
   { id: 'misc-groups', icon: '🔗', group: '其他', label: '查看跨平台同名分组', keywords: ['cross platform', '分组', '同名', '聚合'], run: () => _call('showSongGroupsModal') },
   { id: 'misc-dism', icon: '🚫', group: '其他', label: '已屏蔽管理（不感兴趣列表，可恢复/清空）', keywords: ['dismiss', '屏蔽', '不感兴趣', 'blacklist'], run: () => _call('showDismissedManager') },
+  { id: 'misc-artist', icon: '🔍', group: '其他', label: '搜索当前播放歌曲的歌手', keywords: ['artist', '歌手', '搜索'], run: () => {
+    const s = typeof window.getState === 'function' ? window.getState('currentPlaying') : null;
+    if (s && s.artist) _call('searchArtistSongs', s.artist);
+    else showToast('暂无正在播放歌曲的歌手信息', 'warn');
+  } },
   { id: 'misc-lsort', icon: '↕', group: '其他', label: '切换本地曲库排序（标题/歌手/时长/大小）', keywords: ['local sort', '本地排序'], run: () => _call('cycleLocalSort') },
   { id: 'misc-focus', icon: '🎯', group: '其他', label: '聚焦搜索框', keywords: ['focus', '输入'], run: () => { _goto('search'); const el = document.getElementById('searchInput'); if (el) setTimeout(() => el.focus(), 80); } },
   { id: 'misc-cache', icon: '🗑', group: '其他', label: '清理播放缓存', keywords: ['cache', '缓存'], run: () => _call('clearPlayCache') },

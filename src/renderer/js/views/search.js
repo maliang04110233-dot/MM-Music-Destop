@@ -405,6 +405,20 @@ function switchSearchType(type, btn) {
   if (_dom.searchInput?.value?.trim()) doSearch(1);
 }
 
+/** 「搜索该歌手」：歌曲右键入口 → 切到歌手页签并直接出结果（多歌手取第一位） */
+async function searchArtistSongs(artistName) {
+  const raw = String(artistName || '').trim();
+  if (!raw) { showToast('该歌曲没有歌手信息', 'warn'); return; }
+  const name = raw.split(/[/&、,，]|feat\.?/i)[0].trim() || raw;
+  if (typeof window.switchTab === 'function') window.switchTab('search');
+  _searchType = 'singer';
+  document.querySelectorAll('.search-type-tabs .tab').forEach(t =>
+    t.classList.toggle('active', t.getAttribute('data-type') === 'singer'));
+  const input = document.getElementById('searchInput') || _dom.searchInput;
+  if (input) input.value = name;
+  await doSearch(1);
+}
+
 // ── 统一搜索入口 ─────────────────────────────────────
 // ── 搜索结果 LRU 缓存 ─────────────────────────────────
 const _searchCache = new Map();
@@ -1235,6 +1249,7 @@ function switchSource(src) {
 
 // ── 导出 ─────────────────────────────────────────────
 window.doSearch = doSearch;
+window.searchArtistSongs = searchArtistSongs;
 window.doNaturalSearch = doNaturalSearch;
 window.handleLinkInput = handleLinkInput;
 window.openAlbumSongsModal = openAlbumSongsModal;

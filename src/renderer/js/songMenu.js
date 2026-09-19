@@ -82,6 +82,9 @@ export function openSongRowMenu(e, song, opts = {}) {
     { icon: '🚫', label: '不感兴趣（搜索结果中隐藏）', onClick: () => {
       if (typeof window.dismissSong === 'function') window.dismissSong(song);
     } },
+    { icon: '🔍', label: '搜索该歌手', onClick: () => {
+      if (typeof window.searchArtistSongs === 'function') window.searchArtistSongs(song.artist);
+    } },
   );
   const share = songShareText(song);
   const pageUrl = songPageUrl(song);
