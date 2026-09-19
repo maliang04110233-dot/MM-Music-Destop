@@ -25,6 +25,8 @@ import { sanitizeFileBase } from '../artistGroups.js';
 import { plSongKey, splitBySelection, keysOf } from '../plBulkRemove.js';
 import { filterByDlMode, nextPlDlMode, plDlModeLabel } from '../plDlFilter.js';
 import { dupPlaylistName, dupPlaylistPayload } from '../plDuplicate.js';
+import { toTrackLines } from '../songListText.js';
+import { copyText } from '../songShare.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -1067,6 +1069,15 @@ async function duplicateCurrentPlaylist() {
   }
 }
 
+// 📋 复制曲单：当前过滤视图整成一行一首纯文本（歌名 - 歌手）进剪贴板，
+// 发群聊直接贴清单；增量58 是行级分享文案（带链接），这里是清单级，零新通道
+async function copyPlaylistListText() {
+  const lines = toTrackLines(_plVisiblePairs(_currentDetailSongs).map(p => p.song));
+  if (!lines.length) { showToast('当前视图没有可复制的歌曲', 'info'); return; }
+  const ok = await copyText(lines.join('\n'));
+  showToast(ok ? `📋 已复制 ${lines.length} 首歌名清单` : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
+}
+
 // ── 初始化 ────────────────────────────────────────────
 // 收藏状态变化 → 收藏夹详情即时同步（行内 ♥ 取消收藏后该行立刻消失）。
 // router 每次进歌单页都会调 initPlaylistView，故用一次性绑定防重复订阅。
@@ -1117,6 +1128,7 @@ window.openPlaylistMergePicker = openPlaylistMergePicker;
 window.closePlaylistMergePicker = closePlaylistMergePicker;
 window.mergePlaylistIntoCurrent = mergePlaylistIntoCurrent;
 window.dedupeCurrentPlaylist = dedupeCurrentPlaylist;
+window.copyPlaylistListText = copyPlaylistListText;
 window.locatePlayingInDetail = locatePlayingInDetail;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;

@@ -269,6 +269,7 @@
                       <button class="tab" id="localFmtBtn" onclick="cycleLocalFmt()" title="按文件格式过滤：只在曲库实际存在的格式间循环">🎞 全部格式</button>
                       <button class="tab tab-neon" onclick="convertSelectedAudio()" data-i18n="local.convert">🔄 转码</button>
                       <button class="tab" onclick="exportLocalM3u()" title="把当前过滤/排序视图导出为 m3u 歌单文件（选择模式下勾选优先）">⤴ 导出m3u</button>
+                      <button class="tab" onclick="copyLocalListText()" title="把当前过滤视图复制成一行一首的文本清单（歌名 - 歌手），发群聊直接贴">📋 复制曲单</button>
                       <div class="search-input-wrap">
                         <input class="search-input" id="localFilter" placeholder="过滤本地歌曲..."
                           oninput="filterLocalSongs()" onkeydown="if(event.key==='Enter')filterLocalSongs()">
@@ -1208,6 +1209,7 @@
       <button class="btn-sm" style="flex-shrink:0;" title="把其他歌单的歌合并进本歌单（按平台+ID去重，源歌单保留）" onclick="openPlaylistMergePicker()">📥 合并</button>
       <button class="btn-sm" style="flex-shrink:0;" title="移除本歌单内的重复歌曲（按平台+ID识别，保留首次出现）" onclick="dedupeCurrentPlaylist()">🧹 清重复</button>
       <button class="btn-sm" style="flex-shrink:0;" title="把本歌单原样复制为新歌单（在线曲目全带走，撞名自动加「副本2」）：大改前备份、拿模板都靠它" onclick="duplicateCurrentPlaylist()">📋 副本</button>
+      <button class="btn-sm" style="flex-shrink:0;" title="把当前过滤视图复制成一行一首的文本清单（歌名 - 歌手），发群聊直接贴" onclick="copyPlaylistListText()">📋 复制曲单</button>
       <button class="btn-sm" style="flex-shrink:0;" title="滚动到本歌单中正在播放的歌并闪烁标记" onclick="locatePlayingInDetail()">🎯 定位</button>
       <button class="btn-sm" style="flex-shrink:0;" title="搜索歌曲并添加进本歌单" onclick="openPlaylistAddSongs()">➕ 加歌</button>
       <button class="playlist-modal-close" onclick="closePlaylistDetail()">✕</button>

@@ -27,6 +27,7 @@ import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from '../favorites.js';
 import { favOnlyFilter } from '../localFavFilter.js';
 import { listFormats, nextFmtMode, fmtModeLabel, filterByFmt } from '../localFormatFilter.js';
+import { toTrackLines } from '../songListText.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 
@@ -209,6 +210,14 @@ function cycleLocalFmt() {
   const btn = document.getElementById('localFmtBtn');
   if (btn) btn.textContent = fmtModeLabel(_localFmtMode);
   filterLocalSongs();
+}
+
+// 📋 复制曲单：当前过滤视图一行一首纯文本（歌名 - 歌手）进剪贴板，零新通道
+async function copyLocalListText() {
+  const lines = toTrackLines(getState('localFiltered') || []);
+  if (!lines.length) { showToast('当前视图没有可复制的歌曲', 'info'); return; }
+  const ok = await copyText(lines.join('\n'));
+  showToast(ok ? `📋 已复制 ${lines.length} 首歌名清单` : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
 }
 
 /** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
@@ -1304,6 +1313,7 @@ window.filterLocalSongs = filterLocalSongs;
 window.cycleLocalSort = cycleLocalSort;
 window.toggleLocalFavOnly = toggleLocalFavOnly;
 window.cycleLocalFmt = cycleLocalFmt;
+window.copyLocalListText = copyLocalListText;
 window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;
