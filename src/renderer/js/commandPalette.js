@@ -76,6 +76,7 @@ const COMMANDS = [
   { id: 'pl-lyradv', icon: '⏪', group: '播放', label: '歌词提前 0.5s（偏移 -500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', -500) },
   { id: 'pl-lyrdly', icon: '⏩', group: '播放', label: '歌词延后 0.5s（偏移 +500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', 500) },
   { id: 'pl-abloop', icon: '🔁', group: '播放', label: 'A-B 循环：设 A 点 / 设 B 点 / 清除', keywords: ['ab loop', '循环', '片段', '副歌'], run: () => _call('abLoopClick') },
+  { id: 'pl-lyedit', icon: '✏️', group: '播放', label: '编辑当前歌曲歌词（本地 .lrc / 在线覆写）', keywords: ['lyric', '歌词', '编辑', 'edit'], run: () => _call('openLyricEditor') },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
   { id: 'dl-namebatch', icon: '🎤', group: '下载', label: '按歌名批量导入（歌手 - 歌名清单）', keywords: ['name batch', '歌名', '文本清单'], run: () => _call('openNameBatch') },

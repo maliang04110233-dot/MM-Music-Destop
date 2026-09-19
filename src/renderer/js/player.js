@@ -16,6 +16,7 @@ import {
   parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
   applyLyricFontSize, applyLyricOffset, getLyricOffset,
 } from './player/lyrics.js';
+import { getLyricOverride } from './lyricEditor.js';
 
 const audio = document.getElementById('audioPlayer');
 
@@ -281,13 +282,16 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
       const r = await api.readLocalLrc(song.filePath);
       if (r && r.lrc && r.lrc.trim()) {
         window.parseLrc(r.lrc);
+        setState('_currentLyricRaw', r.lrc);
         if (r.source === 'embedded') {
           showToast('使用嵌入歌词', 'info', 1500);
         }
       } else {
+        setState('_currentLyricRaw', '');
         showNoLyrics();
       }
     } catch (_e) {
+      setState('_currentLyricRaw', '');
       showNoLyrics();
     }
     return;
@@ -332,10 +336,16 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
     });
   }
 
-  // 尝试获取歌词
+  // 尝试获取歌词（本机覆写优先于平台歌词）
   try {
-    const r = await api.getLyrics(song.id, song.source, song.title, song.artist);
-    if (r && r.lrc) parseLrc(r.lrc);
+    const ov = await getLyricOverride(song);
+    const r = ov ? { lrc: ov } : await api.getLyrics(song.id, song.source, song.title, song.artist);
+    if (r && r.lrc) {
+      parseLrc(r.lrc);
+      setState('_currentLyricRaw', r.lrc);
+    } else {
+      setState('_currentLyricRaw', '');
+    }
   } catch (_e) { /* ignore */ }
 }
 
