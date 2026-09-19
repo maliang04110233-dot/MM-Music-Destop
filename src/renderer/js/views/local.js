@@ -28,6 +28,7 @@ import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from
 import { favOnlyFilter } from '../localFavFilter.js';
 import { listFormats, nextFmtMode, fmtModeLabel, filterByFmt } from '../localFormatFilter.js';
 import { qualityBadge } from '../localQualityBadge.js';
+import { qualModeLabel, nextQualMode, filterByQuality } from '../localQualityFilter.js';
 import { applyFolderToSongs } from '../folderGroups.js';
 import { toTrackLines } from '../songListText.js';
 import { copyText } from '../songShare.js';
@@ -168,6 +169,7 @@ async function _doScanLocalDir() {
 let _localSortMode = 'default'; // 本地曲库排序（会话级，扫描/过滤后都保持生效）
 let _localFavOnly = false;      // 仅看收藏开关（会话级，增量89）
 let _localFmtMode = 'all';      // 格式过滤循环态（会话级，增量107）
+let _localQualMode = 'all';    // 音质视图过滤循环态（会话级，增量123）
 
 /** 统一排序入口：plays-desc 需要注入 stats 的播放计数表 */
 function _sortL(songs) {
@@ -181,6 +183,7 @@ function filterLocalSongs() {
   songs = applyFolderToSongs(songs); // 文件夹过滤在链首：fav→fmt→kw 都在其结果上再筛
   if (_localFavOnly) songs = favOnlyFilter(songs, getState('favoriteKeys'));
   if (_localFmtMode !== 'all') songs = filterByFmt(songs, _localFmtMode);
+  if (_localQualMode !== 'all') songs = filterByQuality(songs, (fp) => _probeCache.get(fp), _localQualMode);
   if (kw) {
     songs = songs.filter(s =>
       (s.title || '').toLowerCase().includes(kw) ||
@@ -208,6 +211,13 @@ function toggleLocalFavOnly() {
 window.onLocalFavToggle = () => { if (_localFavOnly) filterLocalSongs(); };
 
 /** 格式过滤循环：只在曲库实际存在的扩展名间走一格，按钮文案同步 */
+function cycleLocalQual() {
+  _localQualMode = nextQualMode(_localQualMode);
+  const btn = document.getElementById('localQualBtn');
+  if (btn) btn.textContent = qualModeLabel(_localQualMode);
+  renderLocalSongs();
+}
+
 function cycleLocalFmt() {
   _localFmtMode = nextFmtMode(_localFmtMode, listFormats(getState('localSongs') || []));
   const btn = document.getElementById('localFmtBtn');
@@ -1317,6 +1327,7 @@ window.filterLocalSongs = filterLocalSongs;
 window.cycleLocalSort = cycleLocalSort;
 window.toggleLocalFavOnly = toggleLocalFavOnly;
 window.cycleLocalFmt = cycleLocalFmt;
+window.cycleLocalQual = cycleLocalQual;
 window.copyLocalListText = copyLocalListText;
 window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
