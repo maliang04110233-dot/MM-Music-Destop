@@ -23,6 +23,7 @@ import { mergeSongLists } from '../playlistMerge.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 import { sanitizeFileBase } from '../artistGroups.js';
 import { plSongKey, splitBySelection, keysOf } from '../plBulkRemove.js';
+import { planSelEnqueue, enqueueSkipSuffix } from '../plSelBatch.js';
 import { filterByDlMode, nextPlDlMode, plDlModeLabel } from '../plDlFilter.js';
 import { dupPlaylistName, dupPlaylistPayload } from '../plDuplicate.js';
 import { toTrackLines } from '../songListText.js';
@@ -282,7 +283,12 @@ async function persistPlaylistOrder(from, to) {
 
 // ── 播放歌单中的歌曲 ──────────────────────────────────
 async function playPlaylistSong(idx) {
-  const songs = _currentDetailSongs;
+  await _playFrom(_currentDetailSongs, idx);
+}
+
+/** 从给定歌曲列表取流播放：整个 list 作为播放队列，从 idx 起连播 */
+async function _playFrom(list, idx) {
+  const songs = Array.isArray(list) ? list : [];
   const song = songs[idx];
   if (!song) { showToast('未找到歌曲', 'warn'); return; }
   const quality = resolveQuality(song.source);
@@ -374,11 +380,9 @@ async function downloadAllPlaylist() {
   const songs = _currentDetailSongs.slice();
   if (!songs.length) { showToast('歌单为空', 'warn'); return; }
   const saveDir = getState('saveDir');
-  let queued = 0, inQueue = 0, dlSkipped = 0;
-  for (const song of songs) {
-    const existing = (getState('queueSnapshot') || []).find(q =>
-      q.id === song.id && q.source === song.source && q.status !== 'done');
-    if (existing) { inQueue++; continue; }
+  const { toEnqueue, skipped: inQueue } = planSelEnqueue(songs, getState('queueSnapshot') || []);
+  let queued = 0, dlSkipped = 0;
+  for (const song of toEnqueue) {
     try {
       // 批量场景：历史已下载且文件还在 → 静默跳过（同 downloadAlbum）
       const r = await api.addToQueue({ ...song, saveDir, quality: resolveQuality(song.source) });
@@ -386,11 +390,7 @@ async function downloadAllPlaylist() {
       else if (r && r.alreadyDownloaded) dlSkipped++;
     } catch (e) { logger.warn('歌单批量入队失败:', song.title, e.message); }
   }
-  let msg = `歌单 ${queued} 首已加入下载队列`;
-  const skippedParts = [];
-  if (inQueue) skippedParts.push(`${inQueue} 首已在队列`);
-  if (dlSkipped) skippedParts.push(`${dlSkipped} 首已下载过`);
-  if (skippedParts.length) msg += `（跳过 ${skippedParts.join('，')}）`;
+  const msg = `歌单 ${queued} 首已加入下载队列${enqueueSkipSuffix(inQueue, dlSkipped)}`;
   showToast(msg, queued || dlSkipped ? 'success' : 'info');
 }
 
@@ -439,11 +439,21 @@ function _syncPlSelBtns() {
   const modeBtn = document.getElementById('plSelModeBtn');
   const allBtn = document.getElementById('plSelAllBtn');
   const rmBtn = document.getElementById('plSelRemoveBtn');
+  const dlBtn = document.getElementById('plSelDlBtn');
+  const playBtn = document.getElementById('plSelPlayBtn');
   if (modeBtn) modeBtn.textContent = _plSelMode ? '⬚ 退出多选' : '☑ 多选';
   if (allBtn) allBtn.classList.toggle('hidden', !_plSelMode);
   if (rmBtn) {
     rmBtn.classList.toggle('hidden', !_plSelMode);
     rmBtn.textContent = `🗑 移除 ${_plSelKeys.size}`;
+  }
+  if (dlBtn) {
+    dlBtn.classList.toggle('hidden', !_plSelMode);
+    dlBtn.textContent = `⬇ 下载 ${_plSelKeys.size}`;
+  }
+  if (playBtn) {
+    playBtn.classList.toggle('hidden', !_plSelMode);
+    playBtn.textContent = `▶ 播放 ${_plSelKeys.size}`;
   }
 }
 
@@ -505,6 +515,37 @@ async function removeCheckedFromPlaylist() {
     logger.error('[removeCheckedFromPlaylist] 失败:', e);
     showToast('移除失败: ' + e.message, 'error');
   }
+}
+
+// ── 多选批量动作（增量112）：下载已勾选 / 播放已勾选 ─────────
+/** 按歌单存储序取出勾选的歌（与99移除同一条链：键集现算，隐形/已消失的自然跳过） */
+function _plSelPicked() {
+  return splitBySelection(_currentDetailSongs, _plSelKeys).removed;
+}
+
+async function plSelDownload() {
+  const picked = _plSelPicked();
+  if (!picked.length) { showToast('先勾选要下载的歌曲', 'warn'); return; }
+  const saveDir = getState('saveDir');
+  const { toEnqueue, skipped } = planSelEnqueue(picked, getState('queueSnapshot') || []);
+  let queued = 0, dlSkipped = 0;
+  for (const song of toEnqueue) {
+    try {
+      // 批量场景：历史已下载且文件还在 → 主进程静默跳过，这里只计数（同整单入队）
+      const r = await api.addToQueue({ ...song, saveDir, quality: resolveQuality(song.source) });
+      if (r && r.queued) queued++;
+      else if (r && r.alreadyDownloaded) dlSkipped++;
+    } catch (e) { logger.warn('歌单多选入队失败:', song.title, e.message); }
+  }
+  showToast(`⬇ 已加入 ${queued} 首${enqueueSkipSuffix(skipped, dlSkipped)}`,
+    queued || dlSkipped ? 'success' : 'info', 3200);
+}
+
+async function plSelPlay() {
+  const picked = _plSelPicked();
+  if (!picked.length) { showToast('先勾选要播放的歌曲', 'warn'); return; }
+  // 勾选的歌单独组成播放队列，从第一首起连播（整单 playQueue 被替换是刻意语义）
+  await _playFrom(picked, 0);
 }
 
 // ── 新建 / 编辑歌单 ────────────────────────────────────
@@ -1154,5 +1195,7 @@ window.togglePlBulkMode = togglePlBulkMode;
 window.togglePlSongSel = togglePlSongSel;
 window.plSelectAllVisible = plSelectAllVisible;
 window.removeCheckedFromPlaylist = removeCheckedFromPlaylist;
+window.plSelDownload = plSelDownload;
+window.plSelPlay = plSelPlay;
 window.cyclePlDlFilter = cyclePlDlFilter;
 window.duplicateCurrentPlaylist = duplicateCurrentPlaylist;
