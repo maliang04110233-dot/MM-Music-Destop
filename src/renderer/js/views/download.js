@@ -5,6 +5,7 @@
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { showContextMenu } from '../contextMenu.js';
+import { applyQueueFilter } from '../queueFilter.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -22,6 +23,7 @@ function _cacheDlDom() {
 }
 
 let _dlFilter = 'all';         // 'all' | 'active' | 'done' | 'error'
+let _dlKeyword = '';           // 队列关键词过滤（与状态筛选 AND 叠加）
 let _dlSelectionMode = false;
 const _selectedDl = new Set(); // 存 taskId
 const _expandedDlDetails = new Set(); // 存已展开详情的 taskId
@@ -129,13 +131,15 @@ function renderQueue(queue) {
   state.set('queueSnapshot', queue);
   if (typeof window.refreshQueueSummary === 'function') window.refreshQueueSummary();
 
-  // 按筛选过滤
-  let filtered = queue;
-  if (_dlFilter === 'active') filtered = queue.filter(s => s.status === 'downloading' || s.status === 'pending');
-  else if (_dlFilter === 'done') filtered = queue.filter(s => s.status === 'done');
-  else if (_dlFilter === 'error') filtered = queue.filter(s => s.status === 'error');
+  // 按筛选过滤（状态 × 关键词，组合逻辑在 queueFilter.js 纯函数）
+  const filtered = applyQueueFilter(queue, _dlFilter, _dlKeyword);
 
   if (!filtered.length) {
+    if (_dlKeyword) {
+      const modeLabel = { active: '下载中', done: '已完成', error: '失败' }[_dlFilter] || '';
+      el.innerHTML = `<div class="queue-empty">没有匹配「${esc(_dlKeyword)}」的${modeLabel ? '「' + modeLabel + '」' : ''}任务</div>`;
+      return;
+    }
     const emptyMsg = _dlFilter === 'all' ? '暂无下载任务' : _dlFilter === 'active' ? '暂无正在下载的任务' : _dlFilter === 'done' ? '暂无已完成的任务' : '暂无失败的任务';
     // 全部 tab 空态给引导（去搜索/看历史）；筛选 tab 空态保持一句话
     el.innerHTML = _dlFilter === 'all' && !queue.length
@@ -539,7 +543,14 @@ export {
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.renderQueue = renderQueue;
+function setQueueKeyword() {
+  const input = document.getElementById('queueFilterInput');
+  _dlKeyword = input?.value?.trim() || '';
+  renderQueue(getState('queueSnapshot') || []);
+}
+
 window.setDownloadFilter = setDownloadFilter;
+window.setQueueKeyword = setQueueKeyword;
 window.toggleQueueDetail = toggleQueueDetail;
 window.enterDlSelectionMode = enterDlSelectionMode;
 window.exitDlSelectionMode = exitDlSelectionMode;

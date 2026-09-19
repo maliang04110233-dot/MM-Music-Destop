@@ -464,3 +464,19 @@ mark {
   border-radius: 2px;
   padding: 0 1px;
 }
+
+/* 下载队列关键词过滤输入框（download.js setQueueKeyword） */
+.queue-filter-input {
+  width: 150px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: var(--bg-elev, rgba(255, 255, 255, 0.04));
+  color: var(--text, inherit);
+  outline: none;
+}
+.queue-filter-input:focus {
+  border-color: var(--accent, #00ffc8);
+  width: 190px;
+}
