@@ -10,6 +10,7 @@ import { VirtualScroller } from '../virtualList.js';
 
 // 转码共用弹窗 + 批量 runner（下载页/转换页/本地库三处共用）
 import { openConvertModal, runConvertBatch } from '../converter-core.js';
+import { showContextMenu } from '../contextMenu.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -234,7 +235,7 @@ function _renderLocalRow(s, i) {
   const rowClass = selected && _localSelectionMode ? 'local-row selected' : 'local-row';
   const encodedPath = btoa(encodeURIComponent(s.filePath));
   return `
-  <div class="${rowClass}" data-idx="${i}" onclick="playLocalSong(${i})" style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer;">
+  <div class="${rowClass}" data-idx="${i}" onclick="playLocalSong(${i})" oncontextmenu="event.preventDefault();event.stopPropagation();showLocalRowMenu(event,${i})" style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer;">
     ${_localSelectionMode ? `
     <div class="local-row-cb" onclick="event.stopPropagation();toggleLocalSelect('${encodedPath}',${i})">
       <input type="checkbox" id="localcb_${i}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleLocalSelect('${encodedPath}',${i})">
@@ -569,6 +570,42 @@ function decodeFilePath(encoded) {
   } catch (e) {
     return encoded; // 降级：如果是旧版明文路径，直接返回
   }
+}
+
+// ── 行右键菜单 + 伪无损检测 ────────────────────────────────────
+// 下载站常拿 MP3 改扩成 .flac 挂「无损」；扩展名和标称都不可信，
+// 唯一可信的是容器里实际音频流 —— ffprobe 实测编码/码率给出判定。
+const _probeCache = new Map(); // filePath → 成功的实测结果，避免重复起进程
+
+function _toastProbeResult(r, s) {
+  if (!r || !r.ok) { showToast('检测失败：' + ((r && r.error) || '未知错误'), 'warn', 3500); return; }
+  const codec = r.codec ? r.codec.toUpperCase() : '未知';
+  const kb = r.bitrateKbps ? r.bitrateKbps + 'kbps' : '码率未知';
+  const sr = r.sampleRate ? ' · ' + (r.sampleRate / 1000) + 'kHz' : '';
+  if (r.verdict === 'lossless') showToast(`✅ 《${s.title || ''}》真无损：${codec} · ${kb}${sr}`, 'success', 4500);
+  else if (r.verdict === 'suspicious') showToast(`⚠️ 《${s.title || ''}》存疑：无损编码 ${codec} 但码率仅 ${kb}，疑低码率转制`, 'warn', 5500);
+  else showToast(`❌ 《${s.title || ''}》伪无损！实际是有损编码 ${codec} · ${kb}${sr}`, 'error', 6000);
+}
+
+async function probeLocalQuality(s) {
+  if (_probeCache.has(s.filePath)) { _toastProbeResult(_probeCache.get(s.filePath), s); return; }
+  showToast(`🔬 正在实测《${s.title || ''}》…`, 'info', 1500);
+  let r;
+  try { r = await api.probeAudio(s.filePath); }
+  catch (e) { r = { error: e.message }; }
+  if (r && r.ok) _probeCache.set(s.filePath, r);
+  _toastProbeResult(r, s);
+}
+
+function showLocalRowMenu(e, idx) {
+  const s = (getState('localFiltered') || [])[idx];
+  if (!s) return;
+  showContextMenu(e.clientX, e.clientY, [
+    { icon: '▶', label: '播放', onClick: () => playLocalSong(idx) },
+    { icon: '✏️', label: '编辑信息', onClick: () => openEdit(idx) },
+    { sep: true },
+    { icon: _probeCache.has(s.filePath) ? '✓' : '🔬', label: '检测真实音质', onClick: () => probeLocalQuality(s) },
+  ]);
 }
 
 // ── 批量歌词 ─────────────────────────────────────────
@@ -1115,3 +1152,4 @@ window.openBatchRename = openBatchRename;
 window.executeBatchRename = executeBatchRename;
 window.batchDownloadCovers = batchDownloadCovers;
 window.localCleanup = localCleanup;
+window.showLocalRowMenu = showLocalRowMenu;

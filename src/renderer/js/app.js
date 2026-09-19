@@ -97,6 +97,7 @@ const mockApi = {
   onLocalLibraryChanged: () => {},
   setQueuePaused: async () => ({ ok: true, paused: false }),
   systemPower: async () => ({ ok: true }),
+  probeAudio: async () => ({ error: '开发模式不支持实测' }),
   onDownloadProgress: () => {},
   onDownloadError: () => {},
   onLocalLrcFetched: () => {},

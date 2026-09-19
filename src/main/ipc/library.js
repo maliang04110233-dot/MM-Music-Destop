@@ -349,6 +349,18 @@ function register() {
     _cancelRequested = true;
     return { success: true };
   });
+
+  // 伪无损检测：ffprobe 实测真实编码/码率（与转码同款路径沙箱）
+  handle('probe-audio', async (_, filePath) => {
+    try {
+      if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { error: '路径不可访问' };
+      const { probeAudioFile } = require('../../utils/audioProbe');
+      return await probeAudioFile(filePath);
+    } catch (e) {
+      logger.warn('[probe-audio] 检测失败:', e && e.message);
+      return { error: e.message };
+    }
+  });
 }
 
 // ─── LRC 解码（保留在 main 进程，因为只有 main 读本地文件） ─────────

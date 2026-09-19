@@ -67,6 +67,7 @@ const CHANNELS = {
   'add-playlist-to-queue':  { invoke: MAIN, args: [['payload', t.obj()]] },
   'export-playlist':        { invoke: MAIN, args: [['params', t.obj()]] },
   'system-power':           { invoke: MAIN, args: [['action', t.enum(['shutdown', 'sleep', 'quit'], 'quit')]] },
+  'probe-audio':            { invoke: MAIN, args: [['filePath', t.str(1000)]] },
   'proxy-play':             { invoke: MAIN, args: [['url', t.str(4000)], ['referer', t.str(4000)]] },
   'get-download-templates': { invoke: MAIN },
   'save-download-template': { invoke: MAIN, args: [['template', t.obj()]] },
@@ -268,6 +269,7 @@ const METHODS = {
   batchFetchLyrics: 'batch-fetch-lyrics',
   convertAudio: 'convert-audio',
   cancelConvertAudio: 'cancel-convert-audio',
+  probeAudio: 'probe-audio',
   deleteFile: 'delete-file',
   renameFile: 'rename-file',
   // 文件
