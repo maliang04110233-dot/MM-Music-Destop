@@ -176,7 +176,6 @@
   "settings.general.lyricOffset": "Lyrics time offset",
   "settings.general.lyricOffsetHint": "Use a positive value when lyrics run ahead of the audio",
   "settings.general.eqTitle": "Equalizer (EQ)",
-  "settings.general.eqNotEffective": "EQ is not wired into the audio pipeline in this version — adjustments do not change the sound (preferences are still saved)",
   "settings.general.cacheTitle": "Cache Management",
   "settings.general.clearCache": "🧹 Clear Play Cache",
   "settings.general.cacheHint": "Removes temporary preview files; downloaded music is not affected",

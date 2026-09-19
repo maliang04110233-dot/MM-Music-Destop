@@ -176,7 +176,6 @@
   "settings.general.lyricOffset": "歌词时间偏移",
   "settings.general.lyricOffsetHint": "歌词比声音快时填正值",
   "settings.general.eqTitle": "均衡器 EQ",
-  "settings.general.eqNotEffective": "此版本 EQ 尚未接入音频链路，调整不影响实际声音（仅保存偏好）",
   "settings.general.cacheTitle": "缓存管理",
   "settings.general.clearCache": "🧹 清理播放缓存",
   "settings.general.cacheHint": "清除试听产生的临时文件，不会影响已下载的音乐",
