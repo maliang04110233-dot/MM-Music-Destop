@@ -18,6 +18,7 @@ import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlayl
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
 import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
+import { mergeSongLists } from '../playlistMerge.js';
 import { sanitizeFileBase } from '../artistGroups.js';
 
 // ── 状态 ─────────────────────────────────────────────
@@ -814,6 +815,90 @@ async function exportCurrentPlaylistM3u() {
   }
 }
 
+// ── 合并其他歌单进本歌单（playlistMerge 纯函数的接线层）──────
+let _plMergeEl = null;
+let _plMerging = false;
+
+function _ensurePlMergeModal() {
+  if (_plMergeEl && document.body.contains(_plMergeEl)) return _plMergeEl;
+  const div = document.createElement('div');
+  div.id = 'plMergeModal';
+  div.className = 'playlist-modal-overlay hidden';
+  // 静态模板不含用户数据；歌单行经 esc/escQ 逐条渲染
+  div.innerHTML = `
+    <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;">
+      <div class="playlist-modal-header">
+        <span class="playlist-modal-title">📥 合并其他歌单进本歌单</span>
+        <button class="playlist-modal-close" onclick="closePlaylistMergePicker()">✕</button>
+      </div>
+      <div id="plMergeList" class="playlist-modal-body" style="flex:1;min-height:0;overflow-y:auto;padding:8px 16px 16px;"></div>
+    </div>`;
+  div.addEventListener('click', (e) => { if (e.target === div) closePlaylistMergePicker(); });
+  document.body.appendChild(div);
+  _plMergeEl = div;
+  return div;
+}
+
+async function openPlaylistMergePicker() {
+  if (!_currentPlaylistId) { showToast('请先打开一个歌单', 'warn'); return; }
+  const m = _ensurePlMergeModal();
+  m.classList.remove('hidden');
+  const box = document.getElementById('plMergeList');
+  box.innerHTML = '<div class="empty-hint" style="text-align:center;padding:20px;">加载中…</div>';
+  try {
+    const all = (await api.getUserPlaylists()) || [];
+    const others = all.filter(p => p && p.id && p.id !== _currentPlaylistId);
+    if (!others.length) {
+      box.innerHTML = '<div class="empty-hint" style="text-align:center;padding:20px;">没有其他歌单可合并</div>';
+      return;
+    }
+    box.innerHTML = others.map(p => `
+      <div class="song-row">
+        <div class="song-info">
+          <div class="song-title">${esc(p.name) || '未命名'}</div>
+          <div class="song-meta">${(p.songs || []).length} 首${p.desc ? ' · ' + esc(p.desc) : ''}</div>
+        </div>
+        <div class="song-actions">
+          <button class="action-btn" onclick="mergePlaylistIntoCurrent('${escQ(p.id)}')" title="把该歌单的歌合入当前打开的歌单（重复歌自动跳过）">📥 合入</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">加载失败：${esc(e.message || e)}</div>`;
+  }
+}
+
+function closePlaylistMergePicker() {
+  if (_plMergeEl) _plMergeEl.classList.add('hidden');
+}
+
+async function mergePlaylistIntoCurrent(srcId) {
+  if (!_currentPlaylistId || _plMerging) return;
+  if (srcId === _currentPlaylistId) { showToast('不能合并到自己', 'warn'); return; }
+  _plMerging = true;
+  try {
+    // 实时重拉两侧：卡片列表 state 可能已被其他入口改脏
+    const all = (await api.getUserPlaylists()) || [];
+    const target = all.find(p => p && p.id === _currentPlaylistId);
+    const src = all.find(p => p && p.id === srcId);
+    if (!target || !src) { showToast('歌单已不存在，请刷新重试', 'warn'); return; }
+    const merged = mergeSongLists(target.songs || [], src.songs || []);
+    if (!merged.added) {
+      showToast(`「${src.name}」没有新歌可合入（重复 ${merged.dup} 首）`, 'info');
+      return;
+    }
+    const r = await api.saveUserPlaylist({ id: target.id, name: target.name, songs: merged.songs });
+    if (!r || !r.success) { showToast('合并失败：' + ((r && r.error) || '未知错误'), 'error'); return; }
+    renderPlaylistDetailSongs((r.playlist && r.playlist.songs) || merged.songs);
+    loadUserPlaylists(); // 卡片曲数/排序随合并后数据刷新
+    closePlaylistMergePicker();
+    showToast(`📥 已把「${src.name}」的 ${merged.added} 首合入本歌单（跳过重复 ${merged.dup} 首）`, 'success', 3500);
+  } catch (e) {
+    showToast('合并失败: ' + (e.message || e), 'error');
+  } finally {
+    _plMerging = false;
+  }
+}
+
 // ── 初始化 ────────────────────────────────────────────
 function initPlaylistView() {
   loadUserPlaylists();
@@ -828,6 +913,9 @@ window.addPlaylistSongToQueue = addPlaylistSongToQueue;
 window.downloadPlaylistSong = downloadPlaylistSong;
 window.downloadAllPlaylist = downloadAllPlaylist;
 window.exportCurrentPlaylistM3u = exportCurrentPlaylistM3u;
+window.openPlaylistMergePicker = openPlaylistMergePicker;
+window.closePlaylistMergePicker = closePlaylistMergePicker;
+window.mergePlaylistIntoCurrent = mergePlaylistIntoCurrent;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
