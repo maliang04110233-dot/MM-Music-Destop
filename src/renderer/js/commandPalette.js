@@ -80,6 +80,7 @@ const COMMANDS = [
   { id: 'dl-after', icon: '🏁', group: '下载', label: '设置「完成后动作」', keywords: ['shutdown', '关机', '退出'], run: () => _call('openAfterQueueMenu') },
   { id: 'dl-trend', icon: '📊', group: '下载', label: '下载趋势（近 14 天）', keywords: ['trend', '趋势', 'history stats'], run: () => _call('showTrendPanel') },
   { id: 'dl-diag', icon: '🆘', group: '下载', label: '诊断最近一个失败任务', keywords: ['diagnose', '失败', 'error'], run: () => _call('diagnoseLatestFailure') },
+  { id: 'dl-diagall', icon: '🩹', group: '下载', label: '失败诊断报告（全部失败按原因聚合）', keywords: ['failure report', '批量诊断', '报告'], run: () => _call('openFailureReport') },
 
   { id: 'lc-refresh', icon: '🔄', group: '本地库', label: '刷新本地曲库', keywords: ['rescan', '扫描'], run: () => _call('refreshLocalLibrary') },
   { id: 'lc-stats', icon: '📊', group: '本地库', label: '曲库统计', keywords: ['stats', '统计'], run: () => _call('showLibraryStats') },

@@ -47,3 +47,36 @@ test('classifyFailure: 全不命中归未分类且可重试，空输入不炸', 
   assert.equal(e.code, 'UNKNOWN');
   assert.ok(e.cause && e.advice);
 });
+
+// ── 批量聚合（增量40） ─────────────────────────────────
+test('groupFailures: 按分类聚合降序，非 error 与空项被忽略', async () => {
+  const { groupFailures } = await fresh();
+  const err = (code, error, title) => ({ status: 'error', errorCode: code, error, title, taskId: 't' + title });
+  const items = [
+    err('NETWORK_TIMEOUT', '', 'a'), err('NETWORK_TIMEOUT', '', 'b'), err('NETWORK_TIMEOUT', '', 'c'),
+    err('AUTH_EXPIRED', '', 'd'), err('AUTH_EXPIRED', '', 'e'),
+    err('', 'HTTP 403 Forbidden', 'f'),
+    { status: 'done', title: 'g' },
+    null,
+  ];
+  const groups = groupFailures(items);
+  assert.equal(groups.length, 3);
+  assert.equal(groups[0].code, 'NETWORK_TIMEOUT');
+  assert.equal(groups[0].songs.length, 3);
+  assert.equal(groups[1].code, 'AUTH_EXPIRED');
+  assert.equal(groups[2].code, 'INFERRED');
+  assert.deepEqual(groups[2].songs.map(s => s.title), ['f']);
+  assert.deepEqual(groupFailures(null), []);
+  assert.deepEqual(groupFailures([{ status: 'done' }]), []);
+});
+
+test('retryableFailureCount: 鉴权/VIP 三码不计入，其余可重试', async () => {
+  const { groupFailures, retryableFailureCount } = await fresh();
+  const err = (code) => ({ status: 'error', errorCode: code, taskId: code });
+  const groups = groupFailures([
+    err('AUTH_EXPIRED'), err('LOGIN_REQUIRED'), err('VIP_REQUIRED'),
+    err('CDN_EMPTY'), err('NETWORK_TIMEOUT'), err('UNKNOWN_X'),
+  ]);
+  assert.equal(retryableFailureCount(groups), 3);
+  assert.equal(retryableFailureCount([]), 0);
+});

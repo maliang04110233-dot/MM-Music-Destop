@@ -129,8 +129,111 @@ function diagnoseLatestFailure() {
   diagnoseFailure(failed[failed.length - 1].taskId);
 }
 
+/** 鉴权/VIP 类：自动重试没有意义，须先去设置处理 */
+const AUTH_CODES = new Set(['VIP_REQUIRED', 'AUTH_EXPIRED', 'LOGIN_REQUIRED']);
+
+/**
+ * 纯聚合：error 任务按 classifyFailure 分组。
+ * @returns {Array<{code,cause,advice,heal,songs:Array}>} 按数量降序
+ */
+export function groupFailures(items) {
+  const groups = new Map();
+  for (const it of items || []) {
+    if (!it || it.status !== 'error') continue;
+    const d = classifyFailure(it.errorCode, it.error);
+    let g = groups.get(d.code);
+    if (!g) { g = { ...d, songs: [] }; groups.set(d.code, g); }
+    g.songs.push({ taskId: it.taskId, title: it.title || '未知曲目' });
+  }
+  return Array.from(groups.values()).sort((a, b) => b.songs.length - a.songs.length);
+}
+
+/** 可自动重试（非鉴权类）的任务总数 */
+export function retryableFailureCount(groups) {
+  return groups.reduce((n, g) => n + (AUTH_CODES.has(g.code) ? 0 : g.songs.length), 0);
+}
+
+function _closeFailReport() {
+  const el = document.getElementById('failReportOverlay');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function _renderFailReport(groups) {
+  _closeFailReport();
+  const total = groups.reduce((n, g) => n + g.songs.length, 0);
+  const overlay = document.createElement('div');
+  overlay.id = 'failReportOverlay';
+  overlay.className = 'edit-overlay';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeFailReport(); });
+
+  const panel = document.createElement('div');
+  panel.className = 'edit-panel';
+
+  const header = document.createElement('div');
+  header.className = 'edit-header';
+  const title = document.createElement('span');
+  title.className = 'edit-title';
+  title.textContent = `🩹 失败诊断报告（${total} 首 · ${groups.length} 类原因）`;
+  const close = document.createElement('button');
+  close.className = 'edit-close';
+  close.textContent = '✕';
+  close.addEventListener('click', _closeFailReport);
+  header.appendChild(title);
+  header.appendChild(close);
+
+  const body = document.createElement('div');
+  body.className = 'edit-body';
+  for (const g of groups) {
+    const names = g.songs.slice(0, 6).map(s => s.title).join('、')
+      + (g.songs.length > 6 ? ` 等 ${g.songs.length} 首` : '');
+    const row = document.createElement('div');
+    row.className = 'sched-job';
+    row.innerHTML =
+      `<div class="sched-job-lines"><b>${esc(g.cause)}</b> · ${g.songs.length} 首（${esc(g.code)}）</div>` +
+      `<div class="sched-job-lines">${esc(g.advice)}</div>` +
+      `<div class="sched-job-lines" style="opacity:.7">${esc(names)}</div>`;
+    body.appendChild(row);
+  }
+
+  const retryable = retryableFailureCount(groups);
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:12px;';
+  if (retryable > 0) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-primary';
+    b.textContent = `🔄 一键重试可恢复任务（${retryable}）`;
+    b.addEventListener('click', async () => {
+      _closeFailReport();
+      let ok = 0;
+      for (const g of groups) {
+        if (AUTH_CODES.has(g.code)) continue;
+        for (const s of g.songs) {
+          try { const r = await api.retryDownload(s.taskId); if (r && r.ok) ok++; } catch (_e) { /* 单个失败不影响整体 */ }
+        }
+      }
+      showToast(ok ? `已重试 ${ok} 项` : '重试未成功，可稍后再试', ok ? 'success' : 'warn', 3000);
+    });
+    foot.appendChild(b);
+  }
+  body.appendChild(foot);
+  panel.appendChild(header);
+  panel.appendChild(body);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
+/** 入口：聚合队列里所有失败任务并弹报告 */
+function openFailureReport() {
+  const queue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
+  const groups = groupFailures(queue);
+  if (!groups.length) { showToast('队列里没有失败任务', 'info', 2000); return; }
+  _renderFailReport(groups);
+}
+
 if (typeof document !== 'undefined') {
   window.diagnoseFailure = diagnoseFailure;
   window.diagnoseLatestFailure = diagnoseLatestFailure;
   window.closeFailureDiag = _closeDiag;
+  window.openFailureReport = openFailureReport;
+  window.closeFailureReport = _closeFailReport;
 }
