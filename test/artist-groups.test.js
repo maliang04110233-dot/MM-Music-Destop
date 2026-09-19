@@ -47,3 +47,38 @@ test('UNKNOWN_ARTIST 常量导出', async () => {
   const { UNKNOWN_ARTIST } = await mod();
   assert.equal(UNKNOWN_ARTIST, '未知歌手');
 });
+
+test('groupAlbums 按专辑聚合并保留 album 字段', async () => {
+  const { groupAlbums } = await mod();
+  const r = groupAlbums([
+    { album: ' 范特西 ', fileSize: 10 },
+    { album: '范特西', fileSize: '20' },
+    { album: '', fileSize: 5 },
+    null,
+    { fileSize: 1 },
+  ]);
+  assert.deepEqual(r, [
+    { album: '范特西', count: 2, size: 30 },
+    { album: '未知专辑', count: 2, size: 6 },
+  ]);
+  assert.deepEqual(groupAlbums(null), []);
+  assert.deepEqual(groupAlbums('x'), []);
+});
+
+test('groupAlbums 数量降序，同数按专辑 zh 拼音序（实测 白<红<蓝）', async () => {
+  const { groupAlbums } = await mod();
+  const r = groupAlbums([
+    { album: '蓝' }, { album: '蓝' },
+    { album: '白' }, { album: '白' },
+    { album: '红' }, { album: '红' },
+  ]);
+  assert.deepEqual(r.map((g) => g.album), ['白', '红', '蓝']);
+});
+
+test('未知专辑桶：trim 后空串与缺失合并', async () => {
+  const { groupAlbums, UNKNOWN_ALBUM } = await mod();
+  assert.equal(UNKNOWN_ALBUM, '未知专辑');
+  const r = groupAlbums([{ album: '   ' }, { album: undefined }, { album: 'X' }]);
+  const unk = r.find((g) => g.album === UNKNOWN_ALBUM);
+  assert.equal(unk.count, 2);
+});
