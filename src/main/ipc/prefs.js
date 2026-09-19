@@ -26,10 +26,20 @@ const ALLOWED_PREF_KEYS = new Set([
   'namingTemplate',
   // 分平台音质覆盖表：平台 id → standard/hq/lossless，未列出的平台沿用 quality
   'qualityBySource',
+  // 单平台并发上限 / 单曲失败尝试次数（设置页 GENERAL_PREFS 写，主进程 downloadQueue 读）
+  'perSourceConcurrency', 'maxAttempts',
+  // 下载完成钩子开关（autoLyric/autoCoverOnDone.js 读，设置页写）
+  'autoLyric', 'autoCover',
   // 播放行为
   'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
   'playbackRate', 'globalShortcuts',
+  // 播放淡入/淡出档位（ms，player/fade.js 读写）
+  'fadeInMs', 'fadeOutMs',
+  // 歌词区显隐与逐曲偏移覆盖（player/lyrics.js 读写）
+  'lyricsVisible', 'lyricOverrides',
+  // 搜索页「不感兴趣」屏蔽清单（views/dismissed.js 读写）
+  'dismissedSongs',
   // 剪贴板链接识别开关（主进程 clipboardWatch 每 tick 读取）
   'clipboardWatch',
   // 下载队列全部完成后的动作（none/quit/sleep/shutdown，渲染层 afterQueueDone.js 读写）

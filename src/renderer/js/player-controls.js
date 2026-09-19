@@ -51,7 +51,8 @@ function setSleepTimer(minutes) {
   _sleepTimer = setInterval(() => {
     const remain = _sleepEnd - Date.now();
     if (remain <= 0) {
-      audio.pause();
+      // 淡出档位开着则缓停收尾（音量降到 0 时由 fade.js 真 pause），否则立即停
+      if (typeof window.fadeOutPause !== 'function' || !window.fadeOutPause(audio)) audio.pause();
       // 此刻 audio 已处于暂停态，若再走通用播放/暂停切换函数会把播放又续上
       window.showToast?.('⏰ 定时到，播放已停止', 'info', 3000);
       clearSleepTimer();

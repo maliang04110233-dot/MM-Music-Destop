@@ -105,6 +105,7 @@ const COMMANDS = [
   { id: 'pq-selpl', icon: '🎼', group: '播放', label: '播放队列多选：把勾选的歌加进我的歌单', keywords: ['queue', 'add to playlist', '歌单', '批量', '勾选', '队列'], run: () => _call('pqSelAddPlaylist') },
   { id: 'pl-csort', icon: '↕', group: '播放', label: '歌单卡片排序：默认 / 名称 / 曲数 / 最近更新', keywords: ['playlist', 'card', 'sort', '歌单排序'], run: () => _call('cyclePlCardSort') },
   { id: 'pl-fade', icon: '🌊', group: '播放', label: '播放淡入档位：关 / 0.5s / 1s / 2s', keywords: ['fade', '淡入', '音量', '渐变'], run: () => _call('cycleFadeIn') },
+  { id: 'pl-fadeout', icon: '🌊', group: '播放', label: '播放淡出档位：暂停/定时到点缓停（关 / 0.5s / 1s / 2s）', keywords: ['fade out', 'fadeOut', '淡出', '缓停', '音量', '渐变'], run: () => _call('cycleFadeOut') },
   { id: 'viz-toggle', icon: '📊', group: '播放', label: '频谱可视化开关（进度条下方实时频谱）', keywords: ['visualizer', 'spectrum', '频谱', '可视化'], run: () => _call('toggleVisualizer') },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },

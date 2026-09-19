@@ -90,7 +90,12 @@ export function initMediaSession() {
     set('pause', () => { if (!audio.paused) _call('togglePlay'); });
     set('previoustrack', () => _call('prevSong'));
     set('nexttrack', () => _call('nextSong'));
-    set('stop', () => { if (!audio.paused) audio.pause(); });
+    set('stop', () => {
+      if (audio.paused) return;
+      // 淡出档位开着时先缓停（pause 动作本就走 togglePlay，stop 动作是直连的）
+      if (typeof window.fadeOutPause === 'function' && window.fadeOutPause(audio)) return;
+      audio.pause();
+    });
     set('seekto', (d) => {
       if (d && typeof d.seekTime === 'number' && Number.isFinite(d.seekTime)) {
         audio.currentTime = Math.max(0, d.seekTime);

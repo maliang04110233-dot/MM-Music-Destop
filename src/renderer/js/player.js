@@ -491,6 +491,8 @@ export function togglePlay() {
     const curSong = getState('currentPlaying');
     if (curSong && audio.currentTime > 0) { savePlayProgress(curSong, audio.currentTime); }
     updatePlayStatsOnStop();
+    // 淡出档位开着时交给缓停收尾（音量降到 0 才真 pause），否则立即停
+    if (typeof window.fadeOutPause === 'function' && window.fadeOutPause(audio)) return;
     audio.pause();
   }
 }
