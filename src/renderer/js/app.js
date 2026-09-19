@@ -51,7 +51,7 @@ import './favorites.js';
 import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
-import { removeQueueItem, dedupeQueue } from './playQueueEdit.js';
+import { removeQueueItem, removeQueueItemsByIdentity, dedupeQueue } from './playQueueEdit.js';
 import { queueToSongs, defaultQueuePlaylistName } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
@@ -1192,6 +1192,7 @@ function renderPlayQueueUI() {
   if (!list) return;
   const queue = getState('playQueue') || [];
   const playIdx = getState('playIdx') || 0;
+  _syncPqSelBtns(); // 多选按钮计数/显隐跟着每次重绘走
   const NOTE_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">'
     + '<path d="M9 19a3 3 0 1 1-2-2.83V7l10-2v7.17A3 3 0 1 0 19 15V3L7 5v12.17Z"/></svg>';
   if (queue.length === 0) {
@@ -1206,7 +1207,12 @@ function renderPlayQueueUI() {
       const cover = s.cover
         ? '<img class="pq-thumb" src="' + escAttr(s.cover) + '" alt="" loading="lazy" draggable="false">'
         : '<span class="pq-thumb-ph">' + NOTE_SVG + '</span>';
-      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" draggable="true" data-pqidx="' + i + '" onclick="window._playQueueIdx(' + i + ')">'
+      const cb = _pqSelMode
+        ? '<input type="checkbox" class="pq-sel-chk" ' + (_pqSel.has(s) ? 'checked ' : '')
+          + 'onclick="event.stopPropagation()" onchange="togglePqSel(' + i + ')" title="勾选后批量移出队列" style="width:14px;height:14px;flex-shrink:0;cursor:pointer;margin:0 4px 0 2px;">'
+        : '';
+      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" draggable="' + (_pqSelMode ? 'false' : 'true') + '" data-pqidx="' + i + '" onclick="' + (_pqSelMode ? 'togglePqSel(' + i + ')' : 'window._playQueueIdx(' + i + ')') + '">'
+        + cb
         + '<span class="pq-idx">' + (i + 1) + '</span>'
         + cover
         + '<span class="pq-item-main">'
@@ -1270,6 +1276,58 @@ window.dedupePlayQueue = () => {
   setState('playQueue', r.queue);
   setState('playIdx', Math.max(0, r.playIdx));
   showToast(`🧹 已移除 ${r.removed} 首重复`, 'success');
+};
+
+// ── 队列多选批量移除（增量101）：选态装行对象引用，下标漂移不误伤 ──
+let _pqSelMode = false;
+const _pqSel = new Set();
+
+function _syncPqSelBtns() {
+  const btn = document.getElementById('pqSelBtn');
+  const rm = document.getElementById('pqSelRmBtn');
+  if (btn) btn.textContent = _pqSelMode ? '⬚ 退出' : '☑ 多选';
+  if (rm) {
+    rm.classList.toggle('hidden', !_pqSelMode);
+    rm.textContent = `🗑 移除 ${_pqSel.size}`;
+  }
+}
+
+window.togglePqSelMode = () => {
+  _pqSelMode = !_pqSelMode;
+  if (!_pqSelMode) _pqSel.clear();
+  renderPlayQueueUI();
+};
+
+window.togglePqSel = (idx) => {
+  const item = (getState('playQueue') || [])[idx];
+  if (!item) return;
+  if (_pqSel.has(item)) _pqSel.delete(item);
+  else _pqSel.add(item);
+  renderPlayQueueUI();
+};
+
+window.removeCheckedFromQueue = () => {
+  if (!_pqSel.size) { showToast('先勾选要移除的行', 'warn'); return; }
+  if (!confirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列？`)) return;
+  const r = removeQueueItemsByIdentity(getState('playQueue') || [], getState('playIdx') || 0, _pqSel);
+  _pqSel.clear();
+  if (!r.removed) { renderPlayQueueUI(); return; }
+  setState('playQueue', r.queue);
+  if (r.removedCurrent) {
+    if (!r.queue.length) {
+      const audio = document.getElementById('audioPlayer');
+      if (audio) audio.pause();
+      setState('playIdx', 0);
+      setState('currentPlaying', null);
+    } else {
+      // 删掉了正在播的行 → 补位曲顶上，连播语义不断（与单行移除一致）
+      setState('playIdx', r.playIdx);
+      window._playQueueIdx(r.playIdx);
+    }
+  } else if (r.playIdx >= 0) {
+    setState('playIdx', r.playIdx);
+  }
+  showToast(`🗑 已移出 ${r.removed} 首`, 'success');
 };
 
 // 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：

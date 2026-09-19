@@ -62,4 +62,32 @@ function dedupeQueue(queue, playIdx) {
   return { queue: next, playIdx: cur, removed };
 }
 
-export { pqSongKey, removeQueueItem, dedupeQueue };
+/**
+ * 按行对象身份批量移除（增量101）。
+ * 选择集装的是队列行引用而非下标：拖拽排序、外部增删让下标漂移时，
+ * 提交仍按当前队列现算命中行，消失的行自然跳过；倒序复用 removeQueueItem
+ * 逐发换算 playIdx（删当前播放行=补位曲顶上，语义与单行移除一致）。
+ * @returns {{queue: Array, playIdx: number, removed: number, removedCurrent: boolean}}
+ */
+function removeQueueItemsByIdentity(queue, playIdx, selSet) {
+  let q = (Array.isArray(queue) ? queue : []).slice();
+  let cur = Number.isInteger(playIdx) ? playIdx : -1;
+  if (!(selSet instanceof Set) || !selSet.size) {
+    return { queue: q, playIdx: cur, removed: 0, removedCurrent: false };
+  }
+  const idxs = [];
+  q.forEach((item, i) => { if (selSet.has(item)) idxs.push(i); });
+  let removed = 0;
+  let removedCurrent = false;
+  for (let k = idxs.length - 1; k >= 0; k--) {
+    const r = removeQueueItem(q, cur, idxs[k]);
+    if (!r) continue;
+    q = r.queue;
+    cur = r.playIdx;
+    if (r.removedCurrent) removedCurrent = true;
+    removed++;
+  }
+  return { queue: q, playIdx: cur, removed, removedCurrent };
+}
+
+export { pqSongKey, removeQueueItem, removeQueueItemsByIdentity, dedupeQueue };
