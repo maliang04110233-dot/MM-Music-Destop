@@ -10,7 +10,8 @@
 
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
-import { HEART_ON } from '../favorites.js';
+import { HEART_ON, heartBtnHtml } from '../favorites.js';
+import { FAVORITES_PLAYLIST_ID, subscribe } from '../state.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
@@ -147,6 +148,7 @@ function renderPlaylistDetailSongs(songs) {
       ${dlBadgeHtml(song, getState('queueSnapshot') || [])}
       <span class="song-duration">${song.duration ? fmtDuration(song.duration) : '--:--'}</span>
       <div class="song-actions">
+        ${heartBtnHtml(song, 'action-btn')}
         <button class="action-btn" onclick="playPlaylistSong(${idx})" title="播放">▶</button>
         <button class="action-btn" onclick="downloadPlaylistSong(${idx})" title="加入下载队列">⬇</button>
         <button class="action-btn" onclick="addPlaylistSongToQueue(${idx})" title="加入播放队列">➕</button>
@@ -927,7 +929,23 @@ async function dedupeCurrentPlaylist() {
 }
 
 // ── 初始化 ────────────────────────────────────────────
+// 收藏状态变化 → 收藏夹详情即时同步（行内 ♥ 取消收藏后该行立刻消失）。
+// router 每次进歌单页都会调 initPlaylistView，故用一次性绑定防重复订阅。
+let _plFavSyncBound = false;
+function _bindFavDetailSync() {
+  if (_plFavSyncBound) return;
+  _plFavSyncBound = true;
+  subscribe('userPlaylists', (pls) => {
+    if (_currentPlaylistId !== FAVORITES_PLAYLIST_ID) return;
+    const modal = document.getElementById('playlistDetailModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const pl = (pls || []).find(p => p && p.id === FAVORITES_PLAYLIST_ID);
+    if (pl) renderPlaylistDetailSongs(pl.songs || []);
+  });
+}
+
 function initPlaylistView() {
+  _bindFavDetailSync();
   loadUserPlaylists();
 }
 
