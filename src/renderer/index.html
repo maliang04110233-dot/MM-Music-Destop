@@ -329,6 +329,8 @@
               <button class="filter-tab" onclick="setDownloadFilter('error')" data-i18n="download.filterError">失败</button>
             </div>
             <input id="queueFilterInput" class="queue-filter-input" type="text" placeholder="🔍 过滤任务" autocomplete="off" oninput="setQueueKeyword()" title="按歌名/歌手关键词过滤队列（可与状态筛选叠加）">
+            <button class="tab" id="dlGroupBtn" title="按来源平台分组显示队列：组头带进行中/完成/失败计数，可折叠、可只看某平台" onclick="toggleDlGroupMode()">🧩 分组: <span id="dlGroupLabel">关</span></button>
+            <button class="tab" id="dlPlatformChip" style="display:none" title="当前只在看单个平台的下载任务，点击取消" onclick="clearDlPlatformFilter()"></button>
             <span class="queue-dl-meta" id="queueSummaryBar" style="display:none;margin-left:10px;white-space:nowrap;" title="队列实时总览：下载中/排队/总速度/预计剩余"></span>
             <div style="flex:1"></div>
             <button class="tab tab-neon" id="dlSelectBtn" onclick="enterDlSelectionMode()">☑ 选择</button>

@@ -108,6 +108,25 @@
   from { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
   to   { opacity: 1; max-height: 400px; }
 }
+
+/* 下载队列「按平台分组」组头（增量121） */
+.queue-group-header {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 0 4px 0; padding: 4px 8px;
+  background: var(--bg-deep); border-left: 3px solid var(--neon-blue-dim);
+  border-radius: 6px; font-size: 12px;
+}
+.queue-group-header.collapsed { opacity: .72; }
+.queue-group-fold {
+  background: none; border: none; color: var(--text-dim);
+  cursor: pointer; font-size: 12px; padding: 2px 4px;
+}
+.queue-group-title { flex: 1; font-weight: 600; letter-spacing: .3px; }
+.queue-group-only {
+  background: none; border: 1px solid var(--neon-blue-dim); color: var(--text-dim);
+  border-radius: 999px; cursor: pointer; font-size: 11px; padding: 2px 8px;
+}
+.queue-group-only:hover { color: var(--neon-cyan); border-color: var(--neon-cyan); }
 .queue-detail-grid {
   display: flex; flex-direction: column; gap: 4px;
 }

@@ -122,6 +122,8 @@ const COMMANDS = [
   { id: 'dl-diag', icon: '🆘', group: '下载', label: '诊断最近一个失败任务', keywords: ['diagnose', '失败', 'error'], run: () => _call('diagnoseLatestFailure') },
   { id: 'dl-diagall', icon: '🩹', group: '下载', label: '失败诊断报告（全部失败按原因聚合）', keywords: ['failure report', '批量诊断', '报告'], run: () => _call('openFailureReport') },
   { id: 'dl-summary', icon: '⚡', group: '下载', label: '队列总览（下载中/排队/总速/剩余）', keywords: ['queue summary', '总览', '速度'], run: () => _call('showQueueSummaryToast') },
+  { id: 'dl-group', icon: '🧩', group: '下载', label: '下载队列「按平台分组」开关（组头计数/折叠/只看）', keywords: ['group by platform', '分组', '平台', '来源', '队列'], run: () => { _goto('download'); _call('toggleDlGroupMode'); } },
+  { id: 'dl-platclear', icon: '✕', group: '下载', label: '取消下载队列「只看单平台」过滤', keywords: ['clear platform filter', '只看', '取消过滤', '平台'], run: () => { _goto('download'); _call('clearDlPlatformFilter'); } },
 
   { id: 'lc-refresh', icon: '🔄', group: '本地库', label: '刷新本地曲库', keywords: ['rescan', '扫描'], run: () => _call('refreshLocalLibrary') },
   { id: 'lc-stats', icon: '📊', group: '本地库', label: '曲库统计', keywords: ['stats', '统计'], run: () => _call('showLibraryStats') },

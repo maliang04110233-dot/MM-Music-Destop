@@ -6,6 +6,10 @@ import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { showContextMenu } from '../contextMenu.js';
 import { applyQueueFilter } from '../queueFilter.js';
+import {
+  UNKNOWN_KEY, groupTasksByPlatform, groupHeaderLabel,
+  toggleGroupCollapsed, nextPlatformFilter,
+} from '../queueGroup.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -24,6 +28,9 @@ function _cacheDlDom() {
 
 let _dlFilter = 'all';         // 'all' | 'active' | 'done' | 'error'
 let _dlKeyword = '';           // 队列关键词过滤（与状态筛选 AND 叠加）
+let _dlGroupMode = false;      // 按平台分组显示（增量121）
+let _dlPlatform = '';          // 只看单个平台（空=全部，与状态/关键词 AND 叠加）
+let _dlCollapsed = new Set();  // 分组模式下已折叠的平台键
 let _dlSelectionMode = false;
 const _selectedDl = new Set(); // 存 taskId
 const _expandedDlDetails = new Set(); // 存已展开详情的 taskId
@@ -131,8 +138,8 @@ function renderQueue(queue) {
   state.set('queueSnapshot', queue);
   if (typeof window.refreshQueueSummary === 'function') window.refreshQueueSummary();
 
-  // 按筛选过滤（状态 × 关键词，组合逻辑在 queueFilter.js 纯函数）
-  const filtered = applyQueueFilter(queue, _dlFilter, _dlKeyword);
+  // 按筛选过滤（状态 × 关键词 × 平台，组合逻辑在 queueFilter.js 纯函数）
+  const filtered = applyQueueFilter(queue, _dlFilter, _dlKeyword, _dlPlatform);
 
   if (!filtered.length) {
     if (_dlKeyword) {
@@ -156,8 +163,18 @@ function renderQueue(queue) {
     return;
   }
 
-  // 最新在上
-  el.innerHTML = filtered.slice(-50).reverse().map(s => {
+  // 最新在上（可见 50 行的封顶不变，分组只是换种摆法）
+  const shown = filtered.slice(-50).reverse();
+  if (_dlGroupMode) {
+    el.innerHTML = groupTasksByPlatform(shown, platformLabel).map(g => _queueGroupHeaderHtml(g)
+      + (_dlCollapsed.has(g.key) ? '' : g.tasks.map(s => _queueRowHtml(s)).join(''))).join('');
+    return;
+  }
+  el.innerHTML = shown.map(s => _queueRowHtml(s)).join('');
+}
+
+/** 单行 HTML：分组与非分组两条渲染路径共用，动作全走行内既有函数 */
+function _queueRowHtml(s) {
     const selected = _selectedDl.has(s.taskId) && _dlSelectionMode;
     const isExpanded = _expandedDlDetails.has(s.taskId);
     // 遮罩下载链接（只显示域名和文件名）
@@ -210,7 +227,67 @@ function renderQueue(queue) {
         ${s.error ? `<div class="queue-detail-row queue-detail-error"><span class="queue-detail-label">错误信息</span><span class="queue-detail-value">${esc(s.error)}</span></div>` : ''}
       </div>
     </div>` : ''}`;
-  }).join('');
+}
+
+/** 平台显示名：统一走 utils.js 的 platformName（单一来源），无来源归「其他」 */
+function platformLabel(key) {
+  if (key === UNKNOWN_KEY) return '其他';
+  return (typeof platformName === 'function' && platformName(key)) || key;
+}
+
+/** 组头：折叠三角 + 聚合计数 + 「只看该平台」 */
+function _queueGroupHeaderHtml(g) {
+  const collapsed = _dlCollapsed.has(g.key);
+  const only = _dlPlatform === g.key;
+  return `
+    <div class="queue-group-header${collapsed ? ' collapsed' : ''}">
+      <button class="queue-group-fold" title="${collapsed ? '展开该平台' : '收起该平台'}" onclick="toggleDlGroupCollapsed('${escQ(g.key)}')">${collapsed ? '▸' : '▾'}</button>
+      <span class="queue-group-title">${esc(groupHeaderLabel(g))}</span>
+      <button class="queue-group-only" title="${only ? '取消只看该平台' : '只看该平台的任务'}" onclick="setDlPlatformFilter('${escQ(g.key)}')">${only ? '✔ 只看' : '👁 只看'}</button>
+    </div>`;
+}
+
+/** 工具栏两处状态：分组开关字样 + 「只看某平台」徽标 */
+function _renderDlGroupToolbar() {
+  const lbl = document.getElementById('dlGroupLabel');
+  if (lbl) lbl.textContent = _dlGroupMode ? '开' : '关';
+  const chip = document.getElementById('dlPlatformChip');
+  if (!chip) return;
+  if (_dlPlatform) {
+    chip.style.display = '';
+    chip.textContent = `👁 只看：${platformLabel(_dlPlatform)} ✕`;
+  } else {
+    chip.style.display = 'none';
+    chip.textContent = '';
+  }
+}
+
+/** 分组显示开关（组内可见上限与平铺一致，折叠状态在关闭后仍保留） */
+function toggleDlGroupMode() {
+  _dlGroupMode = !_dlGroupMode;
+  _renderDlGroupToolbar();
+  renderQueue(getState('queueSnapshot') || []);
+  showToast(_dlGroupMode ? '🧩 已按来源平台分组' : '已恢复平铺显示', 'info', 1800);
+}
+
+function toggleDlGroupCollapsed(key) {
+  if (!_dlGroupMode) return;
+  _dlCollapsed = toggleGroupCollapsed(_dlCollapsed, key);
+  renderQueue(getState('queueSnapshot') || []);
+}
+
+/** 组头「只看」：点同一个平台即取消（与状态/关键词 AND 叠加） */
+function setDlPlatformFilter(key) {
+  const next = nextPlatformFilter(_dlPlatform, key);
+  _dlPlatform = next;
+  _renderDlGroupToolbar();
+  renderQueue(getState('queueSnapshot') || []);
+  showToast(next ? `👁 只显示 ${platformLabel(next)} 的任务` : '已取消单平台过滤', 'info', 1800);
+}
+
+function clearDlPlatformFilter() {
+  if (!_dlPlatform) return;
+  setDlPlatformFilter(_dlPlatform);
 }
 
 // esc() 和 statusLabel() 已由 utils.js 全局导出，此处不再重复定义
@@ -540,6 +617,10 @@ export {
   exportCurrentPlaylist,
   toggleQueuePause,
   applyQueuePausedUi,
+  toggleDlGroupMode,
+  toggleDlGroupCollapsed,
+  setDlPlatformFilter,
+  clearDlPlatformFilter,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -558,6 +639,10 @@ window.exitDlSelectionMode = exitDlSelectionMode;
 window.toggleDlSelect = toggleDlSelect;
 window.selectAllDl = selectAllDl;
 window.deselectAllDl = deselectAllDl;
+window.toggleDlGroupMode = toggleDlGroupMode;
+window.toggleDlGroupCollapsed = toggleDlGroupCollapsed;
+window.setDlPlatformFilter = setDlPlatformFilter;
+window.clearDlPlatformFilter = clearDlPlatformFilter;
 // 音频格式转换入口已收敛到 ../converter-core.js
 // （showConvertModal / closeConvertModal / doConvertAudio 由该模块挂到 window）
 
