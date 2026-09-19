@@ -114,6 +114,7 @@ const CHANNELS = {
   'cancel-convert-audio': { invoke: MAIN },
   'delete-file':          { invoke: MAIN, args: [['filePath', t.str(1024)]] },
   'rename-file':          { invoke: MAIN, args: [['oldPath', t.str(1024)], ['newPath', t.str(1024)]] },
+  'find-content-duplicates': { invoke: MAIN, args: [['dirPath', t.str(1024)]] },
 
   // ── 文件 / 目录 / 系统（invoke） ──────────────────
   'select-dir':       { invoke: MAIN },
@@ -283,6 +284,7 @@ const METHODS = {
   probeAudio: 'probe-audio',
   deleteFile: 'delete-file',
   renameFile: 'rename-file',
+  findContentDuplicates: 'find-content-duplicates',
   // 文件
   selectDir: 'select-dir',
   getDefaultDir: 'get-default-dir',

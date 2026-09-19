@@ -55,6 +55,7 @@
   "local.select": "☑ Select",
   "local.stats": "📊 Stats",
   "local.dedup": "🔍 Find Duplicates",
+  "local.dedupContent": "🧬 Content Duplicates",
   "local.convert": " Convert",
   "local.filterPlaceholder": "Filter local songs...",
   "local.notScanned": "Not scanned",

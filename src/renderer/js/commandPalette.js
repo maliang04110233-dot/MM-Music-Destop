@@ -90,6 +90,7 @@ const COMMANDS = [
   { id: 'lc-refresh', icon: '🔄', group: '本地库', label: '刷新本地曲库', keywords: ['rescan', '扫描'], run: () => _call('refreshLocalLibrary') },
   { id: 'lc-stats', icon: '📊', group: '本地库', label: '曲库统计', keywords: ['stats', '统计'], run: () => _call('showLibraryStats') },
   { id: 'lc-dup', icon: '🧬', group: '本地库', label: '查重相同歌曲', keywords: ['duplicate', '重复'], run: () => _call('detectDuplicateSongs') },
+  { id: 'lc-cdup', icon: '🧬', group: '本地库', label: '内容级查重（字节哈希找相同副本）', keywords: ['content duplicate', '哈希', '副本'], run: () => _call('detectContentDuplicates') },
   { id: 'lc-probe', icon: '🔬', group: '本地库', label: '全库音质扫描（查伪无损）', keywords: ['probe', '音质', 'lossless'], run: () => _call('batchProbeQuality') },
 
   { id: 'misc-sleep', icon: '⏾', group: '其他', label: '睡眠定时（N 分钟后暂停）', keywords: ['sleep timer'], run: () => _call('openSleepTimerMenu') },

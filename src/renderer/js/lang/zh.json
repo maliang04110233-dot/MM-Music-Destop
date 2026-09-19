@@ -49,6 +49,7 @@
   "local.grid": "▦ 网格",
   "local.stats": "📊 统计",
   "local.dedup": "🔍 查重",
+  "local.dedupContent": "🧬 内容查重",
   "local.convert": "🔄 转码",
   "local.filterPlaceholder": "过滤本地歌曲...",
   "local.notScanned": "未扫描",

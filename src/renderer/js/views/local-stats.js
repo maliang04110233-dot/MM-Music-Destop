@@ -354,3 +354,37 @@ export async function deleteSelectedDups() {
     setTimeout(() => detectDuplicateSongs(), 500);
   }
 }
+
+// ══════════════════════════════════════════════════════════
+// 功能 4：内容级查重（字节哈希，主进程 dupScan）
+// 与功能 3 的元数据分组互补：改名/换目录/标签被编辑过的同内容副本也能抓到
+// ══════════════════════════════════════════════════════════
+
+export async function detectContentDuplicates() {
+  let dir = getState('localDirPath');
+  if (!dir) {
+    try { dir = await api.getPref('localDirPath'); } catch { /* 下方统一提示 */ }
+  }
+  if (!dir) { showToast('请先在本地库「扫描目录」选择一个音乐目录', 'warn'); return; }
+
+  showToast('🧬 正在按文件内容查重…', 'info', 2500);
+  try {
+    const r = await api.findContentDuplicates(dir);
+    if (r.error) { showToast('内容查重失败: ' + r.error, 'error'); return; }
+    const groups = r.groups || [];
+    _dupState.groups = groups;
+    _dupState.selected.clear();
+    if (!groups.length) {
+      showToast(`🎉 内容级没有重复（扫描 ${r.scanned || 0} 个文件）`, 'success');
+      return;
+    }
+    // 每组保留路径序第一份，其余预选待删（行内仍可反选）
+    for (const group of groups) {
+      for (let i = 1; i < group.length; i++) _dupState.selected.add(group[i].filePath);
+    }
+    renderDuplicateModal();
+    showToast(`🧬 发现 ${groups.length} 组内容完全相同，最多可释放 ${formatBytes(r.wasted || 0)}`, 'info', 4500);
+  } catch (e) {
+    showToast('内容查重失败: ' + e.message, 'error');
+  }
+}

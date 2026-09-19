@@ -21,6 +21,7 @@ import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.
 import {
   showLibraryStats, detectDuplicateSongs, toggleDupSelect, selectAllDups,
   deselectAllDups, deleteSelectedDups, setLibraryChangeHandler,
+  detectContentDuplicates,
 } from './local-stats.js';
 
 // ── 状态 ─────────────────────────────────────────────
@@ -1224,6 +1225,7 @@ window.saveEdit = saveEdit;
 window.saveBatchEdit = saveBatchEdit;
 window.showLibraryStats = showLibraryStats;
 window.detectDuplicateSongs = detectDuplicateSongs;
+window.detectContentDuplicates = detectContentDuplicates;
 window.convertSelectedAudio = convertSelectedAudio;
 window.toggleDupSelect = toggleDupSelect;
 window.selectAllDups = selectAllDups;
