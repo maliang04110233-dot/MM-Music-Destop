@@ -65,6 +65,21 @@ export function queueFavSong(s) {
 }
 
 /**
+ * 收藏/取消当前正在播放的歌（增量95，命令面板入口）。
+ *
+ * 五个行面红心只覆盖列表行；主播放器/迷你窗/桌面词上没有点心处。
+ * 键对齐直接复用 queueFavSong（本地折叠 filePath:local，与本地库/队列
+ * 红心同一颗心），登记后走 toggleFavoriteByKey 的整条切换+播报链。
+ */
+export async function toggleFavoriteCurrent() {
+  const cur = typeof getState === 'function' ? getState('currentPlaying') : null;
+  const s = queueFavSong(cur);
+  if (!s) { showToast('当前没有可收藏的歌', 'info'); return; }
+  registerFavSong(s);
+  await toggleFavoriteByKey(favKey(s.source, s.id));
+}
+
+/**
  * 红心按钮 HTML，返回完整 button 标签
  * @param {Object} song 需含 source / id
  * @param {string} [baseClass] 行内按钮基类（搜索页 action-btn，首页 top-song-action）
@@ -131,3 +146,4 @@ window.toggleFavoriteByKey = toggleFavoriteByKey;
 window.favHeartClick = favHeartClick;
 window.refreshFavoriteHearts = refreshFavoriteHearts;
 window.toggleLocalFavorite = toggleLocalFavorite;
+window.toggleFavoriteCurrent = toggleFavoriteCurrent;
