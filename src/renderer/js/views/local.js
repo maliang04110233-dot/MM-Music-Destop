@@ -23,6 +23,8 @@ import {
 import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.js';
 import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
+import { buildLocalRowMenuItems } from '../localRowMenu.js';
+import { copyText } from '../songShare.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -662,12 +664,30 @@ async function probeLocalQuality(s) {
 function showLocalRowMenu(e, idx) {
   const s = (getState('localFiltered') || [])[idx];
   if (!s) return;
-  showContextMenu(e.clientX, e.clientY, [
-    { icon: '▶', label: '播放', onClick: () => playLocalSong(idx) },
-    { icon: '✏️', label: '编辑信息', onClick: () => openEdit(idx) },
-    { sep: true },
-    { icon: _probeCache.has(s.filePath) ? '✓' : '🔬', label: '检测真实音质', onClick: () => probeLocalQuality(s) },
-  ]);
+  showContextMenu(e.clientX, e.clientY, buildLocalRowMenuItems(s, {
+    play: () => playLocalSong(idx),
+    edit: () => openEdit(idx),
+    probe: () => probeLocalQuality(s),
+    reveal: () => revealLocalFile(s),
+    copyPath: (fp) => copyLocalPath(fp),
+    probeDone: _probeCache.has(s.filePath),
+  }));
+}
+
+// 📂 定位文件：复用 open-folder 通道（主进程对文件路径走 showItemInFolder 高亮）
+async function revealLocalFile(s) {
+  try {
+    const r = await api.openFolder(s.filePath);
+    if (r && r.ok === false) showToast('无法打开文件夹：' + (r.error || '路径非法'), 'warn');
+  } catch (e) {
+    showToast('打开文件夹失败: ' + (e.message || e), 'error');
+  }
+}
+
+// 📋 复制文件本地路径（排障/搬运常用）
+async function copyLocalPath(fp) {
+  const ok = await copyText(fp);
+  showToast(ok ? '📋 文件路径已复制' : '复制失败，请检查剪贴板权限', ok ? 'success' : 'error');
 }
 
 // ── 全库音质扫描 ─────────────────────────────────────
