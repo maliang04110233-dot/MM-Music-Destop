@@ -79,6 +79,7 @@ const COMMANDS = [
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
   { id: 'dl-namebatch', icon: '🎤', group: '下载', label: '按歌名批量导入（歌手 - 歌名清单）', keywords: ['name batch', '歌名', '文本清单'], run: () => _call('openNameBatch') },
   { id: 'dl-m3u', icon: '📁', group: '下载', label: '导入 m3u 歌单文件（解析后匹配入队）', keywords: ['m3u', 'playlist import', '歌单'], run: () => _call('openM3uImport') },
+  { id: 'dl-retry-failed', icon: '🔁', group: '下载', label: '重试全部失败的历史记录（≤200 条）', keywords: ['retry', '失败', '历史'], run: () => _call('retryFailedFromHistory') },
   { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },
   { id: 'dl-pause', icon: '⏸', group: '下载', label: '暂停 / 继续下载队列', keywords: ['pause queue'], run: () => _call('toggleQueuePause') },
   { id: 'dl-clear', icon: '🧹', group: '下载', label: '清空已完成任务', keywords: ['clear done'], run: () => _call('clearFinishedDownloads') },

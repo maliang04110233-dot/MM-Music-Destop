@@ -45,3 +45,23 @@ test('sourceOptions：全部来源打头，脏平台条目剔除，缺 name 用 
   ]);
   assert.deepEqual(sourceOptions(null), [{ v: '', label: '全部来源' }]);
 });
+
+test('classifyRetryResult：四态归类，null/无标志视为成功入队', async () => {
+  const { classifyRetryResult } = await fresh();
+  assert.equal(classifyRetryResult(null), 'added');
+  assert.equal(classifyRetryResult({}), 'added');
+  assert.equal(classifyRetryResult({ duplicated: true }), 'dup');
+  assert.equal(classifyRetryResult({ alreadyDownloaded: true }), 'had');
+  assert.equal(classifyRetryResult({ error: 'x' }), 'fail');
+  // duplicated 优先级高于 error（同响应并存时按「已在队列」计）
+  assert.equal(classifyRetryResult({ duplicated: true, error: 'x' }), 'dup');
+});
+
+test('retrySummary：计数拼文案，缺项按 0 补', async () => {
+  const { retrySummary } = await fresh();
+  assert.equal(
+    retrySummary({ added: 3, dup: 1, had: 2, fail: 4 }),
+    '🔁 重试完成：入队 3、已在队列 1、已下载跳过 2、失败 4',
+  );
+  assert.ok(retrySummary(undefined).includes('入队 0'));
+});

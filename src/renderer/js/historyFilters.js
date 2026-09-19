@@ -42,4 +42,19 @@ function sourceOptions(platforms) {
   return list;
 }
 
-export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions };
+/** addToQueue 返回值归类（批量重试计数用）：dup=已在队列 / had=已下载跳过 / fail=出错 */
+function classifyRetryResult(r) {
+  if (!r) return 'added';
+  if (r.duplicated) return 'dup';
+  if (r.alreadyDownloaded) return 'had';
+  if (r.error) return 'fail';
+  return 'added';
+}
+
+/** 重试汇总 → toast 文案 */
+function retrySummary(tally) {
+  const t = tally || {};
+  return `🔁 重试完成：入队 ${t.added || 0}、已在队列 ${t.dup || 0}、已下载跳过 ${t.had || 0}、失败 ${t.fail || 0}`;
+}
+
+export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary };

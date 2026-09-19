@@ -357,6 +357,7 @@
               <span class="panel-badge" id="historyInfo" data-i18n="history.loading">加载中...</span>
               <div style="flex:1"></div>
               <button class="tab" onclick="exportHistoryM3u()" title="把本页已完成下载导出为 m3u 播放列表">⤴ 导出m3u</button>
+              <button class="tab" id="historyRetryBtn" onclick="retryFailedFromHistory()" title="把所有失败记录重新入队（尊重当前关键词/来源筛选，最多 200 条）">🔁 重试失败项</button>
               <button class="tab" onclick="showTrendPanel()" title="近 14 天按天统计">📊 趋势</button>
               <button class="tab" onclick="clearAllHistory()" data-i18n="history.clearAll">🗑 清空历史</button>
             </div>

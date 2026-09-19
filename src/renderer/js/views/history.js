@@ -7,7 +7,7 @@ import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
-import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions } from '../historyFilters.js';
+import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary } from '../historyFilters.js';
 let historyPage = 0;
 let historyFilter = '';
 let _historyStatus = '';
@@ -153,6 +153,44 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
     }
   } catch (e) {
     showToast('重试失败: ' + e.message, 'error');
+  }
+}
+
+// 一键重试全部失败项：无视当前状态页签（恒查 error），但尊重关键词/来源筛选；
+// 逐条串行 addToQueue（下载引擎自带去重），计数在 historyFilters.classifyRetryResult
+let _retryAllBusy = false;
+async function retryFailedFromHistory() {
+  if (_retryAllBusy) return;
+  _retryAllBusy = true;
+  const btn = document.getElementById('historyRetryBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const q = buildHistoryQuery({ keyword: historyFilter, status: 'error', source: _historySource }, 0, 200);
+    const { items } = await api.queryHistory(q);
+    const list = (items || []).filter(s => s && s.id != null);
+    if (!list.length) { showToast('没有符合条件的失败记录', 'warn'); return; }
+    const saveDir = getState('saveDir');
+    const tally = { added: 0, dup: 0, had: 0, fail: 0 };
+    for (const s of list) {
+      try {
+        const r = await api.addToQueue({
+          id: s.id, source: s.source, title: s.title, artist: s.artist,
+          album: s.album || '', saveDir, quality: s.quality || 'standard',
+          cover: '', duration: 0,
+        });
+        tally[classifyRetryResult(r)] += 1;
+      } catch (_e) {
+        tally.fail += 1;
+      }
+    }
+    showToast(retrySummary(tally), tally.added ? 'success' : 'warn', 5000);
+    if (tally.added && typeof switchDlSubTab === 'function') switchDlSubTab('queue');
+  } catch (e) {
+    logger.warn('[history] 批量重试失败:', e.message);
+    showToast('批量重试失败：' + e.message, 'error');
+  } finally {
+    _retryAllBusy = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -319,6 +357,7 @@ export {
   playHistoryItem,
   exportHistoryM3u,
   deleteHistoryItem,
+  retryFailedFromHistory,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -332,6 +371,7 @@ window.clearAllHistory = clearAllHistory;
 window.retryFromHistory = retryFromHistory;
 window.playHistoryItem = playHistoryItem;
 window.exportHistoryM3u = exportHistoryM3u;
+window.retryFailedFromHistory = retryFailedFromHistory;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHistoryDom();
