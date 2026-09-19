@@ -291,6 +291,7 @@
             <div style="font-size:16px;font-weight:600;" data-i18n="download.title">⬇ 下载队列</div>
             <span class="panel-badge" id="queueBadge">0</span>
             <button class="tab" id="queuePauseBtn" title="暂停后不再启动新任务，在途任务继续完成" onclick="toggleQueuePause()">⏸ 暂停</button>
+            <button class="tab" id="afterQueueBtn" title="下载队列全部结束后自动执行的动作（关机/睡眠有 60 秒可取消倒计时）" aria-haspopup="true" onclick="openAfterQueueMenu()">🏁 完成后: <span id="afterQueueLabel">无</span></button>
             <!-- 状态筛选标签 -->
             <div class="filter-tabs" id="downloadFilterTabs">
               <button class="filter-tab active" onclick="setDownloadFilter('all')" data-i18n="search.all">全部</button>

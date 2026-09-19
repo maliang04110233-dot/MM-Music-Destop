@@ -66,6 +66,7 @@ const CHANNELS = {
   'clear-all-queue':        { invoke: MAIN },
   'add-playlist-to-queue':  { invoke: MAIN, args: [['payload', t.obj()]] },
   'export-playlist':        { invoke: MAIN, args: [['params', t.obj()]] },
+  'system-power':           { invoke: MAIN, args: [['action', t.enum(['shutdown', 'sleep', 'quit'], 'quit')]] },
   'proxy-play':             { invoke: MAIN, args: [['url', t.str(4000)], ['referer', t.str(4000)]] },
   'get-download-templates': { invoke: MAIN },
   'save-download-template': { invoke: MAIN, args: [['template', t.obj()]] },
@@ -207,6 +208,7 @@ const METHODS = {
   windowMinimize: 'window-minimize',
   windowMaximize: 'window-maximize',
   windowToggleFullscreen: 'window-maximize',
+  systemPower: 'system-power',
   // 搜索
   searchMusic: 'search-music',
   searchAlbum: 'search-album',

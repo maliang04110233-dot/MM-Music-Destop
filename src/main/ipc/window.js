@@ -234,6 +234,25 @@ function register() {
     await playCache.clearAllCache(app.getPath('userData'));
     return { cleared: true };
   });
+
+  // 队列完成后动作：只接受枚举白名单，命令全部为常量，无任何用户可控拼接
+  handle('system-power', async (_event, action) => {
+    if (action === 'quit') {
+      app.quit();
+      return { ok: true };
+    }
+    if (process.platform !== 'win32') return { ok: false, error: '仅 Windows 支持关机/睡眠' };
+    const { exec } = require('child_process');
+    if (action === 'shutdown') {
+      exec('shutdown /s /t 0', (err) => { if (err) logger.warn('[system-power] 关机调用失败:', err.message); });
+      return { ok: true };
+    }
+    if (action === 'sleep') {
+      exec('rundll32.exe powrprof.dll,SetSuspendState 0,1,0', (err) => { if (err) logger.warn('[system-power] 睡眠调用失败:', err.message); });
+      return { ok: true };
+    }
+    return { ok: false, error: '未知动作' };
+  });
 }
 
 module.exports = { register, syncMiniPlayer, createMiniPlayer, createDesktopLyric };

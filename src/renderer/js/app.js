@@ -50,6 +50,7 @@ import './favorites.js';
 import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
+import './afterQueueDone.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
@@ -93,6 +94,7 @@ const mockApi = {
   onQueuePausedChanged: () => {},
   onLocalLibraryChanged: () => {},
   setQueuePaused: async () => ({ ok: true, paused: false }),
+  systemPower: async () => ({ ok: true }),
   onDownloadProgress: () => {},
   onDownloadError: () => {},
   onLocalLrcFetched: () => {},
@@ -278,6 +280,7 @@ async function init() {
       state.set('queueSnapshot', queue);
       renderQueue(queue);
       dlObserveQueue(queue); // 下载状态徽标：吸收 done + 通知列表刷新
+      if (typeof window.afterQueueObserve === 'function') window.afterQueueObserve(queue); // 完成后动作检测
     });
 
     // 托盘切换暂停 → 同步下载页按钮（views/download.js 提供 UI 钩子）

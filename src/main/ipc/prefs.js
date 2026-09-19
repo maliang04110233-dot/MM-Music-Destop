@@ -32,6 +32,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'playbackRate', 'globalShortcuts',
   // 剪贴板链接识别开关（主进程 clipboardWatch 每 tick 读取）
   'clipboardWatch',
+  // 下载队列全部完成后的动作（none/quit/sleep/shutdown，渲染层 afterQueueDone.js 读写）
+  'afterQueueDone',
   // 新手引导已看过标记（渲染层 welcome.js 读写）
   'welcomeSeen',
   // 播放状态持久化
