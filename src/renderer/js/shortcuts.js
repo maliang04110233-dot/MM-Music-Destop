@@ -202,6 +202,7 @@ export function showShortcutsHelp() {
       <div class="shortcuts-body">
         <div class="shortcut-group">
           <div class="shortcut-group-title">导航</div>
+          <div class="shortcut-row"><span>命令面板（直达全部动作）</span><kbd>Ctrl</kbd>+<kbd>K</kbd></div>
           <div class="shortcut-row"><span>聚焦搜索</span><kbd>Ctrl</kbd>+<kbd>F</kbd></div>
           <div class="shortcut-row"><span>跳到首页</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
           <div class="shortcut-row"><span>跳到下载队列</span><kbd>Ctrl</kbd>+<kbd>D</kbd></div>

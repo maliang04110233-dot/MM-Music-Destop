@@ -1,0 +1,211 @@
+/**
+ * 命令面板（Ctrl/⌘+K）—— 键盘一步直达全部核心动作
+ *
+ * 匹配逻辑 fuzzyScore/rankCommands 为纯函数（node 可单测）：
+ * 前缀 > 包含 > ASCII 子序列（中文不做子序列——按字符读音无意义），
+ * keywords 兜底拼音/英文/别称。面板本身只是「一个输入框 + 一张表」，
+ * 所有动作复用既有 window 桥接，零新增 IPC。
+ */
+
+import { logger } from './logger.js';
+
+// ── 纯函数 ───────────────────────────────────────────
+function fuzzyScore(q, text) {
+  if (!q) return 0;
+  const t = String(text || '').toLowerCase();
+  const s = q.toLowerCase();
+  const idx = t.indexOf(s);
+  if (idx === 0) return 200;
+  if (idx > 0) return 120 - Math.min(50, idx);
+  if (/^[\x20-\x7e]+$/.test(s)) {
+    let i = 0;
+    for (const ch of t) {
+      if (ch === s[i]) i++;
+      if (i === s.length) return 20;
+    }
+  }
+  return -1;
+}
+
+function rankCommands(q, cmds) {
+  const query = String(q || '').trim();
+  const out = [];
+  for (const c of (cmds || [])) {
+    if (!c || !c.label) continue;
+    let best = fuzzyScore(query, c.label);
+    if (best < 0) {
+      for (const k of (c.keywords || [])) {
+        const s = fuzzyScore(query, k);
+        if (s > best) best = s;
+      }
+    }
+    if (query && best < 0) continue;
+    out.push({ cmd: c, score: best });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, 30).map(x => x.cmd);
+}
+
+// ── 命令清单 ─────────────────────────────────────────
+function _goto(tab) {
+  const btn = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+  if (btn && typeof window.switchTab === 'function') window.switchTab(tab, btn);
+}
+
+function _call(name) {
+  const f = window[name];
+  if (typeof f === 'function') return f();
+  try { showToast('当前界面不支持该操作', 'warn', 2000); } catch (_e) { /* 无 toast 环境 */ }
+}
+
+const COMMANDS = [
+  { id: 'nav-home', icon: '🏠', group: '导航', label: '前往 首页', keywords: ['home', '首页'], run: () => _goto('home') },
+  { id: 'nav-search', icon: '🔍', group: '导航', label: '前往 搜歌', keywords: ['search', '搜索'], run: () => _goto('search') },
+  { id: 'nav-download', icon: '⬇', group: '导航', label: '前往 下载', keywords: ['download', '队列'], run: () => _goto('download') },
+  { id: 'nav-local', icon: '📂', group: '导航', label: '前往 本地曲库', keywords: ['local', '本地'], run: () => _goto('local') },
+  { id: 'nav-playlist', icon: '💿', group: '导航', label: '前往 歌单', keywords: ['playlist', '收藏'], run: () => _goto('playlist') },
+  { id: 'nav-sub', icon: '🔔', group: '导航', label: '前往 订阅', keywords: ['subscription', '更新'], run: () => _goto('subscription') },
+  { id: 'nav-ai', icon: '✨', group: '导航', label: '前往 AI 创作', keywords: ['ai', '生成'], run: () => _goto('ai-music') },
+  { id: 'nav-conv', icon: '🎛', group: '导航', label: '前往 格式转换', keywords: ['convert', '转码'], run: () => _goto('converter') },
+
+  { id: 'pl-toggle', icon: '▶⏸', group: '播放', label: '播放 / 暂停', keywords: ['play', 'pause', '暂停'], run: () => _call('togglePlay') },
+  { id: 'pl-next', icon: '⏭', group: '播放', label: '下一首', keywords: ['next'], run: () => _call('nextSong') },
+  { id: 'pl-prev', icon: '⏮', group: '播放', label: '上一首', keywords: ['prev', 'previous'], run: () => _call('prevSong') },
+
+  { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
+  { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },
+  { id: 'dl-pause', icon: '⏸', group: '下载', label: '暂停 / 继续下载队列', keywords: ['pause queue'], run: () => _call('toggleQueuePause') },
+  { id: 'dl-clear', icon: '🧹', group: '下载', label: '清空已完成任务', keywords: ['clear done'], run: () => _call('clearFinishedDownloads') },
+  { id: 'dl-after', icon: '🏁', group: '下载', label: '设置「完成后动作」', keywords: ['shutdown', '关机', '退出'], run: () => _call('openAfterQueueMenu') },
+
+  { id: 'lc-refresh', icon: '🔄', group: '本地库', label: '刷新本地曲库', keywords: ['rescan', '扫描'], run: () => _call('refreshLocalLibrary') },
+  { id: 'lc-stats', icon: '📊', group: '本地库', label: '曲库统计', keywords: ['stats', '统计'], run: () => _call('showLibraryStats') },
+  { id: 'lc-dup', icon: '🧬', group: '本地库', label: '查重相同歌曲', keywords: ['duplicate', '重复'], run: () => _call('detectDuplicateSongs') },
+
+  { id: 'misc-sleep', icon: '⏾', group: '其他', label: '睡眠定时（N 分钟后暂停）', keywords: ['sleep timer'], run: () => _call('openSleepTimerMenu') },
+  { id: 'misc-focus', icon: '🎯', group: '其他', label: '聚焦搜索框', keywords: ['focus', '输入'], run: () => { _goto('search'); const el = document.getElementById('searchInput'); if (el) setTimeout(() => el.focus(), 80); } },
+  { id: 'misc-cache', icon: '🗑', group: '其他', label: '清理播放缓存', keywords: ['cache', '缓存'], run: () => _call('clearPlayCache') },
+];
+
+// ── 面板 UI ──────────────────────────────────────────
+let _open = false;
+let _items = [];
+let _active = 0;
+
+function _ensureOverlay() {
+  let el = document.getElementById('cmdkOverlay');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'cmdkOverlay';
+  el.className = 'edit-overlay hidden';
+  el.innerHTML = `
+    <div class="cmdk-panel">
+      <input id="cmdkInput" class="cmdk-input" autocomplete="off" spellcheck="false"
+        placeholder="输入命令名 / 拼音 / 别称，回车执行…">
+      <div id="cmdkList" class="cmdk-list"></div>
+      <div class="cmdk-hint">↑↓ 选择 · Enter 执行 · Esc 关闭 · 随时 Ctrl+K 呼出</div>
+    </div>`;
+  el.addEventListener('click', (e) => { if (e.target === el) closeCommandPalette(); });
+  document.body.appendChild(el);
+  const input = el.querySelector('#cmdkInput');
+  input.addEventListener('input', () => _refresh(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); _move(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); _move(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); _execActive(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCommandPalette(); }
+  });
+  return el;
+}
+
+function _renderList() {
+  const box = document.getElementById('cmdkList');
+  if (!box) return;
+  box.textContent = '';
+  _items.forEach((c, i) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'cmdk-item' + (i === _active ? ' cmdk-active' : '');
+    const icon = document.createElement('span');
+    icon.className = 'cmdk-icon';
+    icon.textContent = c.icon || '·';
+    const label = document.createElement('span');
+    label.className = 'cmdk-label';
+    label.textContent = c.label;
+    const group = document.createElement('span');
+    group.className = 'cmdk-group';
+    group.textContent = c.group || '';
+    row.appendChild(icon);
+    row.appendChild(label);
+    row.appendChild(group);
+    row.addEventListener('click', () => _exec(c));
+    row.addEventListener('mousemove', () => { if (_active !== i) { _active = i; _highlight(); } });
+    box.appendChild(row);
+  });
+}
+
+function _highlight() {
+  const box = document.getElementById('cmdkList');
+  if (!box) return;
+  [...box.children].forEach((el, i) => el.classList.toggle('cmdk-active', i === _active));
+}
+
+function _move(delta) {
+  if (!_items.length) return;
+  _active = (_active + delta + _items.length) % _items.length;
+  _highlight();
+  const box = document.getElementById('cmdkList');
+  const el = box && box.children[_active];
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+
+function _refresh(query) {
+  _items = rankCommands(query, COMMANDS);
+  _active = 0;
+  _renderList();
+}
+
+function _exec(cmd) {
+  closeCommandPalette();
+  setTimeout(() => {
+    try { cmd.run(); } catch (e) { logger.warn('[cmdk] 命令执行失败:', cmd.id, e && e.message); }
+  }, 0);
+}
+
+function _execActive() {
+  const c = _items[_active];
+  if (c) _exec(c);
+}
+
+function openCommandPalette() {
+  const el = _ensureOverlay();
+  el.classList.remove('hidden');
+  _open = true;
+  const input = document.getElementById('cmdkInput');
+  if (input) {
+    input.value = '';
+    _refresh('');
+    setTimeout(() => input.focus(), 30);
+  }
+}
+
+function closeCommandPalette() {
+  if (!_open) return;
+  const el = document.getElementById('cmdkOverlay');
+  if (el) el.classList.add('hidden');
+  _open = false;
+}
+
+function onGlobalKey(e) {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
+    e.preventDefault();
+    if (_open) closeCommandPalette(); else openCommandPalette();
+  }
+}
+
+if (typeof document !== 'undefined') document.addEventListener('keydown', onGlobalKey);
+
+window.openCommandPalette = openCommandPalette;
+window.closeCommandPalette = closeCommandPalette;
+
+export { fuzzyScore, rankCommands, COMMANDS, openCommandPalette, closeCommandPalette };
