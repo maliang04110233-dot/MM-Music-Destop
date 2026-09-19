@@ -200,6 +200,7 @@
             <button class="tab" id="searchSortBtn" title="切换搜索结果排序：默认 / 时长 / 来源" onclick="cycleSearchSort()">↕ 默认序</button>
             <button class="tab" id="batchImportBtn" title="粘贴多行分享链接，解析后一次全部加入下载队列" onclick="openBatchImport()">📥 批量导入</button>
             <button class="tab" id="scheduledBtn" title="挂起分享链接，到设定时间自动解析入队（夜间错峰下载；错过时点开机即补跑）" onclick="openScheduledPanel()">⏰ 定时<span id="scheduledBadge"></span></button>
+            <button class="tab" id="nameBatchBtn" title="粘贴多行「歌手 - 歌名」清单，逐行搜索匹配后预览入队" onclick="openNameBatch()">🎤 按歌名导入</button>
             <!-- 搜索历史下拉 -->
             <div class="search-history" id="searchHistory" style="display:none;"></div>
           </div>

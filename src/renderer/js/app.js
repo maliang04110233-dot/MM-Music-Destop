@@ -42,6 +42,7 @@ import './views/playlist.js';
 import './views/subscriptions.js';
 import './views/clipboard.js';
 import './views/batchImport.js';
+import './views/nameBatch.js';
 import './views/welcome.js';
 import './views/dragdrop.js';
 import { dlObserveQueue, dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from './dlStatus.js';

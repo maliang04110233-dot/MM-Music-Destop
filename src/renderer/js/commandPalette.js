@@ -76,6 +76,7 @@ const COMMANDS = [
   { id: 'pl-lyrdly', icon: '⏩', group: '播放', label: '歌词延后 0.5s（偏移 +500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', 500) },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
+  { id: 'dl-namebatch', icon: '🎤', group: '下载', label: '按歌名批量导入（歌手 - 歌名清单）', keywords: ['name batch', '歌名', '文本清单'], run: () => _call('openNameBatch') },
   { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },
   { id: 'dl-pause', icon: '⏸', group: '下载', label: '暂停 / 继续下载队列', keywords: ['pause queue'], run: () => _call('toggleQueuePause') },
   { id: 'dl-clear', icon: '🧹', group: '下载', label: '清空已完成任务', keywords: ['clear done'], run: () => _call('clearFinishedDownloads') },
