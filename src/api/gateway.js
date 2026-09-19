@@ -40,6 +40,20 @@ const EMPTY = Object.freeze({
 });
 
 /**
+ * 歌词返回值归一化：平台可返回旧契约的纯字符串，或 { lrc, karaoke? } 对象
+ * （karaoke = 逐字歌词结构，见 utils/krcCodec）。未知形态一律折叠为空。
+ */
+function normalizeLyricResult(raw) {
+  if (typeof raw === 'string') return { lrc: raw };
+  if (raw && typeof raw === 'object') {
+    return typeof raw.karaoke === 'object' && raw.karaoke !== null
+      ? { ...raw, lrc: typeof raw.lrc === 'string' ? raw.lrc : '' }
+      : { lrc: typeof raw.lrc === 'string' ? raw.lrc : '' };
+  }
+  return { lrc: '' };
+}
+
+/**
  * 创建一个网关实例。
  *
  * 依赖注入而非直接 require defaultRegistry —— 让测试可以传入
@@ -138,29 +152,30 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
   }
 
   /**
-   * 取歌词。返回 { lrc }。
+   * 取歌词。返回 { lrc, karaoke? }。
+   * 平台可返回字符串（旧契约）或 { lrc, karaoke } 对象（逐字歌词平台，如酷狗 KRC）。
    * 调用方（api/index.js getLyrics）负责 fallback 链，gateway 只做单次调用。
    */
   async function getLyrics(platformId, id) {
     const plugin = pluginOf(platformId);
     if (!plugin || typeof plugin.getLyrics !== 'function') return { lrc: '' };
-    const lrc = await safeRun(`${platformId}.getLyrics`, () => plugin.getLyrics(id), '');
-    return { lrc: typeof lrc === 'string' ? lrc : '' };
+    const raw = await safeRun(`${platformId}.getLyrics`, () => plugin.getLyrics(id), '');
+    return normalizeLyricResult(raw);
   }
 
   /**
    * 按「歌名 + 歌手」取歌词（部分平台实现的兜底能力）。
-   * 返回：LRC 字符串，无能力 / 失败 ⇒ 空串
+   * 返回：{ lrc, karaoke? }，无能力 / 失败 ⇒ { lrc: '' }
    */
   async function getLyricsByTitle(platformId, title, artist) {
     const plugin = pluginOf(platformId);
-    if (!plugin || typeof plugin.getLyricsByTitle !== 'function') return '';
-    const lrc = await safeRun(
+    if (!plugin || typeof plugin.getLyricsByTitle !== 'function') return { lrc: '' };
+    const raw = await safeRun(
       `${platformId}.getLyricsByTitle`,
       () => plugin.getLyricsByTitle(title, artist),
       '',
     );
-    return typeof lrc === 'string' ? lrc : '';
+    return normalizeLyricResult(raw);
   }
 
   /**

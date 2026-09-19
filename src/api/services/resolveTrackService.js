@@ -19,6 +19,8 @@
  *   - hasCookie(platformId)            是否已配置该平台 Cookie（影响付费候选排序）
  *   - findCandidates(deps, song)       跨源同曲候选匹配（生产实现 = matchMusic）
  *   - sourceHealth                     { recordResult, rankByHealth }（可注入桩）
+ *   - probeUrl(url, result)            候选直链可播性预检（生产实现 = request.testAudioLink）。
+ *       可选；只作用于换源候选（happy path 零新增延迟），判定见 isDecisivelyDeadProbe。
  *
  * 为什么用注入而不是直接 require：
  *   1. 可测 —— 单测用桩就能覆盖「本源失败→换源成功／全失败／记忆命中」全部分支，
@@ -73,6 +75,26 @@ function shouldFallbackToOtherSource(result) {
 }
 
 /**
+ * 探测结果是否构成**决定性死链证据**。
+ *
+ * 宁可漏判不可误杀：只有两类证据值得否决一条候选链 ——
+ *   1. reason=not-audio：200 但返回 text/*（酷我 antiserver 的 "refuse request!" 形态），
+ *      这条 URL 永远不会是音频；
+ *   2. HTTP 404/410：资源明确不存在/已移除，重试同一 URL 无意义。
+ * 其余失败（timeout、连接错误、5xx，甚至 403）都是**不定证据** ——
+ * 可能只是探测请求缺了正确 Referer 或 CDN 抖动，播放器/下载器自己请求时
+ * 未必失败，故一律保守接受（返回 false），由后续消费方的失败路径兜底。
+ *
+ * @param {{ok?:boolean, status?:number|null, reason?:string}} probe testAudioLink 形状
+ * @returns {boolean}
+ */
+function isDecisivelyDeadProbe(probe) {
+  if (!probe || typeof probe !== 'object' || probe.ok !== false) return false;
+  if (probe.reason === 'not-audio') return true;
+  return probe.status === 404 || probe.status === 410;
+}
+
+/**
  * 创建取流解析服务实例。
  *
  * @param {Object} deps
@@ -81,6 +103,7 @@ function shouldFallbackToOtherSource(result) {
  * @param {(platformId:string) => boolean} deps.hasCookie
  * @param {(deps:Object, song:Object) => Promise<Array>} deps.findCandidates
  * @param {{recordResult:(s:string,ok:boolean)=>void, rankByHealth:(a:Array)=>Array}} deps.sourceHealth
+ * @param {(url:string, result:Object) => Promise<Object>} [deps.probeUrl] 候选直链预检（缺省不探测）
  * @returns {Object} 冻结的服务实例
  */
 function createResolveTrackService({
@@ -89,6 +112,7 @@ function createResolveTrackService({
   hasCookie = () => false,
   findCandidates,
   sourceHealth,
+  probeUrl,
 } = {}) {
   if (typeof getUrl !== 'function') throw new Error('[ResolveTrack] 必须注入 getUrl');
   if (typeof findCandidates !== 'function') throw new Error('[ResolveTrack] 必须注入 findCandidates');
@@ -105,11 +129,25 @@ function createResolveTrackService({
 
   /**
    * 尝试单个源的取流，并记账健康度。
+   * @param {Function} [verify] 成功后的追加校验（async，返回 true=判死）。
+   *        判死时记健康度失败并返回失败对象 —— 错误码仅供内部，不外泄
+   *        （全候选被否决时 resolve 返回的是本源错误）。
    * @returns {Promise<Object|null>} 成功返回结果，失败返回 null（错误由调用方从 result 取）
    */
-  async function trySource(id, source, quality) {
+  async function trySource(id, source, quality, verify) {
     try {
       const r = await getUrl(id, source, quality);
+      if (isTrackSuccess(r) && verify) {
+        let dead = false;
+        try {
+          dead = await verify(r);
+        } catch (_e) { /* 探测自身故障按不定证据处理，不阻断换源 */ }
+        if (dead) {
+          logger.log(`[ResolveTrack] ${source} 候选直链预检判死，跳过: ${r.url}`);
+          record(source, false);
+          return { error: `${source} 候选直链预检不可播`, code: ERROR_CODES.CDN_EMPTY };
+        }
+      }
       record(source, isTrackSuccess(r));
       return r;
     } catch (e) {
@@ -181,9 +219,15 @@ function createResolveTrackService({
       } catch (_e) { /* 重排失败则用原序，不影响流程 */ }
     }
 
+    // 候选直链预检（go-music-dl Range 探测思路）：只挂在候选上 ——
+    // 本源/_alt 成功路径零新增延迟；换源路径本就在慢通道，多一次 HEAD 划算。
+    const verifyCandidate = probeUrl
+      ? async (r) => isDecisivelyDeadProbe(await probeUrl(r.url, r))
+      : undefined;
+
     for (const cand of (Array.isArray(candidates) ? candidates : [])) {
       if (!cand || !cand.id || !cand.source) continue;
-      const r = await trySource(String(cand.id), cand.source, quality);
+      const r = await trySource(String(cand.id), cand.source, quality, verifyCandidate);
       if (isTrackSuccess(r)) {
         logger.log(`[ResolveTrack] 换源成功: "${song.title}" ${song.source} → ${cand.source}`);
         return normalizeTrackResult({
@@ -207,5 +251,6 @@ function createResolveTrackService({
 module.exports = {
   createResolveTrackService,
   shouldFallbackToOtherSource,
+  isDecisivelyDeadProbe,
   FALLBACK_CODES,
 };

@@ -8,6 +8,9 @@ const { dialog } = require('electron');
 const { handle } = require('./register');
 const prefs = require('../../utils/prefs');
 const history = require('../../utils/history');
+const secretStore = require('../../utils/secretStore');
+const webdav = require('../../utils/webdav');
+const { syncOnce } = require('../../utils/cloudSyncCore');
 const approvedDirs = require('../approvedDirs');
 const { DIR_PREF_KEYS } = approvedDirs;
 const path = require('path');
@@ -25,7 +28,7 @@ const IMPORTABLE_PREF_KEYS = new Set([
   'lyricFontSize', 'lyricOffset', 'playProgressMemory',
   'recentlyPlayed', 'playStats', 'playProgressMap',
   'eqPreset', 'eqGains', 'eqBypass',
-  'aiMusicApiKey', 'aiMusicSaveDir', 'convertOutputDir',
+  'aiMusicApiKey', 'aiMusicSaveDir', 'convertOutputDir', 'convertLoudnorm',
   'downloadTemplates', 'searchHistory',
   // 主进程内部维护的数据键（导出时单独收集，导入时回写）
   'userPlaylists', 'activeDownloadTemplate',
@@ -64,6 +67,12 @@ function register() {
           eqGains: prefs.get('eqGains') || null,
         },
       };
+
+      // WebDAV 凭证与 MCP 令牌不进备份：密码/令牌是 safeStorage 密文（跨机不可解），
+      // url/user 属本机同步配置，带走只会让另一台设备误连
+      for (const k of ['webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'mcpToken']) {
+        delete exportData.data.prefs[k];
+      }
 
       await fsa.writeText(result.filePath, JSON.stringify(exportData, null, 2));
       return { success: true, path: result.filePath };
@@ -165,6 +174,63 @@ function register() {
       logger.warn('导入失败:', e);
       return { success: false, error: e.message };
     }
+  });
+
+  // ── WebDAV 快照同步 ────────────────────────────────
+  // 与上面的手动导出/导入不同：同步是可合并三类数据
+  // （歌单/下载模板/下载历史）的双向并集，saveDir 等机器相关设置不参与。
+
+  handle('cloud-sync-config-get', () => ({
+    url: prefs.get('webdavUrl') || '',
+    user: prefs.get('webdavUser') || '',
+    hasPass: Boolean(prefs.get('webdavPass')),
+    lastSyncAt: prefs.get('webdavLastSyncAt') || null,
+  }));
+
+  handle('cloud-sync-config-set', (_e, cfg) => {
+    if (!cfg || typeof cfg !== 'object') return { success: false, error: '参数无效' };
+    const url = typeof cfg.url === 'string' ? cfg.url.trim() : '';
+    if (url) {
+      let u = null;
+      try { u = new URL(url); } catch (_) { /* fallthrough */ }
+      if (!u || (u.protocol !== 'http:' && u.protocol !== 'https:')) {
+        return { success: false, error: '同步地址必须是合法的 http(s) URL' };
+      }
+    }
+    prefs.set('webdavUrl', url);
+    prefs.set('webdavUser', typeof cfg.user === 'string' ? cfg.user.trim() : '');
+    // pass 为 undefined 时保持原密码不变；空串表示清除
+    if (typeof cfg.pass === 'string') {
+      prefs.set('webdavPass', cfg.pass ? secretStore.encrypt(cfg.pass) : '');
+    }
+    return { success: true };
+  });
+
+  handle('cloud-sync-now', async () => {
+    const config = {
+      url: prefs.get('webdavUrl') || '',
+      user: prefs.get('webdavUser') || '',
+      pass: secretStore.decrypt(prefs.get('webdavPass') || ''),
+    };
+    const result = await syncOnce({
+      config,
+      localData: {
+        userPlaylists: prefs.get('userPlaylists') || [],
+        downloadTemplates: prefs.get('downloadTemplates') || [],
+        downloadHistory: history.query({ limit: history.MAX_ENTRIES }).items,
+      },
+      fetchSnapshot: webdav.fetchSnapshot,
+      pushSnapshot: webdav.pushSnapshot,
+      applyMerged: (merged) => {
+        prefs.set('userPlaylists', merged.userPlaylists);
+        prefs.set('downloadTemplates', merged.downloadTemplates);
+        // 历史走 importEntries 的 id+source upsert，天然幂等
+        history.importEntries(merged.downloadHistory);
+        history.flush();
+      },
+    });
+    if (result.success) prefs.set('webdavLastSyncAt', Date.now());
+    return result;
   });
 }
 

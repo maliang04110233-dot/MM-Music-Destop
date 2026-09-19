@@ -12,6 +12,7 @@ const { CHANNELS, normalizeArgs } = require('../../shared/ipcContract');
 const logger = require('../../utils/logger');
 
 const _registered = new Set();
+const _invokeFns = new Map(); // channel → 原始 handler（供 getInvokeHandler 主进程内复用）
 
 function _entry(channel, dir) {
   const e = CHANNELS[channel];
@@ -32,6 +33,7 @@ function handle(channel, fn) {
     return fn(event, ...r.args);
   });
   _registered.add(channel);
+  _invokeFns.set(channel, fn);
 }
 
 function on(channel, fn) {
@@ -64,4 +66,13 @@ function assertContractCoverage() {
   return missing;
 }
 
-module.exports = { handle, on, assertContractCoverage, _registered };
+/**
+ * 主进程内直接调用某个已注册 invoke handler（不经 ipcMain）。
+ * 目前唯一用户是 MCP：外部 Agent 触发的调用与渲染层走同一实现、同一契约校验。
+ * 返回的函数签名与 ipcMain 包装前一致：fn(event, ...规范化参数)，调用方自备 event 替身。
+ */
+function getInvokeHandler(channel) {
+  return _invokeFns.get(channel) || null;
+}
+
+module.exports = { handle, on, assertContractCoverage, getInvokeHandler, _registered };

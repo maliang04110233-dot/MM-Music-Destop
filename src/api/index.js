@@ -139,6 +139,7 @@ async function getDownloadUrl(id, source, quality) {
 
 const { findMatchedCandidates } = require('../utils/matchMusic');
 const { createResolveTrackService } = require('./services/resolveTrackService');
+const request = require('./request');
 
 const resolveTrack = createResolveTrackService({
   getUrl: (id, source, quality) => gateway.getUrl(source, id, quality),
@@ -146,6 +147,8 @@ const resolveTrack = createResolveTrackService({
   hasCookie: (platformId) => !!getCookie(platformId),
   findCandidates: findMatchedCandidates,
   sourceHealth,
+  // 候选直链预检：HEAD 被拒自动退化为 Range GET（见 request.testAudioLink）
+  probeUrl: (url) => request.testAudioLink(url, { timeout: 6000 }),
 });
 
 /**
@@ -191,8 +194,8 @@ async function getLyrics(id, source, title, artist) {
   // 平台集合由 registry 的能力推导（capabilities.lyricsByTitle）决定。
   if (title) {
     for (const platformId of gateway.platformsWith('lyricsByTitle')) {
-      const lrc = await gateway.getLyricsByTitle(platformId, title, artist);
-      if (lrc) return { lrc };
+      const r = await gateway.getLyricsByTitle(platformId, title, artist);
+      if (r.lrc) return r;
     }
   }
 

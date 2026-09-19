@@ -467,3 +467,106 @@ test('kugou 已进入换源候选源列表', () => {
   const { CANDIDATE_SOURCES } = require('../src/utils/matchMusic');
   assert.ok(CANDIDATE_SOURCES.includes('kugou'), 'kugou 未加入 CANDIDATE_SOURCES');
 });
+
+// ══════════════════════════════════════════════════════════
+// 歌词链路（2026-09-18 实测修正 + KRC 逐字歌词）
+//
+// 旧实现三处已实证失效（真实请求全部拿不到歌词）：
+//   1. search 只带 keyword 不带 hash —— 酷狗该端点对纯 keyword 返回 0 候选；
+//   2. id 参数其实是 encodeKugouId 编码的三 hash 串，当 keyword 用必然搜不到；
+//   3. 候选字段与下载参数都是 accesskey（全小写），旧代码写 accessToken。
+// 新契约：getLyrics/getLyricsByTitle 返回 { lrc, karaoke? }（krctype=1 官方
+// 逐字歌词解出 karaoke 结构，普通 lrc 候选不挂该字段）。
+// ══════════════════════════════════════════════════════════
+
+const fs = require('node:fs');
+const KRC_B64 = fs.readFileSync(
+  require('node:path').join(__dirname, 'fixtures', 'platforms', 'kugou.qingtian.krc.txt'), 'utf8',
+).trim();
+
+/** 歌词服务桩：search 返回官方 krc 候选，download 返回真实 KRC 样本 */
+function lyricStub(extra = {}) {
+  resetStub((url) => {
+    if (url.includes('lyrics.kugou.com/search')) {
+      return { candidates: [{ id: '274944371', accesskey: 'AK123', krctype: 1, contenttype: 0, ...extra.candidate }] };
+    }
+    if (url.includes('lyrics.kugou.com/download')) return extra.download || { content: KRC_B64 };
+    return {};
+  });
+}
+
+test('getLyrics: 用解码后的 fileHash 搜歌词（hash+lrctxt=1），不再把编码 id 当 keyword', async () => {
+  lyricStub();
+  const r = await kugou.getLyrics(encodeKugouId('HASHFILE', 'HASHSQ', 'HASHHQ'));
+  const sCall = calls.find(c => c.url.includes('lyrics.kugou.com/search'));
+  assert.ok(sCall, '未发起歌词 search');
+  assert.ok(sCall.url.includes('hash=HASHFILE'), `search 未用解码 fileHash: ${sCall.url}`);
+  assert.ok(sCall.url.includes('lrctxt=1'), 'search 缺 lrctxt=1（决定候选含 krc）');
+  assert.ok(typeof r === 'object' && r.lrc.includes('[00:02.250]词：周杰伦'), 'KRC 未解出 LRC 行');
+});
+
+test('getLyrics: krctype=1 官方候选走 fmt=krc + accesskey（全小写），产出逐字 karaoke', async () => {
+  lyricStub();
+  const r = await kugou.getLyrics(encodeKugouId('H1', '', ''));
+  const dCall = calls.find(c => c.url.includes('lyrics.kugou.com/download'));
+  assert.ok(dCall.url.includes('fmt=krc'), `未走 krc 格式: ${dCall.url}`);
+  assert.ok(dCall.url.includes('accesskey=AK123'), `下载参数应为 accesskey: ${dCall.url}`);
+  assert.ok(!/accessToken=/.test(dCall.url), '旧 accessToken 参数名仍在链路里');
+  assert.strictEqual(r.karaoke.meta.ti, '晴天');
+  const line = r.karaoke.lines.find(l => l.words.map(w => w.text).join('') === '词：周杰伦');
+  assert.ok(line && line.words[0].startMs === 2250, 'karaoke 逐字结构缺失');
+});
+
+test('getLyrics: krctype≠1 候选走 fmt=lrc，返回 { lrc } 不挂 karaoke', async () => {
+  const plain = Buffer.from('[00:01.000]你好', 'utf8').toString('base64');
+  lyricStub({ candidate: { krctype: 2, contenttype: 2 }, download: { content: plain } });
+  const r = await kugou.getLyrics(encodeKugouId('H1', '', ''));
+  const dCall = calls.find(c => c.url.includes('lyrics.kugou.com/download'));
+  assert.ok(dCall.url.includes('fmt=lrc'), `普通候选应走 lrc: ${dCall.url}`);
+  assert.strictEqual(r.lrc, '[00:01.000]你好');
+  assert.strictEqual(r.karaoke, undefined);
+});
+
+test('getLyrics: 无候选 / 解码失败 / 网络异常 ⇒ { lrc: 空串 }，绝不抛错（歌词缺失不能拖垮下载）', async () => {
+  lyricStub({ candidate: null });
+  calls = [];
+  resetStub((url) => {
+    if (url.includes('lyrics.kugou.com/search')) return { candidates: [] };
+    return {};
+  });
+  assert.deepStrictEqual(await kugou.getLyrics(encodeKugouId('H1', '', '')), { lrc: '' });
+
+  resetStub(() => { throw new Error('network down'); });
+  assert.deepStrictEqual(await kugou.getLyrics('anything'), { lrc: '' });
+
+  // 空 id
+  assert.deepStrictEqual(await kugou.getLyrics(''), { lrc: '' });
+});
+
+test('getLyricsByTitle: 先歌曲搜索拿 hash+时长，再走同一歌词链路（timelength 用毫秒）', async () => {
+  resetStub((url) => {
+    if (url.includes('song_search_v2')) {
+      return { data: { lists: [{ SongName: '晴天', SingerName: '周杰伦', FileHash: 'FILEHASH1', Duration: 269, SQFileHash: '', HQFileHash: '' }] } };
+    }
+    if (url.includes('lyrics.kugou.com/search')) {
+      return { candidates: [{ id: 'X1', accesskey: 'AK2', krctype: 1, contenttype: 0 }] };
+    }
+    if (url.includes('lyrics.kugou.com/download')) return { content: KRC_B64 };
+    return {};
+  });
+  const r = await kugou.getLyricsByTitle('晴天', '周杰伦');
+  const sCall = calls.find(c => c.url.includes('lyrics.kugou.com/search'));
+  assert.ok(sCall.url.includes('hash=FILEHASH1'), '未按歌曲搜索解析出的 hash 搜词');
+  assert.ok(sCall.url.includes('timelength=269000'), 'timelength 应为毫秒（269s→269000）');
+  assert.ok(r.lrc.includes('[00:02.250]词：周杰伦'));
+});
+
+test('gateway.getLyrics: 平台返回 {lrc,karaoke} 对象时透传不丢逐字数据，返回字符串时兼容旧形态', async () => {
+  lyricStub();
+  const { createPlatformGateway } = require('../src/api/gateway');
+  const api = require('../src/api/index.js');
+  const gw = createPlatformGateway({ registry: api.registry });
+  const out = await gw.getLyrics('kugou', encodeKugouId('H1', '', ''));
+  assert.ok(out.lrc.includes('[00:02.250]'), 'gateway 丢了 lrc');
+  assert.strictEqual(out.karaoke?.meta?.ti, '晴天', 'gateway 把 karaoke 字段折丢了');
+});

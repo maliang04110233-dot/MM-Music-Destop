@@ -97,6 +97,8 @@ function openSettings() {
     updateCacheSize(),
     loadDownloadTemplates(),
     loadSourceHealth(),
+    loadWebdavConfig(),
+    loadMcpConfig(),
   ]);
 }
 
@@ -917,6 +919,109 @@ async function importConfig() {
   }
 }
 
+// ── WebDAV 云同步 ────────────────────────────────────
+async function loadWebdavConfig() {
+  try {
+    const cfg = await window.ipcRenderer.invoke('cloud-sync-config-get');
+    const urlEl = document.getElementById('webdavUrl');
+    if (!urlEl) return;
+    urlEl.value = cfg.url || '';
+    document.getElementById('webdavUser').value = cfg.user || '';
+    document.getElementById('webdavPass').value = '';
+    document.getElementById('webdavPass').placeholder = cfg.hasPass ? '已保存（留空则不修改）' : 'WebDAV 密码';
+    const last = document.getElementById('webdavLastSync');
+    if (last) {
+      last.textContent = cfg.lastSyncAt
+        ? '上次同步: ' + new Date(cfg.lastSyncAt).toLocaleString()
+        : '尚未同步过';
+    }
+  } catch (e) {
+    logger.error('读取 WebDAV 配置失败:', e);
+  }
+}
+
+async function saveWebdavConfig() {
+  try {
+    const pass = document.getElementById('webdavPass').value;
+    const r = await window.ipcRenderer.invoke('cloud-sync-config-set', {
+      url: document.getElementById('webdavUrl').value.trim(),
+      user: document.getElementById('webdavUser').value.trim(),
+      // 留空 = 不修改已存密码（undefined 不上送该字段）
+      ...(pass ? { pass } : {}),
+    });
+    if (r.success) {
+      showToast('WebDAV 配置已保存', 'success');
+      loadWebdavConfig();
+    } else {
+      showToast('保存失败: ' + r.error, 'error');
+    }
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+async function runWebdavSync() {
+  showToast('正在与 WebDAV 同步…');
+  try {
+    const r = await window.ipcRenderer.invoke('cloud-sync-now');
+    if (r.success) {
+      showToast(
+        `同步完成：歌单 ${r.summary.playlists} / 模板 ${r.summary.templates} / 历史 ${r.summary.historyTotal}（歌单页重新打开即为最新）`,
+        'success', 5000,
+      );
+    } else {
+      showToast('同步失败: ' + r.error, 'error');
+    }
+    loadWebdavConfig();
+  } catch (e) {
+    showToast('同步失败: ' + e.message, 'error');
+  }
+}
+
+// ── MCP 本地服务（AI Agent 接入）────────────────────────
+let _mcpRunning = false;
+
+async function loadMcpConfig() {
+  try {
+    const st = await window.ipcRenderer.invoke('mcp-status');
+    const portEl = document.getElementById('mcpPort');
+    if (!portEl) return;
+    _mcpRunning = !!st.running;
+    portEl.value = st.port || '';
+    const tokenEl = document.getElementById('mcpToken');
+    tokenEl.value = st.token || '（启用后自动生成）';
+    tokenEl.readOnly = !!st.token;
+    document.getElementById('mcpToggle').textContent = _mcpRunning ? '停止服务' : '启用服务';
+    document.getElementById('mcpStatusLine').textContent = _mcpRunning
+      ? `运行中: ${st.url}`
+      : (st.enabled ? '已设为开机自启，但当前未监听（端口占用？）' : '未启用');
+  } catch (e) {
+    logger.error('读取 MCP 状态失败:', e);
+  }
+}
+
+async function _applyMcpConfig(patch) {
+  const payload = { ...patch };
+  const port = Number(document.getElementById('mcpPort').value);
+  if (Number.isFinite(port) && port >= 1 && port <= 65535) payload.port = port;
+  try {
+    const r = await window.ipcRenderer.invoke('mcp-set-config', payload);
+    if (!r.success) { showToast('MCP: ' + r.error, 'error', 5000); loadMcpConfig(); return; }
+    loadMcpConfig();
+  } catch (e) {
+    showToast('MCP 操作失败: ' + e.message, 'error');
+  }
+}
+
+function toggleMcpService() {
+  _applyMcpConfig({ enabled: !_mcpRunning });
+}
+
+function rotateMcpToken() {
+  _applyMcpConfig({ rotateToken: true });
+  showToast('令牌已重置，旧令牌立即失效，请在 Agent 配置中更新', 'warn', 5000);
+}
+
 // ── ES Module 导出 ──────────────────────────────────────
 export {
   openSettings,
@@ -934,6 +1039,9 @@ export {
   resetAllSettings,
   exportConfig,
   importConfig,
+  loadWebdavConfig,
+  saveWebdavConfig,
+  runWebdavSync,
   loadGeneralSettings,
   loadQualityBySource,
   loadSourceHealth,
@@ -961,6 +1069,10 @@ window.clearPlayCache = clearPlayCache;
 window.resetAllSettings = resetAllSettings;
 window.exportConfig = exportConfig;
 window.importConfig = importConfig;
+window.saveWebdavConfig = saveWebdavConfig;
+window.runWebdavSync = runWebdavSync;
+window.toggleMcpService = toggleMcpService;
+window.rotateMcpToken = rotateMcpToken;
 window.loadGeneralSettings = loadGeneralSettings;
 window.loadSourceHealth = loadSourceHealth;
 window.probeSourcesUI = probeSourcesUI;

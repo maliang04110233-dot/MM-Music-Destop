@@ -58,3 +58,6 @@ npm-debug.log*
 
 
 
+
+.workbuddy-ai-test/
+release-out/

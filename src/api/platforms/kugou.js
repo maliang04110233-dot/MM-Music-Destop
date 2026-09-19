@@ -9,6 +9,7 @@
 
 const request = require('../request');
 const logger = require('../../utils/logger');
+const { decodeKrc } = require('../../utils/krcCodec');
 
 // 编码/解码三种音质的 hash 到 id
 const HASH_SEP = '::';
@@ -127,73 +128,79 @@ async function kugouGetUrl(id, quality = 'standard') {
 }
 
 /**
- * 获取歌词
- * @param {string} id - song hash
- * @returns {Promise<string>}
+ * 歌词链路核心：按歌曲 hash 搜候选 → 下载 → （官方 KRC 时）逐字解码。
+ *
+ * ⚠️ 2026-09-18 实测修正三处旧 bug（此前酷狗歌词在真实请求下**完全拿不到**）：
+ *   - search 必须带 `hash=`（纯 keyword 端点返回 0 候选），`lrctxt=1` 才会给出
+ *     krctype 字段；
+ *   - 候选字段/下载参数是 `accesskey`（全小写），旧代码写的 accessToken 取不到值；
+ *   - 官方候选（krctype=1 且 contenttype≠1）只有 fmt=krc 有内容，格式为
+ *     base64+XOR+zlib 封装的逐字歌词（解码在 utils/krcCodec）。
+ *
+ * @param {string} fileHash 酷狗歌曲 hash（非编码 id）
+ * @param {number} [timelengthMs] 歌曲时长（毫秒，可选，提高匹配度）
+ * @returns {Promise<{lrc:string, karaoke?:Object}>}
  */
-async function kugouGetLyrics(id) {
-  if (!id) return '';
-  try {
-    // 第一步：搜索歌词 ID
-    const searchUrl = `https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${encodeURIComponent(id)}`;
-    const searchResult = await request(searchUrl, { timeout: 8000 });
-    const candidates = searchResult?.candidates || [];
-    if (!candidates.length) return '';
+async function fetchLyricByHash(fileHash, timelengthMs = 0) {
+  if (!fileHash) return { lrc: '' };
+  const timelength = timelengthMs > 0 ? `&timelength=${Number(timelengthMs) || 0}` : '';
+  const searchUrl = `https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${encodeURIComponent(fileHash)}&hash=${encodeURIComponent(fileHash)}&lrctxt=1${timelength}`;
+  const searchResult = await request(searchUrl, { timeout: 8000 });
+  const candidates = searchResult?.candidates || [];
+  if (!candidates.length || !candidates[0].id) return { lrc: '' };
 
-    const first = candidates[0];
-    const lrcId = first.id;
-    const accessToken = first.accessToken || '';
+  const first = candidates[0];
+  const fmt = (Number(first.krctype) === 1 && Number(first.contenttype) !== 1) ? 'krc' : 'lrc';
+  const dlUrl = `https://lyrics.kugou.com/download?ver=1&client=pc&id=${encodeURIComponent(first.id)}&accesskey=${encodeURIComponent(first.accesskey || '')}&fmt=${fmt}&charset=utf8`;
+  const dl = await request(dlUrl, { timeout: 8000 });
+  const content = dl?.content || '';
+  if (!content) return { lrc: '' };
 
-    if (!lrcId) return '';
-
-    // 第二步：下载歌词
-    const dlUrl = `https://lyrics.kugou.com/download?ver=1&client=pc&id=${encodeURIComponent(lrcId)}&accessToken=${encodeURIComponent(accessToken)}&fmt=lrc`;
-    const lrcResult = await request(dlUrl, { timeout: 8000 });
-    const content = lrcResult?.content || '';
-
-    if (content) {
-      // 酷狗返回 base64 编码的歌词
-      try {
-        return Buffer.from(content, 'base64').toString('utf-8');
-      } catch {
-        return content;
-      }
+  if (fmt === 'krc') {
+    try {
+      const { parsed, lrc } = decodeKrc(content);
+      return { lrc, karaoke: parsed };
+    } catch (e) {
+      logger.warn('[kugou] KRC 解码失败（不影响其余链路）:', e.message);
+      return { lrc: '' };
     }
-    return '';
-  } catch (e) {
-    logger.warn('酷狗获取歌词失败:', e.message);
-    return '';
+  }
+  // 酷狗 lrc 内容为 base64 编码
+  try {
+    return { lrc: Buffer.from(content, 'base64').toString('utf-8') };
+  } catch {
+    return { lrc: content };
   }
 }
 
 /**
- * 按照歌曲名+歌手搜索歌词的 fallback
+ * 获取歌词（按歌曲 id）。返回 { lrc, karaoke? }。
+ * @param {string} id - encodeKugouId 编码的三 hash 串
+ */
+async function kugouGetLyrics(id) {
+  if (!id) return { lrc: '' };
+  try {
+    const { fileHash } = decodeKugouId(id);
+    return await fetchLyricByHash(fileHash);
+  } catch (e) {
+    logger.warn('酷狗获取歌词失败:', e.message);
+    return { lrc: '' };
+  }
+}
+
+/**
+ * 按「歌名+歌手」取歌词：先歌曲搜索解析出 hash 与时长，再走同一歌词链路。
  */
 async function kugouGetLyricsByTitle(title, artist) {
-  if (!title) return '';
-  const keyword = `${title} ${artist || ''}`.trim();
+  if (!title) return { lrc: '' };
   try {
-    const searchUrl = `https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${encodeURIComponent(keyword)}&duration=0`;
-    const result = await request(searchUrl, { timeout: 8000 });
-    const candidates = result?.candidates || [];
-    if (!candidates.length) return '';
-
-    const first = candidates[0];
-    const lrcId = first.id;
-    const accessToken = first.accessToken || '';
-    if (!lrcId) return '';
-
-    const dlUrl = `https://lyrics.kugou.com/download?ver=1&client=pc&id=${encodeURIComponent(lrcId)}&accessToken=${encodeURIComponent(accessToken)}&fmt=lrc`;
-    const lrcResult = await request(dlUrl, { timeout: 8000 });
-    const content = lrcResult?.content || '';
-    if (content) {
-      try { return Buffer.from(content, 'base64').toString('utf-8'); }
-      catch { return content; }
-    }
-    return '';
+    const songs = await kugouSearch(`${title} ${artist || ''}`.trim(), 1);
+    if (!songs.length) return { lrc: '' };
+    const { fileHash } = decodeKugouId(songs[0].id);
+    return await fetchLyricByHash(fileHash, songs[0].duration || 0);
   } catch (e) {
     logger.warn('酷狗歌词 fallback 搜索失败:', e.message);
-    return '';
+    return { lrc: '' };
   }
 }
 

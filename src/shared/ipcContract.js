@@ -51,6 +51,7 @@ const CHANNELS = {
   'get-platforms':  { invoke: MAIN },
   'get-source-health': { invoke: MAIN },
   'probe-sources':  { invoke: MAIN },
+  'nl-search-music': { invoke: MAIN, args: [['phrase', t.str(200)]] },
 
   // ── 下载（invoke） ────────────────────────────────
   // id/source 的最终合法性判定仍留在 handler（safeId/safeToken，错误文案是产品约定）
@@ -153,6 +154,13 @@ const CHANNELS = {
   // ── 云同步 / 更新（invoke） ───────────────────────
   'export-all-data':    { invoke: MAIN },
   'import-all-data':    { invoke: MAIN },
+  'cloud-sync-config-get': { invoke: MAIN },
+  'cloud-sync-config-set': { invoke: MAIN, args: [['cfg', t.any()]] },
+  'cloud-sync-now':     { invoke: MAIN },
+
+  // ── MCP 本地服务（invoke）─────────────────────────
+  'mcp-status':     { invoke: MAIN },
+  'mcp-set-config': { invoke: MAIN, args: [['cfg', t.any()]] },
   'check-for-update':   { invoke: MAIN },
   'download-update':    { invoke: MAIN },
   'restart-and-install':{ invoke: MAIN },
@@ -212,6 +220,7 @@ const METHODS = {
   systemPower: 'system-power',
   // 搜索
   searchMusic: 'search-music',
+  nlSearchMusic: 'nl-search-music',
   searchAlbum: 'search-album',
   searchSinger: 'search-singer',
   getSingerSongs: 'get-singer-songs',

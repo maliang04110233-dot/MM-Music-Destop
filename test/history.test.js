@@ -180,3 +180,148 @@ test('history: 损坏文件 → 备份 .bak + 空历史起步，新记录可写�
   h2.destroy();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// ══════════════════════════════════════════════════════════
+// SQLite 存储介质（node:sqlite，2026-09-19 升级）
+//
+// 旧介质是 userData/history.json 整写文件：每次变更防抖重写全量 5000 条，
+// 去重索引与展示历史同生共死（淘汰即失忆）。新介质 history.db 要求：
+//   - 每次 add 即时落盘（WAL），不存在防抖丢窗口；
+//   - 展示历史（history 表，限量）与去重索引（assets 表，不限量）分离：
+//     文件还在磁盘，即使展示记录被淘汰，也不该允许重复下载；
+//   - 条目携带未知扩展字段（如 matchedFrom）必须保真往返；
+//   - 旧 history.json 一次性迁移，且不可二次导入。
+// ══════════════════════════════════════════════════════════
+
+/** 重开模块（模拟应用重启） */
+function freshHistory() {
+  delete require.cache[require.resolve('../src/utils/history')];
+  return require('../src/utils/history');
+}
+
+test('history: 存储介质是 userData/history.db（SQLite），不再产出 history.json', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  h.add({ id: '1', source: 'qq', title: 'A', status: 'done', finishedAt: 1 });
+  assert.ok(fs.existsSync(path.join(dir, 'history.db')), '应存在 history.db');
+  assert.ok(!fs.existsSync(path.join(dir, 'history.json')), '不应再写 history.json');
+  h.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: add 即时落盘 —— 不 flush 直接 destroy（模拟进程暴毙），重启仍读得到', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  h.add({ id: 'z', source: 'netease', title: '未刷新即崩', status: 'done', finishedAt: 1 });
+  h.destroy(); // 故意不调 flush
+
+  const h2 = freshHistory();
+  h2.init(dir);
+  assert.strictEqual(h2.query().total, 1, '即时落盘后不应有丢失窗口');
+  assert.strictEqual(h2.query().items[0].title, '未刷新即崩');
+  h2.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: 双表去重 —— 展示历史被上限淘汰后，文件仍在磁盘 ⇒ findDownloaded 依然命中', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+
+  const realPath = path.join(dir, '老歌.mp3');
+  fs.writeFileSync(realPath, 'x');
+  h.add({ id: 'keepme', source: 'qq', title: '老歌', status: 'done', savePath: realPath, finishedAt: 1 });
+
+  // 灌入超过上限的记录，把 keepme 挤出展示历史
+  for (let i = 0; i < h.MAX_ENTRIES + 5; i++) {
+    h.add({ id: `p${i}`, source: 'qq', title: `淹${i}`, status: 'done', finishedAt: i + 2 });
+  }
+  const r = h.query({ keyword: '老歌' });
+  assert.strictEqual(r.total, 0, '展示历史应已被淘汰（前置条件）');
+
+  const hit = h.findDownloaded('keepme', 'qq');
+  assert.ok(hit, '去重索引不应随展示历史上限一起失忆');
+  assert.strictEqual(hit.savePath, realPath);
+  assert.strictEqual(hit.finishedAt, 1);
+
+  h.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: 文件被用户删除 ⇒ findDownloaded 不命中（且回收索引，后续重下不受幽灵影响）', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  const p = path.join(dir, '将被删.mp3');
+  fs.writeFileSync(p, 'x');
+  h.add({ id: 'g1', source: 'netease', title: 'G', status: 'done', savePath: p, finishedAt: 5 });
+  assert.ok(h.findDownloaded('g1', 'netease'), '前置：文件在时应命中');
+  fs.rmSync(p);
+  assert.strictEqual(h.findDownloaded('g1', 'netease'), null, '文件删除后不算已下载');
+  // 回收后再重下（done + 文件在）应恢复命中
+  fs.writeFileSync(p, 'y');
+  h.add({ id: 'g1', source: 'netease', title: 'G', status: 'done', savePath: p, finishedAt: 9 });
+  assert.ok(h.findDownloaded('g1', 'netease'), '重新下载后索引应恢复');
+  h.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: 未知扩展字段往返保真（matchedFrom 等换源信息不丢）', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  h.add({ id: 'x1', source: 'kugou', title: 'T', status: 'done', matchedFrom: 'netease', customNum: 7, finishedAt: 1 });
+  const item = h.query().items[0];
+  assert.strictEqual(item.matchedFrom, 'netease');
+  assert.strictEqual(item.customNum, 7);
+  h.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: 旧版 history.json 一次性迁移 —— 导入后改名 .imported，重启不重复导入', () => {
+  const dir = makeTempDir();
+  fs.writeFileSync(path.join(dir, 'history.json'), JSON.stringify([
+    { id: 'old2', source: 'qq', title: '新些的旧记录', status: 'done', finishedAt: 200 },
+    { id: 'old1', source: 'netease', title: '最旧的记录', status: 'error', finishedAt: 100 },
+  ]), 'utf8');
+
+  const h = require('../src/utils/history');
+  h.init(dir);
+  const r = h.query();
+  assert.strictEqual(r.total, 2);
+  assert.strictEqual(r.items[0].id, 'old2', '旧数组顺序（新在前）应保留');
+  assert.ok(!fs.existsSync(path.join(dir, 'history.json')), '迁移后原文件不应留在原位');
+  assert.ok(fs.existsSync(path.join(dir, 'history.json.imported')), '应保留 .imported 备份');
+  h.destroy();
+
+  const h2 = freshHistory();
+  h2.init(dir);
+  assert.strictEqual(h2.query().total, 2, '重启不应重复导入或丢历史');
+  h2.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('history: schema 版本化（user_version）—— 重开幂等，版本落在 db 头部', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  h.add({ id: 'v', source: 'qq', title: 'V', status: 'done', finishedAt: 1 });
+  h.destroy();
+
+  const db = new DatabaseSync(path.join(dir, 'history.db'));
+  const ver = db.prepare('pragma user_version').get().user_version;
+  assert.ok(Number(ver) >= 1, `user_version 应 >=1，实际 ${ver}`);
+  const tables = db.prepare("select name from sqlite_master where type='table'").all().map(x => x.name);
+  assert.ok(tables.includes('history') && tables.includes('assets'), `双表缺失: ${tables}`);
+  db.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

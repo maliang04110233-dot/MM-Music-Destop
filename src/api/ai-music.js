@@ -574,11 +574,84 @@ ${lyrics}
   }
 }
 
+/**
+ * 稳健解析 LLM 输出的搜索关键词数组。
+ * LLM 常带 markdown 围栏或前后废话，先按纯 JSON 解析，失败再提取第一个
+ * [...] 片段。清洗规则：只留字符串、trim、丢空白与超长（>60 字符）、去重、最多 3 个。
+ * 无任何可解析数组 → null（由调用方兜底）。
+ * @param {string} text
+ * @returns {string[]|null}
+ */
+function parseSearchQueries(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  let arr = null;
+  try {
+    arr = JSON.parse(text.trim());
+  } catch (_) {
+    const m = text.match(/\[[\s\S]*?\]/);
+    if (m) {
+      try { arr = JSON.parse(m[0]); } catch (_) { arr = null; }
+    }
+  }
+  if (!Array.isArray(arr)) return null;
+  const out = [];
+  const seen = new Set();
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const q = item.trim();
+    if (!q || q.length > 60 || seen.has(q)) continue;
+    seen.add(q);
+    out.push(q);
+    if (out.length === 3) break;
+  }
+  return out;
+}
+
+/**
+ * 自然语言 → 平台可搜的关键词数组（P0-A 改写层）
+ * @param {Object} params
+ * @param {string} params.phrase - 用户的自然语言需求
+ * @param {string} params.apiKey - MiniMax API Key
+ * @returns {Promise<string[]>} 0~3 个关键词；解析失败返回空数组（调用方兜底）
+ */
+async function rewriteSearchQueries(params) {
+  const { phrase, apiKey } = params;
+  if (!apiKey) throw new Error('请先配置 MiniMax API Key');
+  if (!phrase) throw new Error('搜索需求不能为空');
+
+  const prompt = `用户想在音乐软件里搜索歌曲，但给的是自然语言描述。请把它改写成 1~3 个能直接用于音乐平台搜索的关键词（风格/语言/场景/歌手等词的稀疏组合，不要整句）。
+
+用户描述：${phrase}
+
+严格只输出一个 JSON 字符串数组，例如 ["轻快 中文 晨跑"]。不要输出其它任何文字。`;
+
+  const result = await request(`${MINIMAX_API_BASE}/v1/text/chatcompletion_v2`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    body: {
+      model: 'MiniMax-Text-01',
+      messages: [
+        { role: 'system', content: '你是音乐搜索关键词改写器。只输出 JSON 字符串数组，不输出任何解释。' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 200,
+    },
+  });
+
+  if (result.status !== 200 || !result.data?.choices) {
+    throw new Error(result.data?.error?.message || '关键词改写失败');
+  }
+  return parseSearchQueries(result.data.choices[0]?.message?.content) || [];
+}
+
 module.exports = {
   setHistoryPath,
   generateLyrics,
   generateMusic,
   translateLyrics,
+  parseSearchQueries,
+  rewriteSearchQueries,
   saveAudioFromHex,
   loadHistory,
   addToHistory,

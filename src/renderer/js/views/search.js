@@ -603,6 +603,53 @@ function doSearch(page = 1) {
   doSearchByType(_searchType, page, keyword, getState('currentSource'));
 }
 
+// ── AI 自然语言搜索（P0-A）────────────────────────────
+// 输入是口语需求（"适合夜跑的中文摇滚"）时点这个：LLM 改写成 1~3 个
+// 关键词并行聚合搜索，结果合并去重后直接渲染歌曲列表（无分页）。
+async function doNaturalSearch() {
+  const keyword = _dom.searchInput?.value?.trim();
+  if (!keyword) { showToast('请输入搜索需求', 'error'); return; }
+
+  if (!checkAPI()) {
+    clearLoading();
+    showLoadError('音乐API未加载，请刷新重试');
+    showToast('音乐API未加载，请刷新重试', 'error', 3000);
+    return;
+  }
+
+  addSearchHistory(keyword);
+  setState('currentKeyword', keyword);
+  setState('selectedSongs', new Set());
+  if (_searchBatchMode) exitSearchBatchMode();
+  hideSearchHistory();
+
+  if (_dom.songList) {
+    _dom.songList.innerHTML = '<div class="loading"><div class="spinner"></div> AI 理解中，正在聚合搜索...</div>';
+  }
+  if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
+  if (_dom.pagination) _dom.pagination.style.display = 'none';
+
+  try {
+    const r = await api.nlSearchMusic(keyword);
+    if (r && r.error) {
+      clearLoading();
+      showLoadError(r.error);
+      showToast('AI 搜索：' + r.error, 'warn', 4000);
+      return;
+    }
+    const songs = (r && r.songs) || [];
+    setState('songs', songs);
+    renderSongList(songs);
+    const qs = (r && r.queries) || [];
+    if (qs.length > 1 || (qs.length === 1 && qs[0] !== keyword)) {
+      showToast('AI 关键词：' + qs.join('、'), 'success', 4000);
+    }
+  } catch (e) {
+    clearLoading();
+    showLoadError(e.message || String(e));
+  }
+}
+
 // ── 歌手渲染 ─────────────────────────────────────────
 function renderSingerList(list) {
   const el = document.getElementById('songList');
@@ -1150,6 +1197,7 @@ function switchSource(src) {
 
 // ── 导出 ─────────────────────────────────────────────
 window.doSearch = doSearch;
+window.doNaturalSearch = doNaturalSearch;
 window.handleLinkInput = handleLinkInput;
 window.openAlbumSongsModal = openAlbumSongsModal;
 window.switchSearchType = switchSearchType;

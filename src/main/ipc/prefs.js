@@ -44,8 +44,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'eqPreset', 'eqGains', 'eqBypass',
   // AI 音乐
   'aiMusicApiKey', 'aiMusicSaveDir',
-  // 转码输出目录
-  'convertOutputDir',
+  // 转码输出目录 / 响度归一开关（P0-B）
+  'convertOutputDir', 'convertLoudnorm',
   // 队列模板 / 搜索历史（主进程内部写入，但导入流程会经 set）
   'downloadTemplates', 'searchHistory',
 ]);

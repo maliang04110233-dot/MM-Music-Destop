@@ -548,3 +548,142 @@ test('setPaused: 暂停期间入队的多个任务恢复后全部完成（含 10
     await waitFor(() => engine.getQueue().every(s => s.status === 'done'), { timeout: 3000 });
   } finally { restore(); }
 });
+
+// ══════════════════════════════════════════════════════════
+// 平台级并发钳制（perSourceConcurrency）
+//
+// 为什么需要：全局 concurrency 只限总数不限来源 —— 批量下载一个
+// QQ 歌单时 3 个 worker 全打在同一个 CDN 上，正是 lx 文档警告的
+// 「并发过高会被源封 IP」形态。按**请求源**钳制并发是风控自卫。
+// 计数按 song.source（请求的平台），换源命中的实际源不另计 ——
+// 换源是串行发生在单任务内部，不构成额外并发压力。
+// ══════════════════════════════════════════════════════════
+
+/** 造一个「下载挂起直到手动放行」的 downloader 桩；started() = 累计启动数 */
+function makeGate() {
+  const waiting = [];
+  let startedCount = 0;
+  const fn = async () => new Promise((resolve) => { waiting.push(resolve); startedCount++; });
+  return {
+    fn,
+    /** 放行最早的一个挂起下载 */
+    release: () => { const r = waiting.shift(); if (r) r(); return !!r; },
+    started: () => startedCount,
+  };
+}
+
+const dlItem = (id, source) => ({
+  id, source, title: 't', artist: 'a', taskId: `task-${source}-${id}`, status: 'pending',
+});
+
+test('平台钳制：同平台并发受 perSourceConcurrency（默认 2）限制，不占满全局额度', async () => {
+  const gate = makeGate();
+  const { engine, restore } = buildEngine({
+    prefs: { concurrency: 3 },
+    downloadFileWithRetry: gate.fn,
+  });
+  try {
+    engine.getQueue().push(dlItem('1', 'netease'), dlItem('2', 'netease'),
+      dlItem('3', 'netease'), dlItem('9', 'qq'));
+    await engine.processQueue();
+    await waitFor(() => gate.started() >= 1);
+    await new Promise((r) => setTimeout(r, 50)); // 给调度留稳定观测窗口
+
+    const q = engine.getQueue();
+    assert.strictEqual(q.filter(s => s.status === 'downloading' && s.source === 'netease').length, 2,
+      'netease 最多 2 个在途（perSourceConcurrency 默认 2）');
+    assert.strictEqual(q.filter(s => s.status === 'downloading' && s.source === 'qq').length, 1,
+      '额度没占满时其他平台必须能启动');
+    assert.strictEqual(q.filter(s => s.status === 'pending').length, 1);
+
+    // 放行一个 netease ⇒ 第三个 netease 立即补位
+    gate.release();
+    await waitFor(() => gate.started() >= 3 || q.find(s => s.taskId === 'task-netease-3' && s.status !== 'pending'));
+    await waitFor(() => q.filter(s => s.status === 'downloading' && s.source === 'netease').length === 2);
+  } finally { restore(); }
+});
+
+test('平台钳制：perSourceConcurrency=1 时同平台严格串行', async () => {
+  const gate = makeGate();
+  const { engine, restore } = buildEngine({
+    prefs: { concurrency: 3, perSourceConcurrency: 1 },
+    downloadFileWithRetry: gate.fn,
+  });
+  try {
+    engine.getQueue().push(dlItem('1', 'kugou'), dlItem('2', 'kugou'));
+    await engine.processQueue();
+    await waitFor(() => gate.started() >= 1);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(gate.started(), 1, 'cap=1 时第二个 kugou 任务必须等待');
+    gate.release();
+    await waitFor(() => gate.started() >= 2);
+  } finally { restore(); }
+});
+
+test('平台钳制：cap 超过全局 concurrency 时按全局钳制（钳制只会更紧不会更松）', async () => {
+  const gate = makeGate();
+  const { engine, restore } = buildEngine({
+    prefs: { concurrency: 2, perSourceConcurrency: 10 },
+    downloadFileWithRetry: gate.fn,
+  });
+  try {
+    engine.getQueue().push(dlItem('1', 'netease'), dlItem('2', 'netease'), dlItem('3', 'netease'));
+    await engine.processQueue();
+    await waitFor(() => gate.started() >= 2);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(gate.started(), 2, '全局 concurrency=2 仍是硬上限');
+  } finally { restore(); }
+});
+
+test('平台钳制：perSourceConcurrency 越界（0/负数/非数字）回落默认 2', async () => {
+  for (const bad of [0, -1, 'x']) {
+    const gate = makeGate();
+    const { engine, restore } = buildEngine({
+      prefs: { concurrency: 3, perSourceConcurrency: bad },
+      downloadFileWithRetry: gate.fn,
+    });
+    try {
+      engine.getQueue().push(dlItem('1', 'netease'), dlItem('2', 'netease'), dlItem('3', 'netease'));
+      await engine.processQueue();
+      await waitFor(() => gate.started() >= 1);
+      await new Promise((r) => setTimeout(r, 50));
+      assert.strictEqual(gate.started(), 2, `非法值 ${JSON.stringify(bad)} 应回落 cap=2`);
+      gate.release(); gate.release(); // 清场
+    } finally { restore(); }
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// 终态立即落盘（不等 500ms 防抖）
+//
+// 防抖合并进度类高频变更是对的，但 done/error 是**终态**：崩溃窗口里
+// 丢一条终态 = 用户看到已完成的任务消失/回到下载中。omniget 的
+// 「逐条 fsync」在本工程规模（≤400 条整写原子文件）下等价做法就是
+// 终态免防抖立即写，成本一次 100KB 级 atomic write，可忽略。
+// ══════════════════════════════════════════════════════════
+
+test('持久化：任务 done 后 queue.json 立即可读（绕过防抖）', async () => {
+  const { engine, dir, restore } = buildEngine();
+  try {
+    engine.getQueue().push(dlItem('1', 'netease'));
+    await engine.processQueue();
+    await waitFor(() => engine.getQueue()[0].status === 'done');
+    // 不 sleep 500ms、不调 dispose —— 终态必须已经落盘
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8'));
+    assert.strictEqual(raw[0].status, 'done');
+    assert.strictEqual(raw[0].taskId, 'task-netease-1');
+  } finally { restore(); }
+});
+
+test('持久化：任务 error 后 queue.json 立即可读', async () => {
+  const { engine, dir, restore } = buildEngine({
+    getDownloadUrlSmart: async () => ({ error: 'boom', code: 'INTERNAL_ERROR', fatal: false }),
+  });
+  try {
+    engine.getQueue().push(dlItem('2', 'qq'));
+    await engine.processQueue();
+    await waitFor(() => engine.getQueue()[0].status === 'error');
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'queue.json'), 'utf8'));
+    assert.strictEqual(raw[0].status, 'error');
+  } finally { restore(); }
+});

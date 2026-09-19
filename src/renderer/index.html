@@ -188,6 +188,7 @@
               <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴网易云/QQ/B站/酷狗链接）"
                 onkeydown="searchInputKey(event)" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
               <button class="search-btn" onclick="doSearch()">🔍</button>
+              <button class="search-btn" onclick="doNaturalSearch()" title="AI 搜索：用一句话描述想听的歌（需在 AI 音乐配置 API Key）">✨</button>
             </div>
             <select class="quality-select" id="qualitySelect">
               <option value="standard" data-i18n="search.quality.standard">标准 128k</option>
@@ -199,8 +200,8 @@
             <button class="tab" id="hideDlToggle" title="隐藏下载状态为「已下载」的结果行" onclick="toggleHideDownloaded()">🙈 隐藏已下载</button>
             <button class="tab" id="searchSortBtn" title="切换搜索结果排序：默认 / 时长 / 来源" onclick="cycleSearchSort()">↕ 默认序</button>
             <button class="tab" id="batchImportBtn" title="粘贴多行分享链接，解析后一次全部加入下载队列" onclick="openBatchImport()">📥 批量导入</button>
-            <button class="tab" id="scheduledBtn" title="挂起分享链接，到设定时间自动解析入队（夜间错峰下载；错过时点开机即补跑）" onclick="openScheduledPanel()">⏰ 定时<span id="scheduledBadge"></span></button>
             <button class="tab" id="nameBatchBtn" title="粘贴多行「歌手 - 歌名」清单，逐行搜索匹配后预览入队" onclick="openNameBatch()">🎤 按歌名导入</button>
+            <button class="tab" id="scheduledBtn" title="挂起分享链接，到设定时间自动解析入队（夜间错峰下载；错过时点开机即补跑）" onclick="openScheduledPanel()">⏰ 定时<span id="scheduledBadge"></span></button>
             <!-- 搜索历史下拉 -->
             <div class="search-history" id="searchHistory" style="display:none;"></div>
           </div>
@@ -956,6 +957,50 @@
             </div>
           </div>
 
+          <div class="settings-section-title" data-i18n="settings.general.webdavTitle">WebDAV 云同步</div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.webdavUrlLabel">快照地址</label>
+              <input class="setting-input setting-input--wide" id="webdavUrl" type="text" placeholder="https://nas/dav/musicdl.json" autocomplete="off">
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.webdavUserLabel">用户名</label>
+              <input class="setting-input" id="webdavUser" type="text" autocomplete="off">
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.webdavPassLabel">密码</label>
+              <input class="setting-input" id="webdavPass" type="password" autocomplete="new-password">
+            </div>
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" onclick="saveWebdavConfig()" data-i18n="settings.general.webdavSave">保存配置</button>
+              <button class="setting-btn" onclick="runWebdavSync()" data-i18n="settings.general.webdavSync">立即同步</button>
+              <span class="setting-hint" id="webdavLastSync"></span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-hint" data-i18n="settings.general.webdavHint">多设备双向合并歌单/下载模板/下载历史（不含目录等本机设置）；密码本机加密存储，不进导出备份</span>
+            </div>
+          </div>
+
+          <div class="settings-section-title" data-i18n="settings.general.mcpTitle">AI Agent 接入（MCP）</div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.mcpPortLabel">本地端口</label>
+              <input class="setting-input" id="mcpPort" type="number" min="1" max="65535">
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.mcpTokenLabel">访问令牌</label>
+              <input class="setting-input setting-input--wide" id="mcpToken" type="text" readonly autocomplete="off">
+            </div>
+            <div class="setting-row setting-row--action">
+              <button class="setting-btn" id="mcpToggle" onclick="toggleMcpService()">启用服务</button>
+              <button class="setting-btn" onclick="rotateMcpToken()" data-i18n="settings.general.mcpRotate">重置令牌</button>
+              <span class="setting-hint" id="mcpStatusLine"></span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-hint" data-i18n="settings.general.mcpHint">让外部 AI Agent（如支持 MCP 的助手）在本机搜索音乐、加入下载队列、管理歌单。仅监听 127.0.0.1 且必须携带令牌；默认关闭</span>
+            </div>
+          </div>
+
           <div class="settings-section-title" data-i18n="settings.general.resetTitle">重置设置</div>
           <div class="settings-card settings-card--danger">
             <div class="setting-row setting-row--action">
@@ -1041,6 +1086,14 @@
           <option value="256k">256 kbps</option>
           <option value="320k" selected>320 kbps</option>
         </select>
+      </div>
+
+      <div class="convert-field">
+        <label class="convert-label">响度归一</label>
+        <label class="convert-item" style="cursor:pointer;">
+          <input type="checkbox" id="convertLoudnorm" onchange="saveConvertLoudnorm(this.checked)">
+          <span class="convert-item-name">统一拉到 -14 LUFS（跨曲目音量一致，转换略慢）</span>
+        </label>
       </div>
 
       <div id="convertOutputDirRow" class="convert-field" style="display:none;">

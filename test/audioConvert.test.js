@@ -163,6 +163,37 @@ test('buildFfmpegArgs: m4a 归一到 aac 编码器', () => {
   assert.deepStrictEqual(args.slice(args.indexOf('-codec:a')), ['-codec:a', 'aac', '-b:a', '256k', 'out.m4a']);
 });
 
+// ── 响度归一化（P0-B）────────────────────────────────
+
+test('buildFfmpegArgs: loudnorm 注入单遍响度归一过滤器，位置在编码参数后、输出前', () => {
+  const args = buildFfmpegArgs({
+    inputPath: 'in.mp3', outputPath: 'out.mp3', format: 'mp3', bitrate: '192k', loudnorm: true,
+  });
+  const i = args.indexOf('-af');
+  assert.ok(i > 0, `应含 -af: ${args.join(' ')}`);
+  assert.strictEqual(args[i + 1], 'loudnorm=I=-14:TP=-1.5:LRA=11');
+  assert.ok(args.indexOf('-b:a') < i, '音频过滤器应排在比特率参数之后');
+  assert.ok(i + 1 < args.lastIndexOf('out.mp3'), '过滤器应排在输出路径之前');
+});
+
+test('buildFfmpegArgs: 未开启 loudnorm 时不下发任何 -af', () => {
+  for (const loudnorm of [undefined, false, null]) {
+    const args = buildFfmpegArgs({
+      inputPath: 'in', outputPath: 'out.mp3', format: 'mp3', loudnorm,
+    });
+    assert.ok(!args.includes('-af'), `loudnorm=${JSON.stringify(loudnorm)} 不应注入过滤器: ${args.join(' ')}`);
+  }
+});
+
+test('buildFfmpegArgs: loudnorm 对无损格式（wav/flac）同样生效', () => {
+  for (const format of ['flac', 'wav']) {
+    const args = buildFfmpegArgs({
+      inputPath: 'in', outputPath: 'out.x', format, loudnorm: true,
+    });
+    assert.ok(args.includes('-af'), `${format} 应支持响度归一`);
+  }
+});
+
 // ── ffmpeg 探测 ────────────────────────────────────────
 
 test('_probeFfmpeg: 不存在的命令返回 false 且不抛错', async () => {
@@ -284,6 +315,28 @@ test('convertAudioFile: 真实转码产出一个可读取的 mp3，并支持中�
     assert.ok(!r2.success, `中止后不得 success: ${JSON.stringify(r2)}`);
   } finally {
     // 刚 kill 掉的 ffmpeg 可能还没完全释放文件句柄
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+});
+
+test('convertAudioFile: loudnorm 透传 —— 开启响度归一的真实转码正常产出', { skip: NO_FFMPEG, timeout: 60000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'musicdl-ln-'));
+  try {
+    const wav = path.join(dir, 'tone.wav');
+    const { spawnSync } = require('child_process');
+    const mk = spawnSync('ffmpeg', [
+      '-nostdin', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
+      '-codec:a', 'pcm_s16le', wav,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    assert.strictEqual(mk.status, 0, '合成测试音频失败');
+
+    const result = await convertAudioFile({
+      inputPath: wav, outputDir: dir, format: 'mp3', bitrate: '128k', loudnorm: true,
+    });
+    assert.strictEqual(result.success, true, `响度归一转码应成功: ${JSON.stringify(result)}`);
+    const probe = await probeDuration('ffmpeg', result.path);
+    assert.ok(probe > 0, '产物应可被重新读取');
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

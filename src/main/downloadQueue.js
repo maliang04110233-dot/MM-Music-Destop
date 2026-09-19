@@ -15,8 +15,10 @@
  *
  * ⚠️ 行为契约（改这里等于改下载行为，务必对照既有测试与实测）：
  *   - 并发数动态读 prefs.concurrency（1..10，越界回落 3）；
+ *     单平台并发另受 prefs.perSourceConcurrency 钳制（默认 2，越界回落 2，
+ *     且不超过全局 concurrency）—— 同源齐发最易触发平台风控/封 IP；
  *   - done 任务保留上限 200，超出按入队顺序淘汰最旧；
- *   - 持久化防抖 500ms + 原子写；
+ *   - 持久化防抖 500ms + 原子写；done/error 终态绕开防抖立即落盘；
  *   - 仅 HTTP 403/404/410（CDN 签名过期）重试，其余错误直接放弃；
  *   - urlInfo.fatal=true（VIP/登录/无流）直接短路，不消耗重试配额；
  *   - 重启时 downloading → error；pending 超 24h → error。
@@ -111,6 +113,40 @@ function createDownloadQueueEngine({
     }
   }
 
+  /**
+   * 单平台并发上限（perSourceConcurrency，默认 2，越界回落 2）。
+   * 钳制到全局 concurrency 之内 —— 只会比全局更紧，不会更松。
+   * 动机：批量下载同源歌单时全部 worker 打同一 CDN 是最易触发风控/封 IP 的形态。
+   */
+  function getPerSourceCap() {
+    let cap;
+    try {
+      const v = prefs.get('perSourceConcurrency');
+      cap = (v >= 1 && v <= 10) ? v : 2;
+    } catch (_e) {
+      cap = 2;
+    }
+    return Math.min(cap, getConcurrency());
+  }
+
+  /** 某请求源当前在途任务数（从队列状态派生，不另立计数器避免漂移） */
+  function activeCountBySource(source) {
+    let n = 0;
+    for (const s of downloadQueue) {
+      if (s && s.status === 'downloading' && s.source === source) n++;
+    }
+    return n;
+  }
+
+  /** 取下一个可调度任务：pending 且其平台未到并发上限（按队列顺序即展示顺序） */
+  function pickSchedulable(cap) {
+    for (const s of downloadQueue) {
+      if (!s || s.status !== 'pending') continue;
+      if (activeCountBySource(s.source) < cap) return s;
+    }
+    return null;
+  }
+
   /** 淘汰超出保留上限的最旧 done 任务（队列顺序即展示顺序） */
   function trimDoneTasks() {
     const doneCount = downloadQueue.filter(s => s && s.status === 'done').length;
@@ -126,10 +162,10 @@ function createDownloadQueueEngine({
     }
   }
 
-  /** 队列变更统一出口：推送 + 持久化 + 额外回调 */
-  function notifyQueueChanged() {
+  /** 队列变更统一出口：推送 + 持久化 + 额外回调；immediate=true 跳过防抖（终态用） */
+  function notifyQueueChanged(immediate) {
     safeSend('queue-updated', downloadQueue);
-    persistQueue();
+    persistQueue({ immediate: !!immediate });
     if (typeof onQueueChanged === 'function') {
       try {
         onQueueChanged();
@@ -139,17 +175,34 @@ function createDownloadQueueEngine({
     }
   }
 
-  /** 防抖持久化（500ms 合并写入；原子写防半写损坏） */
-  function persistQueue() {
+  /** 立即整写队列文件（trim + 原子写）；异常吞掉并记日志 */
+  function writeQueueNow() {
+    try {
+      trimDoneTasks();
+      atomicWriteJson(QUEUE_FILE(), downloadQueue);
+    } catch (e) {
+      logger.warn('队列持久化失败:', e.message);
+    }
+  }
+
+  /**
+   * 持久化：默认 500ms 防抖合并（进度/入队等高频变更）；
+   * { immediate: true } 用于 done/error **终态** —— 终态丢在防抖窗口里
+   * 意味着崩溃后「已完成的任务消失 / 回到下载中」，必须绕开防抖立即落盘。
+   */
+  function persistQueue(opts) {
+    if (opts && opts.immediate) {
+      if (queuePersistTimer) {
+        clearTimeout(queuePersistTimer);
+        queuePersistTimer = null;
+      }
+      writeQueueNow();
+      return;
+    }
     if (queuePersistTimer) return;
     queuePersistTimer = setTimeout(() => {
       queuePersistTimer = null;
-      try {
-        trimDoneTasks();
-        atomicWriteJson(QUEUE_FILE(), downloadQueue);
-      } catch (e) {
-        logger.warn('队列持久化失败:', e.message);
-      }
+      writeQueueNow();
     }, PERSIST_DEBOUNCE_MS);
   }
 
@@ -419,9 +472,10 @@ function createDownloadQueueEngine({
     if (_processQueueRunning) return;
     _processQueueRunning = true;
     const concurrency = getConcurrency();
+    const perSourceCap = getPerSourceCap();
     try {
       while (activeDownloads < concurrency) {
-        const song = downloadQueue.find(s => s.status === 'pending');
+        const song = pickSchedulable(perSourceCap);
         if (!song) break;
         song.status = 'downloading';
         song.error = null;
@@ -431,7 +485,9 @@ function createDownloadQueueEngine({
         // 异步处理（不阻塞调度）
         processOneSong(song).finally(() => {
           activeDownloads--;
-          notifyQueueChanged();
+          // 任务到达终态（done/error/cancelled）：立即落盘，不等防抖 ——
+          // 崩溃窗口里丢终态 = 用户看到已完成的任务消失
+          notifyQueueChanged(true);
           // 还有 pending 时调度下一批（统一使用 processTimer，避免重复 setTimeout）
           if (downloadQueue.some(s => s.status === 'pending')) {
             if (processTimer) clearTimeout(processTimer);

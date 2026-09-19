@@ -35,6 +35,7 @@ export const CONVERT_BITRATES = [
 export const DEFAULT_FORMAT = 'mp3';
 export const DEFAULT_BITRATE = '320k';
 export const OUTPUT_DIR_PREF = 'convertOutputDir';
+export const LOUDNORM_PREF = 'convertLoudnorm';
 
 /** 无损格式不吃比特率，UI 上隐藏比特率行 */
 export function isLossless(format) {
@@ -94,6 +95,7 @@ export function openConvertModal({
   document.getElementById('convertFormat').value = defaultFormat;
   document.getElementById('convertBitrate').value = defaultBitrate;
   syncBitrateVisibility();
+  _ensureLoudnormLoaded();              // 响度归一是全局偏好，异步回填勾选
 
   document.getElementById('convertOutputDirRow').style.display =
     allowOutputDirPick ? 'flex' : 'none';
@@ -182,6 +184,35 @@ export async function initConvertOutputDir(force = false) {
 /** 弹窗打开前确保输出目录已加载（异步，不阻塞弹窗显示） */
 async function _ensureOutputDirLoaded() {
   if (!window._convertOutputDir) await initConvertOutputDir();
+}
+
+// ── 响度归一偏好（P0-B）───────────────────────────────
+// 开关只写 pref：真正生效点在 main/ipc/library.js 的 convert-audio，
+// 它每次都现读 prefs.get('convertLoudnorm')，无需渲染层随参数传。
+
+/** 勾选变化即持久化（三条入口共用同一个 pref） */
+export async function saveConvertLoudnorm(checked) {
+  window._convertLoudnorm = !!checked;
+  try {
+    await api.setPref(LOUDNORM_PREF, !!checked);
+  } catch (e) {
+    logger.warn('[convert] 保存响度归一偏好失败:', e.message);
+  }
+}
+
+/** 首次打开弹窗时从 pref 回填勾选（之后走 window 缓存） */
+async function _ensureLoudnormLoaded() {
+  const el = document.getElementById('convertLoudnorm');
+  if (!el) return;
+  if (window._convertLoudnorm === undefined) {
+    try {
+      window._convertLoudnorm = (await api.getPref(LOUDNORM_PREF)) === true;
+    } catch (e) {
+      logger.warn('[convert] 读取响度归一偏好失败:', e.message);
+      window._convertLoudnorm = false;
+    }
+  }
+  el.checked = window._convertLoudnorm;
 }
 
 /** 弹窗「开始转换」按钮 */
@@ -327,3 +358,4 @@ window.doConvertAudio = doConvertAudio;
 window.confirmConvertModal = confirmConvertModal;
 window.syncBitrateVisibility = syncBitrateVisibility;
 window.pickConvertOutputDir = pickConvertOutputDir;
+window.saveConvertLoudnorm = saveConvertLoudnorm;

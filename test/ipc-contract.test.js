@@ -96,12 +96,12 @@ test('契约结构合法（方向、窗口、参数规格）', () => {
 });
 
 test('通道数量钉死（意外增删即失败，逼迫改动者过目契约）', () => {
-  assert.strictEqual(MAIN_INVOKE.size, 94); // +set-queue-paused +system-power +probe-audio
+  assert.strictEqual(MAIN_INVOKE.size, 100); // +mcp-status/-set-config
   assert.strictEqual(MAIN_SEND.size, 16);
   assert.strictEqual(MAIN_RECEIVE.size, 27); // +queue-paused-changed +local-library-changed
   assert.strictEqual(SEC_SEND.size, 7);
   assert.strictEqual(SEC_RECEIVE.size, 2);
-  assert.strictEqual(Object.keys(METHODS).length, 103); // +setQueuePaused +systemPower +probeAudio
+  assert.strictEqual(Object.keys(METHODS).length, 104); // +nlSearchMusic
 });
 
 // ── 2. 实现 ↔ 契约 ──────────────────────────────────────────

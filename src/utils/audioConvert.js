@@ -164,19 +164,25 @@ function resolveOutputPath({ inputPath, outputDir = null, format }) {
 
 // ─── ffmpeg 参数 ────────────────────────────────────────────
 
+// 单遍 loudnorm 目标参数（-14 LUFS 是流媒体平台通行响度，峰值 -1.5dBTP 防削波）。
+// 刻意不走两遍线性模式：那需要对同一文件先探测再编码，转码链路要翻倍复杂；
+// 动态模式对"下载后本地听感一致"这个场景足够。
+const LOUDNORM_FILTER = 'loudnorm=I=-14:TP=-1.5:LRA=11';
+
 /**
  * 拼装 ffmpeg 命令行参数（纯函数，便于单测）。
  * 无损格式不吃 -b:a，传了也会被忽略——这里直接不下发。
  *
  * @returns {string[]}
  */
-function buildFfmpegArgs({ inputPath, outputPath, format, bitrate = '320k' }) {
+function buildFfmpegArgs({ inputPath, outputPath, format, bitrate = '320k', loudnorm = false }) {
   const def = FORMATS[normalizeFormat(format)] || FORMATS.mp3;
   // -nostdin：避免 ffmpeg 在读到 stdin 时进入交互式确认
   const args = ['-nostdin', '-i', inputPath, '-y'];
   args.push(def.codec[0], def.codec[1]);
   // 无损格式不吃比特率；有损格式在比特率非法时退回编码器默认值
   if (def.lossy && isBitrate(bitrate)) args.push('-b:a', bitrate);
+  if (loudnorm) args.push('-af', LOUDNORM_FILTER);
   args.push(outputPath);
   return args;
 }
@@ -225,6 +231,7 @@ function probeDuration(ffmpegPath, inputPath) {
  * @param {string|null} opt.outputDir 输出目录，null 表示调用方另走保存对话框
  * @param {string} opt.format       mp3|flac|aac|m4a|ogg|wav
  * @param {string} opt.bitrate      128k~320k，非法值降级为编码器默认
+ * @param {boolean} [opt.loudnorm]  true 时输出前做响度归一（-14 LUFS）
  * @param {(p:number)=>void} [opt.onProgress] 进度回调 0~100
  * @param {()=>boolean} [opt.shouldStop]      返回 true 时中止
  * @param {number} [opt.timeoutMs]            超时毫秒
@@ -235,6 +242,7 @@ async function convertAudioFile({
   outputDir = null,
   format = 'mp3',
   bitrate = '320k',
+  loudnorm = false,
   onProgress,
   shouldStop,
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -244,7 +252,7 @@ async function convertAudioFile({
 
   const outputPath = resolveOutputPath({ inputPath, outputDir, format });
   const duration = await probeDuration(ffmpegPath, inputPath);
-  const args = buildFfmpegArgs({ inputPath, outputPath, format, bitrate });
+  const args = buildFfmpegArgs({ inputPath, outputPath, format, bitrate, loudnorm });
 
   return new Promise((resolve) => {
     let settled = false;

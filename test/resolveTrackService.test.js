@@ -61,6 +61,7 @@ function build(map, opts = {}) {
     hasCookie: opts.hasCookie || (() => false),
     findCandidates: opts.findCandidates || (async () => []),
     sourceHealth: health,
+    ...(opts.probeUrl ? { probeUrl: opts.probeUrl } : {}),
   });
   return { svc, health, getUrl };
 }
@@ -515,4 +516,170 @@ test('URL 过期：过期链换源成功后回写 _altSource 语义（matchedSon
   assert.deepStrictEqual(r.matchedSong, cand,
     'matchedSong 缺失时下游无法回写 _altSource，下次仍会白试失效本源');
   assert.strictEqual(r.matchedFrom, 'netease');
+});
+
+// ══════════════════════════════════════════════════════════
+// 候选可播性探测（probeUrl 注入 —— go-music-dl Range 预检 / omniget 思路）
+//
+// 决策边界：探测只作用于**换源候选**（失败路径本已慢，多一次网络预检不伤
+//  happy path）；只有决定性证据（非音频内容、404/410）才否决候选，
+//  超时/连接错误等不定情形一律保守接受 —— 探测绝不能误杀能播的歌。
+// ══════════════════════════════════════════════════════════
+
+/** 探测桩：按 URL 返回配置结果；未配置的默认 { ok:true }；Error 值则抛出 */
+function makeProbe(map = {}) {
+  const calls = [];
+  const fn = async (url) => {
+    calls.push(url);
+    const v = map[url];
+    if (v instanceof Error) throw v;
+    return v === undefined ? { ok: true } : v;
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+test('探测：候选取流成功后以直链调用 probeUrl', async () => {
+  const probe = makeProbe();
+  const { svc } = build(
+    {
+      'netease:1': { error: 'vip', code: 'VIP_REQUIRED' },
+      'kuwo:w1': okResult({ url: 'https://cdn/w1.mp3' }),
+    },
+    {
+      findCandidates: async () => [{ id: 'w1', source: 'kuwo', title: 't' }],
+      probeUrl: probe,
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.source, 'kuwo');
+  assert.deepStrictEqual(probe.calls, ['https://cdn/w1.mp3'],
+    '候选 URL 必须经过探测才被采纳');
+});
+
+test('探测：text/plain 拒绝文本判死链 → 跳过该候选尝试下一源并记健康度失败', async () => {
+  const probe = makeProbe({
+    'https://cdn/dead.mp3': { ok: false, status: 200, contentType: 'text/plain', reason: 'not-audio' },
+  });
+  const { svc, health } = build(
+    {
+      'netease:1': { error: 'vip', code: 'VIP_REQUIRED' },
+      'kuwo:w1': okResult({ url: 'https://cdn/dead.mp3' }),
+      'kugou:k9': okResult({ url: 'https://cdn/live.mp3' }),
+    },
+    {
+      findCandidates: async () => [
+        { id: 'w1', source: 'kuwo', title: 't' },
+        { id: 'k9', source: 'kugou', title: 't' },
+      ],
+      probeUrl: probe,
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.source, 'kugou', '死链候选应被跳过，继续尝试下一候选');
+  assert.ok(health.calls.some(([s, ok]) => s === 'kuwo' && ok === false),
+    '探测判死要记入 kuwo 健康度失败，让后续 rankByHealth 生效');
+});
+
+test('探测：404/410 为决定性失效证据 → 候选被否决', async () => {
+  for (const status of [404, 410]) {
+    const probe = makeProbe({
+      [`https://cdn/${status}.mp3`]: { ok: false, status },
+    });
+    const { svc } = build(
+      {
+        'netease:1': { error: 'vip', code: 'VIP_REQUIRED' },
+        [`kuwo:${status}`]: okResult({ url: `https://cdn/${status}.mp3` }),
+      },
+      {
+        findCandidates: async () => [{ id: String(status), source: 'kuwo', title: 't' }],
+        probeUrl: probe,
+      },
+    );
+    const r = await svc.resolve(SONG, 'standard');
+    assert.ok(!r.url, `HTTP ${status} 的候选链不应被返回`);
+  }
+});
+
+test('探测：超时/连接错误属不定证据 → 保守接受候选', async () => {
+  for (const inconclusive of [
+    { ok: false, status: null, reason: 'timeout' },
+    { ok: false, status: null, reason: 'econnreset' },
+    { ok: false, status: 500, reason: 'HTTP 500' },
+  ]) {
+    const probe = makeProbe({ 'https://cdn/maybe.mp3': inconclusive });
+    const { svc } = build(
+      {
+        'netease:1': { error: 'vip', code: 'VIP_REQUIRED' },
+        'kuwo:w1': okResult({ url: 'https://cdn/maybe.mp3' }),
+      },
+      {
+        findCandidates: async () => [{ id: 'w1', source: 'kuwo', title: 't' }],
+        probeUrl: probe,
+      },
+    );
+    const r = await svc.resolve(SONG, 'standard');
+    assert.strictEqual(r.url, 'https://cdn/maybe.mp3',
+      `不定探测结果 ${JSON.stringify(inconclusive)} 不应否决候选`);
+  }
+});
+
+test('探测：probeUrl 自身抛异常 → 保守接受（探测实现故障不得阻断换源）', async () => {
+  const probe = makeProbe({ 'https://cdn/x.mp3': new Error('probe 炸了') });
+  const { svc } = build(
+    {
+      'netease:1': { error: 'vip', code: 'VIP_REQUIRED' },
+      'kuwo:w1': okResult({ url: 'https://cdn/x.mp3' }),
+    },
+    {
+      findCandidates: async () => [{ id: 'w1', source: 'kuwo', title: 't' }],
+      probeUrl: probe,
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/x.mp3');
+});
+
+test('探测：全部候选被否决时返回本源原始错误（与无探测时文案一致）', async () => {
+  const probe = makeProbe({
+    'https://cdn/a.mp3': { ok: false, status: 200, contentType: 'text/plain', reason: 'not-audio' },
+    'https://cdn/b.mp3': { ok: false, status: 404 },
+  });
+  const { svc } = build(
+    {
+      'netease:1': { error: '需要VIP', code: 'VIP_REQUIRED' },
+      'kuwo:w1': okResult({ url: 'https://cdn/a.mp3' }),
+      'kugou:k9': okResult({ url: 'https://cdn/b.mp3' }),
+    },
+    {
+      findCandidates: async () => [
+        { id: 'w1', source: 'kuwo', title: 't' },
+        { id: 'k9', source: 'kugou', title: 't' },
+      ],
+      probeUrl: probe,
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.ok(!r.url);
+  assert.strictEqual(r.code, 'VIP_REQUIRED', '应回落到本源错误而非新造的探测错误码');
+});
+
+test('探测：本源成功路径零探测调用（happy path 不加延迟）', async () => {
+  const probe = makeProbe();
+  const { svc } = build({ 'netease:1': okResult() }, { probeUrl: probe });
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/x.mp3');
+  assert.deepStrictEqual(probe.calls, []);
+});
+
+test('探测：_altSource 记忆命中路径零探测', async () => {
+  const probe = makeProbe();
+  const { svc } = build(
+    { 'kugou:k9': okResult({ url: 'https://cdn/alt.mp3' }) },
+    { probeUrl: probe },
+  );
+  const r = await svc.resolve({ ...SONG, _altSource: { source: 'kugou', id: 'k9' } }, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/alt.mp3');
+  assert.strictEqual(r.fromAltMemory, true);
+  assert.deepStrictEqual(probe.calls, []);
 });

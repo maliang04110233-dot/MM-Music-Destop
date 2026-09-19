@@ -333,6 +333,8 @@ function register() {
         outputDir: resolvedOutputDir,
         format: outputFormat,
         bitrate,
+        // 响度归一（P0-B）是全局转码偏好，在设置页勾选，不由调用方逐次传
+        loudnorm: prefs.get('convertLoudnorm') === true,
         onProgress: (pct) => safeSend('convert-audio-progress', { path: inputPath, pct }),
         shouldStop: () => _cancelRequested,
         timeoutMs,

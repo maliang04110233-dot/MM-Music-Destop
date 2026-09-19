@@ -31,6 +31,7 @@ const ipcPlaylist = require('./ipc/playlist');
 const ipcDownloadTemplates = require('./ipc/downloadTemplates');
 const ipcCloudSync = require('./ipc/cloudSync');
 const ipcSubscriptions = require('./ipc/subscriptions');
+const ipcMcp = require('./ipc/mcp');
 const subscriptions = require('./subscriptions');
 const clipboardWatch = require('./clipboardWatch');
 const { createLibraryWatcher } = require('./libraryWatcher');
@@ -689,6 +690,9 @@ function registerAllIpcHandlers() {
   ipcDownloadTemplates.register();
   ipcCloudSync.register();
   ipcSubscriptions.register();
+  ipcMcp.register();
+  // MCP 依赖各 ipc 模块已把 handler 挂进注册表，必须在全部 register 之后自启
+  ipcMcp.startIfEnabled().catch(e => logger.warn('[mcp] 自启失败:', e));
 
   // ── 播放队列持久化 IPC ─────────────────────────────
   ipcHandle('save-play-queue', (_, data) => {

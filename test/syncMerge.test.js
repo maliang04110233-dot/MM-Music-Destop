@@ -1,0 +1,115 @@
+/**
+ * 单元测试：utils/syncMerge.js — WebDAV 快照合并核心
+ *
+ * 跑：npm test（或 node --test test/syncMerge.test.js）
+ *
+ * 合并语义（对齐 lx/any-listen 的 snapshot + mergeFromSnapshot 思路）：
+ *   - 歌单：按 id 并集；同 id 以 updatedAt 较新者为基底，
+ *     另一方独有的歌曲按 songKey(id:source) 并进来（无墓碑，删除不跨设备传播）
+ *   - 下载模板：按 id 并集；同 id updatedAt 新者胜
+ *   - 历史记录：按 id+source 去重，finishedAt 新者胜，输出按 finishedAt 倒序
+ */
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+const {
+  mergePlaylists, mergeTemplates, mergeHistory, mergeSnapshotData,
+} = require('../src/utils/syncMerge');
+
+const song = (id, source, title) => ({ id, source, title });
+
+test('mergePlaylists: 双方独有歌单都保留', () => {
+  const local = [{ id: 'a', name: '本地', songs: [], updatedAt: 10 }];
+  const remote = [{ id: 'b', name: '远端', songs: [], updatedAt: 20 }];
+  const r = mergePlaylists(local, remote);
+  assert.deepStrictEqual(r.map(p => p.id).sort(), ['a', 'b']);
+});
+
+test('mergePlaylists: 同 id 取新者为基底 + 旧方独有歌曲并入', () => {
+  const local = [{
+    id: 'a', name: '本地新名', updatedAt: 100,
+    songs: [song('1', 'qq', 'X'), song('2', 'qq', 'Y')],
+  }];
+  const remote = [{
+    id: 'a', name: '远端旧名', updatedAt: 50,
+    songs: [song('1', 'qq', 'X旧'), song('3', 'netease', 'Z')],
+  }];
+  const r = mergePlaylists(local, remote);
+  assert.strictEqual(r.length, 1);
+  // 元数据以较新的本地为基底
+  assert.strictEqual(r[0].name, '本地新名');
+  assert.strictEqual(r[0].updatedAt, 100);
+  // 歌曲：本地两首保持原顺序与内容，远端独有的 Z 并进来；重叠的 1:qq 不重复不被旧值覆盖
+  assert.deepStrictEqual(r[0].songs.map(s => `${s.id}:${s.source}:${s.title}`), [
+    '1:qq:X', '2:qq:Y', '3:netease:Z',
+  ]);
+});
+
+test('mergePlaylists: 同 id 同歌不同源不算重复', () => {
+  const local = [{ id: 'a', updatedAt: 2, songs: [song('1', 'netease', 'N')] }];
+  const remote = [{ id: 'a', updatedAt: 1, songs: [song('1', 'qq', 'Q')] }];
+  const r = mergePlaylists(local, remote);
+  assert.strictEqual(r[0].songs.length, 2);
+});
+
+test('mergePlaylists: updatedAt 相同以本地为准；脏输入按空处理', () => {
+  const local = [{ id: 'a', name: 'L', updatedAt: 7, songs: [] }];
+  const remote = [{ id: 'a', name: 'R', updatedAt: 7, songs: [] }];
+  assert.strictEqual(mergePlaylists(local, remote)[0].name, 'L');
+  assert.deepStrictEqual(mergePlaylists(null, undefined), []);
+});
+
+test('mergeTemplates: 按 id 并集，同 id updatedAt 新者胜', () => {
+  const local = [
+    { id: 't1', path: 'D:/new', updatedAt: 10 },
+    { id: 't2', path: 'D:/onlyLocal', updatedAt: 5 },
+  ];
+  const remote = [{ id: 't1', path: 'D:/old', updatedAt: 3 }];
+  const r = mergeTemplates(local, remote);
+  assert.strictEqual(r.find(t => t.id === 't1').path, 'D:/new');
+  assert.ok(r.some(t => t.id === 't2'));
+});
+
+test('mergeHistory: 按 id+source 去重取 finishedAt 新者，倒序输出', () => {
+  const local = [
+    { id: '1', source: 'qq', title: '新', status: 'done', finishedAt: 100 },
+    { id: '2', source: 'qq', title: 'B', status: 'done', finishedAt: 50 },
+  ];
+  const remote = [
+    { id: '1', source: 'qq', title: '旧', status: 'error', finishedAt: 30 },
+    { id: '3', source: 'netease', title: 'C', status: 'done', finishedAt: 80 },
+  ];
+  const r = mergeHistory(local, remote);
+  assert.deepStrictEqual(r.map(e => `${e.id}:${e.source}:${e.title}`), [
+    '1:qq:新', '3:netease:C', '2:qq:B',
+  ]);
+});
+
+test('mergeHistory: 同 id 不同源是两条记录', () => {
+  const r = mergeHistory(
+    [{ id: '1', source: 'qq', finishedAt: 1 }],
+    [{ id: '1', source: 'netease', finishedAt: 2 }],
+  );
+  assert.strictEqual(r.length, 2);
+});
+
+test('mergeSnapshotData: 三类数据各走各的合并规则', () => {
+  const local = {
+    userPlaylists: [{ id: 'a', updatedAt: 1, songs: [] }],
+    downloadTemplates: [{ id: 't1', updatedAt: 1 }],
+    downloadHistory: [{ id: '1', source: 'qq', finishedAt: 1 }],
+  };
+  const remote = {
+    userPlaylists: [{ id: 'b', updatedAt: 1, songs: [] }],
+    downloadTemplates: [{ id: 't2', updatedAt: 1 }],
+    downloadHistory: [{ id: '2', source: 'qq', finishedAt: 2 }],
+  };
+  const m = mergeSnapshotData(local, remote);
+  assert.deepStrictEqual(m.userPlaylists.map(p => p.id).sort(), ['a', 'b']);
+  assert.deepStrictEqual(m.downloadTemplates.map(t => t.id).sort(), ['t1', 't2']);
+  assert.strictEqual(m.downloadHistory.length, 2);
+  // 缺键按空处理
+  const m2 = mergeSnapshotData({}, undefined);
+  assert.deepStrictEqual(m2.userPlaylists, []);
+});

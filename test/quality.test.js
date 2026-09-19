@@ -81,6 +81,11 @@ test('新增的分平台音质键已进入白名单', () => {
   assert.ok(IMPORTABLE_PREF_KEYS.has('qualityBySource'), 'qualityBySource 未加入 IMPORTABLE_PREF_KEYS');
 });
 
+test('响度归一偏好键 convertLoudnorm 已进入双白名单（P0-B）', () => {
+  assert.ok(ALLOWED_PREF_KEYS.has('convertLoudnorm'), 'convertLoudnorm 未加入 ALLOWED_PREF_KEYS');
+  assert.ok(IMPORTABLE_PREF_KEYS.has('convertLoudnorm'), 'convertLoudnorm 未加入 IMPORTABLE_PREF_KEYS');
+});
+
 test('云同步可导入键 ⊆ prefs 白名单 ∪ 主进程内部键（防静默拒绝）', () => {
   const missing = [];
   for (const key of IMPORTABLE_PREF_KEYS) {
