@@ -113,7 +113,7 @@ const COMMANDS = [
     if (s && s.artist) _call('searchArtistSongs', s.artist);
     else showToast('暂无正在播放歌曲的歌手信息', 'warn');
   } },
-  { id: 'misc-lsort', icon: '↕', group: '其他', label: '切换本地曲库排序（标题/歌手/时长/大小）', keywords: ['local sort', '本地排序'], run: () => _call('cycleLocalSort') },
+  { id: 'misc-lsort', icon: '↕', group: '其他', label: '切换本地曲库排序（标题/歌手/时长/大小/播放）', keywords: ['local sort', '本地排序', 'play count'], run: () => _call('cycleLocalSort') },
   { id: 'misc-focus', icon: '🎯', group: '其他', label: '聚焦搜索框', keywords: ['focus', '输入'], run: () => { _goto('search'); const el = document.getElementById('searchInput'); if (el) setTimeout(() => el.focus(), 80); } },
   { id: 'misc-cache', icon: '🗑', group: '其他', label: '清理播放缓存', keywords: ['cache', '缓存'], run: () => _call('clearPlayCache') },
 ];

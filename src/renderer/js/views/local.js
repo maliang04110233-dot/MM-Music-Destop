@@ -21,6 +21,7 @@ import {
   probeReportLine, showProbeReportModal,
 } from '../batchProbe.js';
 import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.js';
+import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
@@ -135,7 +136,7 @@ async function _doScanLocalDir() {
       const retry = await api.scanLocalLibrary(localDirPath);
       if (retry.error) { showToast('扫描失败: ' + retry.error, 'error'); return; }
       setState('localSongs', retry.songs || []);
-      setState('localFiltered', sortLocalSongs([...(retry.songs || [])], _localSortMode));
+      setState('localFiltered', _sortL([...(retry.songs || [])]));
       document.getElementById('localInfo').textContent = `共 ${(retry.songs || []).length} 首 · ${localDirPath}`;
       if (_localGridView) renderLocalGrid();
       else renderLocalSongs();
@@ -144,7 +145,7 @@ async function _doScanLocalDir() {
     }
     const localSongs = result.songs || [];
     setState('localSongs', localSongs);
-    setState('localFiltered', sortLocalSongs([...localSongs], _localSortMode));
+    setState('localFiltered', _sortL([...localSongs]));
     document.getElementById('localInfo').textContent = `共 ${localSongs.length} 首 · ${localDirPath}`;
     if (_localGridView) renderLocalGrid();
     else renderLocalSongs();
@@ -157,17 +158,23 @@ async function _doScanLocalDir() {
 // ── 过滤 ──────────────────────────────────────────────
 let _localSortMode = 'default'; // 本地曲库排序（会话级，扫描/过滤后都保持生效）
 
+/** 统一排序入口：plays-desc 需要注入 stats 的播放计数表 */
+function _sortL(songs) {
+  return sortLocalSongs(songs, _localSortMode,
+    _localSortMode === 'plays-desc' ? (getPlayStats().playCount || null) : null);
+}
+
 function filterLocalSongs() {
   const kw = document.getElementById('localFilter').value.trim().toLowerCase();
   const localSongs = getState('localSongs');
   if (!kw) {
-    setState('localFiltered', sortLocalSongs([...localSongs], _localSortMode));
+    setState('localFiltered', _sortL([...localSongs]));
   } else {
-    setState('localFiltered', sortLocalSongs(localSongs.filter(s =>
+    setState('localFiltered', _sortL(localSongs.filter(s =>
       (s.title || '').toLowerCase().includes(kw) ||
       (s.artist || '').toLowerCase().includes(kw) ||
       (s.album || '').toLowerCase().includes(kw)
-    ), _localSortMode));
+    )));
   }
   if (_localGridView) renderLocalGrid();
   else renderLocalSongs();

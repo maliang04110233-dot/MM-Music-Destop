@@ -1,5 +1,5 @@
 /**
- * localSort 单元测试：五档循环 + 各模式排序行为（缺字段垫底、中文 locale 序、稳定）
+ * localSort 单元测试：六档循环 + 各模式排序行为（缺字段垫底、中文 locale 序、稳定）
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -8,14 +8,34 @@ async function fresh() {
   return import(`../src/renderer/js/localSort.js?ck=${Math.random()}`);
 }
 
-test('nextLocalSortMode：五档循环，未知模式回默认', async () => {
+test('nextLocalSortMode：六档循环，未知模式回默认', async () => {
   const { nextLocalSortMode, localSortLabel, LOCAL_SORT_MODES } = await fresh();
   let m = 'default';
   const seq = [];
   for (let i = 0; i < 6; i++) { m = nextLocalSortMode(m); seq.push(m); }
-  assert.deepStrictEqual(seq, ['title', 'artist', 'duration-desc', 'size-desc', 'default', 'title']);
+  assert.deepStrictEqual(seq, ['title', 'artist', 'duration-desc', 'size-desc', 'plays-desc', 'default']);
   assert.strictEqual(nextLocalSortMode('nope'), 'default');
   for (const mode of LOCAL_SORT_MODES) assert.ok(localSortLabel(mode).includes('↕'), mode);
+});
+
+test('sortLocalSongs：plays-desc 按注入计数表降序，未播/缺表垫底保序', async () => {
+  const { sortLocalSongs, playKeyOf } = await fresh();
+  const songs = [
+    { filePath: 'a', title: '甲', artist: 'X' },
+    { filePath: 'b', title: '乙', artist: 'Y' },
+    { filePath: 'c', title: '丙' },
+    { filePath: 'd', title: '丁', artist: 'Z' },
+  ];
+  const map = {
+    [playKeyOf({ title: '乙', artist: 'Y' })]: 7,
+    [playKeyOf({ title: '甲', artist: 'X' })]: 3,
+    [playKeyOf({ title: '丙', artist: '' })]: 0, // 0 视同未播垫底
+  };
+  assert.deepStrictEqual(sortLocalSongs(songs, 'plays-desc', map).map(s => s.filePath), ['b', 'a', 'c', 'd']);
+  // 无计数表 = 全垫底原序
+  assert.deepStrictEqual(sortLocalSongs(songs, 'plays-desc').map(s => s.filePath), ['a', 'b', 'c', 'd']);
+  // null 歌不动（playKeyOf 宽容空值）
+  assert.strictEqual(playKeyOf(null), '|||');
 });
 
 test('sortLocalSongs：标题/歌手按中文 locale 升序，缺字段垫底且保序', async () => {
