@@ -102,15 +102,20 @@ export function favHeartClick(btn) {
   if (key) toggleFavoriteByKey(key);
 }
 
-/** 按收藏键切换状态并就地刷新全部红心按钮 */
-export async function toggleFavoriteByKey(key) {
+/**
+ * 按收藏键切换状态并就地刷新全部红心按钮。
+ * @param {boolean} [silent] 批量路径用（增量114）：不弹单曲 toast，成败看返回值，
+ *   由调用方聚合播报；缺省时行为与旧版逐字一致。
+ */
+export async function toggleFavoriteByKey(key, silent) {
+  const _toast = silent ? () => {} : showToast;
   const song = _songRegistry.get(key);
-  if (!song) { showToast('收藏失败：歌曲信息缺失', 'warn'); return; }
+  if (!song) { _toast('收藏失败：歌曲信息缺失', 'warn'); return false; }
   try {
     const r = await api.toggleFavorite(String(song.source || ''), String(song.id), song);
     if (!r || !r.success) {
-      showToast((r && r.error) || '收藏失败', 'error');
-      return;
+      _toast((r && r.error) || '收藏失败', 'error');
+      return false;
     }
     // 写回主进程返回的收藏歌单，favoriteKeys 计算属性随之失效重建
     const pls = (getState('userPlaylists') || []).slice();
@@ -123,11 +128,13 @@ export async function toggleFavoriteByKey(key) {
       window.onLocalFavToggle();
     }
     const name = song.title || song.artist || '';
-    showToast((r.favorited ? '已收藏' : '已取消收藏') + (name ? '：' + name : ''),
+    _toast((r.favorited ? '已收藏' : '已取消收藏') + (name ? '：' + name : ''),
       r.favorited ? 'success' : 'info', 1800);
+    return true;
   } catch (e) {
     logger.warn('收藏失败:', e);
-    showToast('收藏失败: ' + (e.message || e), 'error');
+    _toast('收藏失败: ' + (e.message || e), 'error');
+    return false;
   }
 }
 

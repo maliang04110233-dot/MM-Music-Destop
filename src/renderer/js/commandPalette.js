@@ -90,6 +90,7 @@ const COMMANDS = [
   { id: 'pl-bulkrm', icon: '☑', group: '播放', label: '歌单详情多选模式：勾选后批量移出歌单', keywords: ['bulk remove', '多选', '批量', '移除', '歌单'], run: () => _call('togglePlBulkMode') },
   { id: 'pl-seldl', icon: '⬇', group: '播放', label: '歌单详情多选：批量下载勾选的歌', keywords: ['download selected', '批量', '下载', '勾选', '歌单'], run: () => _call('plSelDownload') },
   { id: 'pl-selplay', icon: '▶', group: '播放', label: '歌单详情多选：连播勾选的歌', keywords: ['play selected', '连播', '播放', '勾选', '歌单'], run: () => _call('plSelPlay') },
+  { id: 'sr-batchfav', icon: '♥', group: '搜索', label: '搜索结果多选：批量收藏勾选的歌', keywords: ['batch favorite', '收藏', '红心', '批量', '搜索'], run: () => _call('batchFavorite') },
   { id: 'pl-dlfilt', icon: '⬇', group: '下载', label: '歌单详情切换下载状态过滤（全部/未下载/已下载）', keywords: ['playlist downloaded filter', '未下载', '已下载', '过滤', '歌单'], run: () => _call('cyclePlDlFilter') },
   { id: 'loc-fmt', icon: '🎞', group: '下载', label: '本地曲库格式过滤循环（全部 / 曲库实际存在的格式）', keywords: ['local', 'format', '格式', '本地', 'flac', 'mp3', '过滤'], run: () => { _goto('local'); _call('cycleLocalFmt'); } },
   { id: 'loc-copylist', icon: '📋', group: '下载', label: '复制本地曲库当前视图的曲名清单（一行一首）', keywords: ['copy', 'local', '曲单', '清单', '本地', '复制'], run: () => { _goto('local'); _call('copyLocalListText'); } },

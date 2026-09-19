@@ -3,7 +3,9 @@
  */
 
 import { logger } from '../logger.js';
-import { heartBtnHtml } from '../favorites.js';
+import { heartBtnHtml, registerFavSong, toggleFavoriteByKey } from '../favorites.js';
+import { planBatchFav, favSkipSuffix } from '../favBatch.js';
+import { favKey } from '../state.js';
 import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
@@ -1122,6 +1124,27 @@ function batchAddToPlaylist() {
   window.quickAddToPlaylist(picks);
 }
 
+/**
+ * 批量：♥ 收藏勾选的歌（增量114）。红心是 toggle 语义，先经 planBatchFav
+ * 剔除已收藏的再逐首走单曲切换链（silent 聚合播报，零新通道）。
+ */
+async function batchFavorite() {
+  const selected = getState('selectedSongs') || new Set();
+  const songs = getState('songs') || [];
+  const picks = Array.from(selected).sort((a, b) => a - b).map(i => songs[i]).filter(Boolean);
+  if (!picks.length) { showToast('请先勾选要收藏的歌曲', 'warn'); return; }
+  const { toFav, already } = planBatchFav(picks, getState('favoriteKeys') || new Set(), s => favKey(s.source, s.id));
+  if (!toFav.length) { showToast(`♥ ${already} 首都已在收藏夹`, 'info', 2200); return; }
+  let ok = 0, failed = 0;
+  for (const s of toFav) {
+    registerFavSong(s);
+    if (await toggleFavoriteByKey(favKey(s.source, s.id), true)) ok++;
+    else failed++;
+  }
+  const fail = failed ? `，${failed} 首失败` : '';
+  showToast(`♥ 已收藏 ${ok} 首${favSkipSuffix(already)}${fail}`, ok ? 'success' : 'error');
+}
+
 // ── 单曲下载 ─────────────────────────────────────────
 async function addDownload(idx, qualityOverride) {
   try {
@@ -1301,6 +1324,7 @@ window.batchDownload = batchDownload;
 window.batchPlay = batchPlay;
 window.batchAddToQueue = batchAddToQueue;
 window.batchAddToPlaylist = batchAddToPlaylist;
+window.batchFavorite = batchFavorite;
 window.openAlbumDetail = openAlbumDetail;
 window.downloadAlbum = downloadAlbum;
 window.playSong = playSong;
