@@ -33,9 +33,12 @@ const ipcCloudSync = require('./ipc/cloudSync');
 const ipcSubscriptions = require('./ipc/subscriptions');
 const subscriptions = require('./subscriptions');
 const clipboardWatch = require('./clipboardWatch');
+const { createLibraryWatcher } = require('./libraryWatcher');
 
 // 修复 B15：使用 context.js 提供的统一 safeSend，避免代码漂移
 const safeSend = ctxSafeSend;
+
+let libraryWatcher = null;
 
 // ─── 全局未捕获拒绝归口 ─────────────────────────────────
 // 「为什么需要它、为什么按栈帧分流」见 utils/rejectionGuard.js 顶部说明。
@@ -636,6 +639,7 @@ app.on('window-all-closed', () => {
   try { if (downloadQueueEngine) downloadQueueEngine.dispose(); } catch (e) {
     logger.warn('[index] 队列引擎清理失败:', e.message);
   }
+  try { if (libraryWatcher) libraryWatcher.stop(); } catch (_e) { /* 停止监听允许失败 */ }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
   subscriptions.stopScheduler();
   clipboardWatch.stop();
@@ -662,7 +666,16 @@ function registerAllIpcHandlers() {
     requestCancelDownload: (taskId) => downloadQueueEngine.requestCancel(taskId),
     setQueuePaused:   (v) => downloadQueueEngine.setPaused(v),
     queueIsPaused:    () => downloadQueueEngine.isPaused(),
+    setLibraryWatchDir: (dir) => { if (libraryWatcher) libraryWatcher.setDir(dir); },
   });
+
+  // 本地曲库目录监听：变动防抖后推送 local-library-changed，渲染层重走增量扫描
+  libraryWatcher = createLibraryWatcher({
+    emit: () => safeSend('local-library-changed', {}),
+    logger,
+  });
+  try { libraryWatcher.setDir(prefs.get('localDirPath')); } catch (_e) { /* 无历史目录则不监听 */ }
+
   ipcWindow.register();
   ipcSearch.register();
   ipcDownload.register();

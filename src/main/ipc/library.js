@@ -71,6 +71,12 @@ function register() {
       if (!isInAllowedDir(dirPath)) return { error: '路径不可访问', songs: [] };
       if (!await fsa.exists(dirPath)) return { error: '目录不存在', songs: [] };
 
+      // 扫描成功即（重新）武装目录监听：用户换目录后 watcher 自动跟随
+      try {
+        const { setLibraryWatchDir } = require('../context').getCtx();
+        if (typeof setLibraryWatchDir === 'function') setLibraryWatchDir(dirPath);
+      } catch (_e) { /* watcher 未就绪不影响扫描 */ }
+
       // 尝试增量扫描
       const result = await incrementalScan(
         dirPath,

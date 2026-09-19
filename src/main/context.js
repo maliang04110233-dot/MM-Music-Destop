@@ -36,6 +36,7 @@ function init(opts) {
     requestCancelDownload: opts.requestCancelDownload,
     setQueuePaused: opts.setQueuePaused,
     queueIsPaused: opts.queueIsPaused,
+    setLibraryWatchDir: opts.setLibraryWatchDir,
   };
   return _ctx;
 }

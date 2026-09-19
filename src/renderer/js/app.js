@@ -88,6 +88,7 @@ const mockApi = {
   windowClose: () => window.close(),
   onQueueUpdated: () => {},
   onQueuePausedChanged: () => {},
+  onLocalLibraryChanged: () => {},
   setQueuePaused: async () => ({ ok: true, paused: false }),
   onDownloadProgress: () => {},
   onDownloadError: () => {},
@@ -281,6 +282,15 @@ async function init() {
       api.onQueuePausedChanged((payload) => {
         if (typeof window.applyQueuePausedUi === 'function') {
           window.applyQueuePausedUi(!!(payload && payload.paused));
+        }
+      });
+    }
+
+    // 本地曲库目录变动（主进程 fs.watch 防抖推送）→ 静默增量重扫
+    if (typeof api.onLocalLibraryChanged === 'function') {
+      api.onLocalLibraryChanged(() => {
+        if (typeof window.refreshLocalLibrary === 'function') {
+          window.refreshLocalLibrary();
         }
       });
     }

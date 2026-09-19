@@ -145,6 +145,31 @@ function filterLocalSongs() {
   else renderLocalSongs();
 }
 
+// ── 曲库目录监听自动刷新（主进程 fs.watch → local-library-changed 推送）──
+let _autoRefreshing = false;
+async function refreshLocalLibrary() {
+  const dir = getState('localDirPath');
+  if (!dir || _autoRefreshing) return; // 未选过目录不打扰
+  const overlay = document.getElementById('editOverlay');
+  if ((overlay && !overlay.classList.contains('hidden')) || _localSelectionMode) return; // 编辑/选择中不打断
+  _autoRefreshing = true;
+  try {
+    const result = await api.scanLocalLibrary(dir);
+    if (result && !result.error) {
+      const prevCount = (getState('localSongs') || []).length;
+      const songs = result.songs || [];
+      setState('localSongs', songs);
+      document.getElementById('localInfo').textContent = `共 ${songs.length} 首 · ${dir}`;
+      filterLocalSongs(); // 重新套用当前筛选并重渲染（列表/网格都兼顾）
+      if (songs.length !== prevCount) showToast('📂 本地曲库已自动刷新', 'info', 1800);
+    }
+  } catch (e) {
+    logger.warn('[refreshLocalLibrary] 自动刷新失败:', e && e.message);
+  } finally {
+    _autoRefreshing = false;
+  }
+}
+
 // ── 选择模式 ─────────────────────────────────────────
 function enterLocalSelectionMode() {
   _localSelectionMode = true;
@@ -1017,6 +1042,7 @@ setLibraryChangeHandler(renderLocalSongs);
 export {
   scanLocalDir,
   filterLocalSongs,
+  refreshLocalLibrary,
   renderLocalSongs,
   renderLocalGrid,
   toggleLocalView,
@@ -1055,6 +1081,7 @@ export {
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.scanLocalDir = scanLocalDir;
 window.filterLocalSongs = filterLocalSongs;
+window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;
 window.toggleLocalView = toggleLocalView;
