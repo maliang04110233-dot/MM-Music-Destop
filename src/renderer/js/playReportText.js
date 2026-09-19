@@ -35,6 +35,7 @@ export function topArtistsFromPlayCount(playCount, limit) {
  * @param {{totalPlayTimeText?:string,totalSongs?:number,artistTotal?:number,
  *          mostPlayed?:Array<{title:string,artist:string,count:number}>,
  *          topArtists?:Array<{artist:string,count:number}>,
+ *          daily?:Array<{label:string,secs:number}>,
  *          lastPlayed?:{title:string,artist:string}}} d
  */
 export function formatReportText(d) {
@@ -54,6 +55,12 @@ export function formatReportText(d) {
   if (ta.length) {
     lines.push('', `🎤 最爱歌手 TOP ${ta.length}`);
     ta.forEach((x, i) => lines.push(`${i + 1}. ${x.artist} (${+x.count || 0} 次)`));
+  }
+  // 每日听歌（增量113）：只列有账的天，零天省略；全无则整段省略
+  const daily = Array.isArray(s.daily) ? s.daily.filter(b => b && +b.secs > 0) : [];
+  if (daily.length) {
+    lines.push('', `📅 每日听歌 · 近 ${s.daily.length} 天`);
+    daily.forEach(b => lines.push(`${b.label}：${Math.max(1, Math.round(+b.secs / 60))}分钟`));
   }
   if (s.lastPlayed && s.lastPlayed.title) {
     lines.push('', `📀 最后播放：${toTrackLine(s.lastPlayed)}`);

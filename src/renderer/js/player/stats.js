@@ -7,6 +7,8 @@
 
 import { topArtistsFromPlayCount, formatReportText } from '../playReportText.js';
 import { copyText } from '../songShare.js';
+import { addDailySeconds, bucketDailySeconds, PLAY_TREND_DAYS } from '../playDailyTrend.js';
+import { barPct } from '../historyTrend.js';
 
 // ── 播放 ─────────────────────────────────────────────
 // 最近播放记录（内存缓存，最多 50 首）
@@ -77,6 +79,7 @@ const _playStats = {
   totalSongs: 0,         // 播放过多少首不同歌曲
   playCount: {},         // { 'title|||artist': count }
   lastPlayed: null,      // 最后播放的歌曲
+  daily: {},             // { 'YYYY-MM-DD': 秒 }（增量113，停表时归集）
   sessionStart: Date.now(),
 };
 
@@ -91,6 +94,7 @@ export function updatePlayStatsOnStop() {
   if (_currentPlayStartTime) {
     const elapsed = Math.floor((Date.now() - _currentPlayStartTime) / 1000);
     _playStats.totalPlayTime += elapsed;
+    _playStats.daily = addDailySeconds(_playStats.daily, Date.now(), elapsed);
     _currentPlayStartTime = null;
     persistPlayStats();
   }
@@ -146,6 +150,10 @@ export async function loadPlayStats() {
       const data = JSON.parse(raw);
       if (data && typeof data === 'object') {
         Object.assign(_playStats, data);
+        // 老版 prefs 无 daily 键（或被写脏）→ 归零重建，趋势图从本版本起攒
+        if (!_playStats.daily || typeof _playStats.daily !== 'object' || Array.isArray(_playStats.daily)) {
+          _playStats.daily = {};
+        }
       }
     }
   } catch (_e) { /* 静默 */ }
@@ -156,6 +164,7 @@ export function resetPlayStats() {
   _playStats.totalSongs = 0;
   _playStats.playCount = {};
   _playStats.lastPlayed = null;
+  _playStats.daily = {};
   _currentPlayStartTime = null;
   persistPlayStats();
   showToast('播放统计已重置', 'info');
@@ -172,6 +181,12 @@ export function generatePlayReport() {
   // 最爱歌手（增量110 起与复制文本共用 playReportText 聚合）
   const artists = topArtistsFromPlayCount(stats.playCount);
   const topArtists = artists.slice(0, 3).map(a => [a.artist, a.count]);
+
+  // 每日听歌趋势（增量113）：桶与复制文本同源，柱高共用下载趋势的 barPct
+  const dailyBuckets = bucketDailySeconds(stats.daily, Date.now(), PLAY_TREND_DAYS);
+  const dailyTotal = dailyBuckets.reduce((a, b) => a + b.secs, 0);
+  const maxDaily = dailyBuckets.reduce((a, b) => Math.max(a, b.secs), 0);
+  const activeDays = dailyBuckets.filter(b => b.secs > 0).length;
 
   const html = `
     <div class="report-grid">
@@ -222,6 +237,20 @@ export function generatePlayReport() {
     </div>
     ` : ''}
 
+    ${dailyTotal > 0 ? `
+    <div class="report-section">
+      <div class="report-section-title">📅 每日听歌 · 近 ${dailyBuckets.length} 天</div>
+      <div class="report-last" style="font-size:12px;opacity:0.75;">${formatPlayTime(dailyTotal)} · 活跃 ${activeDays} 天</div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:8px;">
+        ${dailyBuckets.map(b => `
+          <div title="${b.label} · ${b.secs ? Math.max(1, Math.round(b.secs / 60)) : 0} 分钟" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px;">
+            <div style="width:70%;height:${barPct(b.secs, maxDaily)}%;min-height:2px;border-radius:3px 3px 0 0;background:var(--accent, #4f8cff);opacity:${b.secs ? 0.9 : 0.15};"></div>
+            <span style="font-size:10px;opacity:0.7;">${b.key.slice(8)}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+    ` : ''}
+
     ${stats.lastPlayed ? `
     <div class="report-section">
       <div class="report-section-title">📀 最后播放</div>
@@ -245,6 +274,7 @@ export async function copyPlayReportText() {
     artistTotal: artists.length,
     mostPlayed: getMostPlayed(5),
     topArtists: artists.slice(0, 3),
+    daily: bucketDailySeconds(stats.daily, Date.now(), PLAY_TREND_DAYS),
     lastPlayed: stats.lastPlayed,
   });
   const ok = await copyText(text);
