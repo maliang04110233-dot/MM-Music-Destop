@@ -86,7 +86,9 @@ export class VirtualScroller {
     this._placeholderTop.style.height = '0px';
     this._placeholderBottom.style.height = (this._data.length * this.itemHeight) + 'px';
     this._scrollTop = this._scrollContainer.scrollTop;
-    this._render();
+    // 必须强制重绘：排序/过滤后可视区间不变时，非 force 的 _render 会早退，
+    // 留下一屏旧行（本地库排序/过滤失效错位的根因）
+    this._render(true);
   }
 
   /**

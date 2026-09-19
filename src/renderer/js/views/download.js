@@ -170,7 +170,7 @@ function renderQueue(queue) {
     <div class="queue-item queue-status-${s.status}${selected && _dlSelectionMode ? ' selected' : ''}" data-taskid="${escAttr(s.taskId)}">
       ${_dlSelectionMode ? `
       <div class="queue-item-cb" onclick="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
-        <input type="checkbox" id="dlcb_${escAttr(s.taskId)}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleDlSelect('${escQ(s.taskId)}')">
+        <input type="checkbox" id="dlcb_${escAttr(s.taskId)}" ${selected ? 'checked' : ''} >
       </div>` : ''}
       ${s.cover
         ? `<img class="queue-cover" src="${escAttr(s.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
@@ -488,7 +488,8 @@ async function exportCurrentPlaylist() {
   }
 
   // 只导出已完成的歌曲
-  const completedSongs = queue.filter(s => s.status === 'done' && s.filePath);
+  // 主进程终态写的是 savePath（filePath 仅个别旧快照有），只按 filePath 筛永远导出为空
+  const completedSongs = queue.filter(s => s.status === 'done' && (s.filePath || s.savePath));
   if (!completedSongs.length) {
     showToast('没有已完成的歌曲可导出', 'warn');
     return;
@@ -499,7 +500,7 @@ async function exportCurrentPlaylist() {
       songs: completedSongs.map(s => ({
         title: s.title,
         artist: s.artist,
-        filePath: s.filePath,
+        filePath: s.filePath || s.savePath,
         duration: s.duration || 0,
       })),
       format: 'm3u',

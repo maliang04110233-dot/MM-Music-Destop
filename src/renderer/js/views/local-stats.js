@@ -222,7 +222,7 @@ function renderDuplicateModal() {
         <div class="dup-song ${isSelected ? 'dup-selected' : ''} ${isBest ? 'dup-best' : ''}">
           <label class="dup-checkbox">
             <input type="checkbox" ${isSelected ? 'checked' : ''}
-              onchange="toggleDupSelect('${esc(s.filePath.replace(/'/g, "\\'"))}')">
+              onchange="toggleDupSelect('${escQ(s.filePath)}')">
           </label>
           <span class="dup-title">${esc(s.title || '未知')}</span>
           <span class="dup-artist">${esc(s.artist || '未知')}</span>

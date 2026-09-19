@@ -350,6 +350,18 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
 }
 
 // ── 切歌 ─────────────────────────────────────────────
+/**
+ * 播放队列第 idx 行（队列面板点击）。队列行对象不带 url（url 只在取流后
+ * 存在），必须走 playSongByIdx 的取流链路；此前 app.js 里
+ * `if (queue[idx].url)` 恒假，点击队列行只挪高亮不发声。
+ */
+export async function playQueueIdx(idx) {
+  const playQueue = getState('playQueue');
+  if (!playQueue || idx < 0 || idx >= playQueue.length) return;
+  setState('playIdx', idx);
+  await playSongByIdx(idx, playQueue[idx]);
+}
+
 export async function nextSong() {
   const playQueue = getState('playQueue');
   if (!playQueue || !playQueue.length) return;

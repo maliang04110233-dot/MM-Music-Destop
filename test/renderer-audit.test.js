@@ -96,3 +96,58 @@ test('settings.js: filenameTmpl 默认值必须与 naming.js DEFAULT_TEMPLATE �
   assert.strictEqual(m[1], DEFAULT_TEMPLATE,
     '设置页手抄的模板默认值已与主进程命名模块漂移');
 });
+
+// ── 批②：渲染层死功能（2026-09 第二轮审计 H3/H4/H5/H6a/H6b/M13/local转换）──
+
+test('local.js: 批量重命名的 path.* 必须来自 pathLite（渲染层无裸 path 全局，import node:path 会变裸 require 崩溃）', () => {
+  const src = read('js', 'views', 'local.js');
+  assert.match(src, /import \* as path from ['"]\.\.\/pathLite\.js['"]/,
+    'nodeIntegration:false 下裸 path 是 undefined；node:path 经插件会变成裸 require，加载即崩');
+  assert.doesNotMatch(src, /from ['"]node:path['"]/,
+    'vite-plugin-electron-renderer 不 polyfill node 内建模块（bundle 实测 require("node:path")）');
+});
+
+test('download.js: 导出歌单必须接受 savePath（主进程终态写 savePath，filter s.filePath 恒空）', () => {
+  const src = read('js', 'views', 'download.js');
+  assert.match(src, /status === 'done' && \(s\.filePath \|\| s\.savePath\)/,
+    '完成的队列项只有 savePath，按 filePath 筛永远导出为空');
+  assert.match(src, /filePath: s\.filePath \|\| s\.savePath/,
+    '导出条目同样需要回落 savePath');
+});
+
+test('local-stats.js: toggleDupSelect 实参必须走 escQ（esc 不转义反斜杠，Windows 路径在 onclick JS 字符串里被吃）', () => {
+  const src = read('js', 'views', 'local-stats.js');
+  assert.doesNotMatch(src, /toggleDupSelect\('\$\{esc\(/,
+    'esc 输出进的是 JS 字符串字面量上下文，必须用 escQ');
+  assert.match(src, /toggleDupSelect\('\$\{escQ\(/);
+});
+
+test('player.js: _playQueueIdx 链路必须经 playSongByIdx 取流播放（队列行永不携带 url，旧判断恒假）', () => {
+  const player = read('js', 'player.js');
+  assert.match(player, /export async function playQueueIdx\(/,
+    'player.js 需导出 playQueueIdx 供队列行点击复用切歌链路');
+  const app = read('js', 'app.js');
+  assert.match(app, /playQueueIdx/, 'app.js 的 _playQueueIdx 应转调 playQueueIdx');
+  assert.doesNotMatch(app, /queue\[idx\]\.url/, '队列行没有 url 字段，该分支恒假（H6a）');
+});
+
+test('virtualList.js: setData 必须强制重绘（同可视区间换数据——排序/过滤——非 force 渲染会早退成旧行）', () => {
+  const src = read('js', 'virtualList.js');
+  // 断言锚在 setData 函数体内（body 无嵌套花括号，[^}] 恰好圈住函数体）
+  assert.match(src, /setData\(data\) \{[^}]*_render\(true\)/,
+    'setData 后可视范围不变时 _render 无 force 早退，本地库排序/过滤失效错位');
+});
+
+test('download.js: 勾选不得双触发（input onchange 与容器 onclick 各 toggle 一次，净零）', () => {
+  const src = read('js', 'views', 'download.js');
+  assert.doesNotMatch(src, /onchange="event\.stopPropagation\(\);toggleDlSelect\(/,
+    'input 的 click 冒泡到容器 onclick 已 toggle，onchange 再 toggle 一次 = 永远选不中');
+});
+
+test('local.js: 转码选中必须读本视图的 _selectedLocal（selectedSongs 是搜索页的状态，本地页恒空）', () => {
+  const src = read('js', 'views', 'local.js');
+  assert.doesNotMatch(src, /getState\('selectedSongs'\)/,
+    'local.js 不该引用搜索页的 selectedSongs 状态');
+  assert.match(src, /function _selectedSongsToConvert\(\) \{[\s\S]{0,500}_selectedLocal/,
+    '转码选中应来自本视图的 _selectedLocal');
+});

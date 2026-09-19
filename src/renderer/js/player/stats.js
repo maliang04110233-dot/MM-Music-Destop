@@ -17,11 +17,15 @@ export function addToRecentlyPlayed(song) {
     s.title === song.title && s.artist === song.artist && s.source === song.source
   );
   if (idx >= 0) _recentlyPlayed.splice(idx, 1);
-  // 添加到最前面
+  // 添加到最前面（id/filePath 必须保留：最近播放条目可点击重播，
+  // 取流要 id+source、本地歌曲要 filePath —— 剥掉后整块点不动）
   _recentlyPlayed.unshift({
+    id: song.id,
     title: song.title,
     artist: song.artist || '未知艺术家',
+    album: song.album || '',
     source: song.source || '',
+    filePath: song.filePath || '',
     cover: song.cover || '',
     duration: song.duration || 0,
     playedAt: Date.now(),

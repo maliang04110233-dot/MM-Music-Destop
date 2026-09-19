@@ -6,6 +6,11 @@
 
 import { logger } from '../logger.js';
 
+// 批量重命名的 extname/dirname/join 用。渲染层不能 import node:path
+//（插件不 polyfill，进 bundle 是裸 require，contextIsolation 下加载即崩），
+// 用纯 JS 的 pathLite —— 见 pathLite.js 头注。
+import * as path from '../pathLite.js';
+
 import { VirtualScroller } from '../virtualList.js';
 
 // 转码共用弹窗 + 批量 runner（下载页/转换页/本地库三处共用）
@@ -1115,11 +1120,14 @@ async function batchDownloadCovers() {
 // 选中的歌按 Set 里存的路径回查，避免按 localFiltered 索引取——弹窗开着
 // 期间列表被过滤/重排会转错歌。
 function _selectedSongsToConvert() {
-  const localFiltered = getState('localFiltered');
-  const selected = getState('selectedSongs');
-  const sel = new Set(selected);
-  return Array.from(sel)
-    .map(p => (localFiltered || []).find(s => s.filePath === p || s.path === p))
+  // 本视图的选中集是 _selectedLocal（selectedSongs 是搜索页的状态，
+  // 本地页里恒空 → 「转换格式」永远提示未选中）。按路径回查 localSongs
+  //（全集），弹窗开着期间列表被过滤/重排也不会转错歌。
+  const localSongs = getState('localSongs') || [];
+  const localFiltered = getState('localFiltered') || [];
+  const pool = localSongs.length ? localSongs : localFiltered;
+  return Array.from(_selectedLocal)
+    .map(p => pool.find(s => s.filePath === p || s.path === p))
     .filter(Boolean)
     .map(s => ({
       path: s.filePath || s.path,

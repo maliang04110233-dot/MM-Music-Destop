@@ -16,7 +16,7 @@ import './utils.js';
 import './router.js';
 
 // 播放器和快捷键
-import { updateProgress, onAudioEnded, parseLrc, showNoLyrics, loadAndPlay } from './player.js';
+import { updateProgress, onAudioEnded, parseLrc, showNoLyrics, loadAndPlay, playQueueIdx } from './player.js';
 import { initMediaSession } from './player/mediaSession.js';
 import { heartBtnHtml } from './favorites.js';
 import './shortcuts.js';
@@ -1162,15 +1162,9 @@ function renderPlayQueueUI() {
 }
 
 window._playQueueIdx = (idx) => {
-  const queue = getState('playQueue') || [];
-  if (idx < 0 || idx >= queue.length) return;
-  setState('playIdx', idx);
-  const audio = document.getElementById('audioPlayer');
-  if (audio && queue[idx].url) {
-    audio.src = queue[idx].url;
-    audio.play().catch(e => logger.warn('[pq] play failed:', e));
-    setState('currentPlaying', queue[idx]);
-  }
+  // 队列行对象不携带已解析的播放地址，点击即走 playSongByIdx 取流链路
+  //（旧实现直接读行上的 url 字段——该字段恒不存在，点击只挪高亮不发声）
+  playQueueIdx(idx);
 };
 
 window.clearPlayQueue = () => {
