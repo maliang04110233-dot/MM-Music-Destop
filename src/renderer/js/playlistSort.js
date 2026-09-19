@@ -69,3 +69,33 @@ export function sortPlaylistPairs(pairs, mode) {
   });
   return out;
 }
+
+// ── 歌单页卡片排序（增量70）：系统收藏恒置顶，其余按档排 ──
+
+export const PL_CARD_MODES = [
+  { key: '', label: '↕ 默认' },
+  { key: 'name', label: '↕ 名称' },
+  { key: 'count', label: '↕ 曲数' },
+  { key: 'recent', label: '↕ 最近更新' },
+];
+
+export function nextPlCardSortMode(cur) {
+  let idx = PL_CARD_MODES.findIndex((m) => m.key === cur);
+  if (idx < 0) idx = 0;
+  return PL_CARD_MODES[(idx + 1) % PL_CARD_MODES.length].key;
+}
+
+/**
+ * @param {Array} playlists 歌单卡片数据（system 标记者置顶不参与排序）
+ * @param {string} mode ''/name/count/recent
+ */
+export function sortPlaylists(playlists, mode) {
+  if (!Array.isArray(playlists)) return [];
+  const clean = playlists.filter(Boolean);
+  const sys = clean.filter((p) => p.system);
+  const out = clean.filter((p) => !p.system).slice();
+  if (mode === 'name') out.sort((a, b) => _cmpText(a.name, b.name));
+  else if (mode === 'count') out.sort((a, b) => ((b.songs && b.songs.length) || 0) - ((a.songs && a.songs.length) || 0));
+  else if (mode === 'recent') out.sort((a, b) => (+b.updatedAt || 0) - (+a.updatedAt || 0));
+  return sys.concat(out);
+}

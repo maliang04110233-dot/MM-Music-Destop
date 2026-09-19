@@ -14,7 +14,7 @@ import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
-import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES } from '../playlistSort.js';
+import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
 
@@ -23,6 +23,7 @@ let _currentPlaylistId = null;
 let _currentDetailSongs = [];
 let _plSongKw = ''; // 详情弹层会话级过滤词（切歌单/关闭即清）
 let _plSortMode = ''; // 详情弹层会话级视图排序（''=默认序，排序中禁拖把手）
+let _plCardSortMode = ''; // 歌单页卡片排序（会话级，收藏系统单恒置顶）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _playlistPlayRequestId = 0;
 
@@ -53,7 +54,7 @@ function renderPlaylistList(playlists) {
     return;
   }
 
-  container.innerHTML = playlists.map(pl => `
+  container.innerHTML = sortPlaylists(playlists, _plCardSortMode).map(pl => `
     <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escQ(pl.id)}')">
       <div class="playlist-card-cover">
         ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : `<div class="playlist-card-placeholder">${pl.system ? HEART_ON : '📋'}</div>`}
@@ -639,6 +640,17 @@ function cyclePlaylistSort() {
   if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
 }
 
+// ── 歌单页卡片排序循环（收藏系统单恒置顶，不参与排）────
+function cyclePlCardSort() {
+  _plCardSortMode = nextPlCardSortMode(_plCardSortMode);
+  const btn = document.getElementById('playlistCardSortBtn');
+  if (btn) {
+    const m = PL_CARD_MODES.find((x) => x.key === _plCardSortMode);
+    btn.textContent = m ? m.label : '↕ 默认';
+  }
+  renderPlaylistList(getState('userPlaylists') || []);
+}
+
 // ── 歌单内快捷加歌（搜索→逐条添加，弹层不关可连加）────
 let _plAddEl = null;
 let _plAddSongs = [];
@@ -772,6 +784,7 @@ window.openPlaylistEditor = openPlaylistEditor;
 window.useFirstSongCover = useFirstSongCover;
 window.onPlaylistSongFilterInput = onPlaylistSongFilterInput;
 window.cyclePlaylistSort = cyclePlaylistSort;
+window.cyclePlCardSort = cyclePlCardSort;
 window.openPlaylistAddSongs = openPlaylistAddSongs;
 window.closePlaylistAddSongs = closePlaylistAddSongs;
 window.doPlAddSearch = doPlAddSearch;

@@ -82,3 +82,43 @@ test('sortPlaylistPairs 添加时间升序、缺 addedAt 垫底', async () => {
   ], 'added');
   assert.deepEqual(out.map((p) => p.i), [2, 1, 0]);
 });
+
+// ── 增量70：歌单页卡片排序 ─────────────────────────────
+
+test('nextPlCardSortMode 四档循环、坏值回落', async () => {
+  const { nextPlCardSortMode } = await mod();
+  assert.equal(nextPlCardSortMode(''), 'name');
+  assert.equal(nextPlCardSortMode('name'), 'count');
+  assert.equal(nextPlCardSortMode('count'), 'recent');
+  assert.equal(nextPlCardSortMode('recent'), '');
+  assert.equal(nextPlCardSortMode('nope'), 'name');
+});
+
+test('sortPlaylists 默认序仅剔脏 + 收藏置顶不参与', async () => {
+  const { sortPlaylists } = await mod();
+  const sys = { id: 'F', name: '收藏', system: true };
+  const r = sortPlaylists([{ id: 'a' }, null, sys, { id: 'b' }], '');
+  assert.deepEqual(r.map((p) => p.id), ['F', 'a', 'b']);
+  assert.deepEqual(sortPlaylists(null, 'name'), []);
+});
+
+test('sortPlaylists 名称 zh 拼音序', async () => {
+  const { sortPlaylists } = await mod();
+  const r = sortPlaylists([{ name: '红色歌单' }, { name: '白色歌单' }], 'name');
+  assert.deepEqual(r.map((p) => p.name), ['白色歌单', '红色歌单']);
+});
+
+test('sortPlaylists 曲数降序、缺 songs 视为 0', async () => {
+  const { sortPlaylists } = await mod();
+  const mk = (n) => ({ songs: Array.from({ length: n }, () => 1) });
+  const r = sortPlaylists([{ id: 'a', ...mk(2) }, { id: 'b' }, { id: 'c', ...mk(5) }], 'count');
+  assert.deepEqual(r.map((p) => p.id), ['c', 'a', 'b']);
+});
+
+test('sortPlaylists 最近更新降序、缺时间戳垫底', async () => {
+  const { sortPlaylists } = await mod();
+  const r = sortPlaylists([
+    { id: 'a', updatedAt: 100 }, { id: 'b', updatedAt: 300 }, { id: 'c' },
+  ], 'recent');
+  assert.deepEqual(r.map((p) => p.id), ['b', 'a', 'c']);
+});
