@@ -528,6 +528,7 @@ document.addEventListener('contextmenu', (e) => {
   openSongRowMenu(e, s, {
     play: () => playRecommendById(sec, idx),
     download: () => addRecommendDownload(sec, idx),
+    downloadQuality: (q) => addRecommendDownload(sec, idx, q),
   });
 });
 
@@ -692,7 +693,7 @@ async function playRecommendSong(song) {
   }
 }
 
-async function addRecommendDownload(sec, idx) {
+async function addRecommendDownload(sec, idx, qualityOverride) {
   const song = _getSection(sec)[idx];
   if (!song) return;
   const existing = (state.get('queueSnapshot') || []).find(q => q.id === song.id && q.source === song.source && q.status !== 'done');
@@ -701,7 +702,7 @@ async function addRecommendDownload(sec, idx) {
     return;
   }
   try {
-    const quality = resolveQuality(song.source);
+    const quality = qualityOverride || resolveQuality(song.source);
     const saveDir = getState('saveDir');
     const r = await api.addToQueue({ ...song, saveDir, quality });
     if (r && r.duplicated) {

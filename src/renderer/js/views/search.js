@@ -908,7 +908,7 @@ function songListContext(e) {
   const orig = _visibleIdxMap[pos] != null ? _visibleIdxMap[pos] : pos;
   const s = (getState('songs') || [])[orig];
   if (!s) return;
-  openSongRowMenu(e, s, { play: () => playSong(orig), download: () => addDownload(orig) });
+  openSongRowMenu(e, s, { play: () => playSong(orig), download: () => addDownload(orig), downloadQuality: (q) => addDownload(orig, q) });
 }
 document.addEventListener('contextmenu', songListContext);
 
@@ -1018,7 +1018,7 @@ function batchPlay() {
 }
 
 // ── 单曲下载 ─────────────────────────────────────────
-async function addDownload(idx) {
+async function addDownload(idx, qualityOverride) {
   try {
     const songs = getState('songs');
     const s = songs[idx];
@@ -1026,8 +1026,8 @@ async function addDownload(idx) {
     const existing = (state.get('queueSnapshot') || []).find(q =>
       q.id === s.id && q.source === s.source && q.status !== 'done');
     if (existing) { showToast(`「${s.title}」已在队列中`, 'warn', 2500); return; }
-    // 单曲下载：按这首歌自身的平台解析音质
-    const quality = resolveQuality(s.source);
+    // 单曲下载：按这首歌自身的平台解析音质；右键「以此音质下载」可显式覆盖
+    const quality = qualityOverride || resolveQuality(s.source);
     const saveDir = getState('saveDir');
     const r = await api.addToQueue({ ...s, saveDir, quality });
     if (r && r.duplicated) { showToast(`「${s.title}」已在下载队列中`, 'warn', 2500); return; }

@@ -2,7 +2,7 @@
  * 歌曲行右键菜单（搜索结果 / 歌单详情等共享）
  *
  * 菜单框架在 contextMenu.js，本模块负责「歌曲行业务项」的统一组装：
- * 立即播放 / 下一首播放 / 下载 / 加入播放队列 / 收藏 / 添加到歌单。
+ * 立即播放 / 下一首播放 / 下载（含按音质覆盖）/ 加入播放队列 / 收藏 / 添加到歌单。
  * 各视图差异（自己的 playSong / addDownload / 索引语义）通过 opts 回调注入，
  * 视图特有项走 opts.extra。
  */
@@ -10,6 +10,17 @@
 import { showContextMenu } from './contextMenu.js';
 import { isFavorite, toggleFavoriteByKey, registerFavSong } from './favorites.js';
 import { favKey } from './state.js';
+import { qualityOverrideOptions, resolveQuality } from './quality.js';
+
+/**
+ * 「以此音质下载」菜单项（纯组装，便于单测）：
+ * 每个候选档一项，点击回调 onPick(qualityValue)。
+ */
+export function qualityDownloadItems(source, current, onPick) {
+  return qualityOverrideOptions(source, current).map(o => ({
+    icon: '⬇', label: `以此音质下载：${o.label}`, onClick: () => onPick(o.value),
+  }));
+}
 
 /** 「下一首播放」：插到当前曲之后；已在队列则移动而非重复插入 */
 export function playNextHere(song, playNowFallback) {
@@ -47,6 +58,10 @@ export function openSongRowMenu(e, song, opts = {}) {
     { sep: true },
   ];
   if (opts.download) items.push({ icon: '⬇', label: '下载', onClick: () => opts.download() });
+  if (opts.downloadQuality) {
+    const extra = qualityDownloadItems(song.source, resolveQuality(song.source), opts.downloadQuality);
+    if (extra.length) items.push(...extra);
+  }
   if (opts.addToQueue) items.push({ icon: '➕', label: '加入播放队列', onClick: () => opts.addToQueue() });
   items.push(
     { icon: on ? '💔' : '♥', label: on ? '取消收藏' : '收藏',

@@ -137,6 +137,7 @@ function playlistRowContext(e) {
   openSongRowMenu(e, song, {
     play: () => playPlaylistSong(idx),
     download: () => downloadPlaylistSong(idx),
+    downloadQuality: (q) => downloadPlaylistSong(idx, q),
     addToQueue: () => addPlaylistSongToQueue(idx),
     extra: [{
       icon: '✕', label: '从歌单移除', danger: true,
@@ -205,14 +206,14 @@ function addPlaylistSongToQueue(idx) {
 }
 
 // ── 下载：单曲入队 / 整单入队（语义与搜索页 addDownload 一致）──
-async function downloadPlaylistSong(idx) {
+async function downloadPlaylistSong(idx, qualityOverride) {
   const song = _currentDetailSongs[idx];
   if (!song) return;
   const existing = (getState('queueSnapshot') || []).find(q =>
     q.id === song.id && q.source === song.source && q.status !== 'done');
   if (existing) { showToast(`「${song.title}」已在队列中`, 'warn', 2500); return; }
   const saveDir = getState('saveDir');
-  const quality = resolveQuality(song.source);
+  const quality = qualityOverride || resolveQuality(song.source);
   try {
     const r = await api.addToQueue({ ...song, saveDir, quality });
     if (r && r.duplicated) { showToast(`「${song.title}」已在下载队列中`, 'warn', 2500); return; }

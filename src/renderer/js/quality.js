@@ -71,6 +71,16 @@ export function cleanQualityMap(map, platformIds) {
   return clean;
 }
 
+/**
+ * 「以此音质下载」候选档：固定音质平台返回空表；当前解析档位被剔除。
+ * 纯函数，供 songMenu 组装菜单项。
+ */
+export function qualityOverrideOptions(source, current) {
+  if (QUALITY_FIXED.has(String(source))) return [];
+  const cur = VALID.has(current) ? current : null;
+  return QUALITY_OPTIONS.filter(o => o.value !== cur).map(o => ({ value: o.value, label: o.label }));
+}
+
 /** 搜索栏音质下拉的当前值（唯一的全局默认来源） */
 export function selectQuality() {
   const el = typeof document !== 'undefined' && document.getElementById('qualitySelect');
