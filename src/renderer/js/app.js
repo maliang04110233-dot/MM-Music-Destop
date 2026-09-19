@@ -52,6 +52,7 @@ import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
 import { removeQueueItem, dedupeQueue } from './playQueueEdit.js';
+import { queueToSongs, defaultQueuePlaylistName } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
@@ -1207,6 +1208,29 @@ window.dedupePlayQueue = () => {
   setState('playQueue', r.queue);
   setState('playIdx', Math.max(0, r.playIdx));
   showToast(`🧹 已移除 ${r.removed} 首重复`, 'success');
+};
+
+// 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：
+// 名称自动生成「播放队列 · MM-DD HH:mm」，建好后可在歌单编辑器改名/换封面
+window.saveQueueAsPlaylist = async () => {
+  const songs = queueToSongs(getState('playQueue') || []);
+  if (!songs.length) { showToast('播放队列为空，先把歌曲加入队列', 'warn', 2500); return; }
+  try {
+    const r = await api.saveUserPlaylist({
+      name: defaultQueuePlaylistName(new Date()),
+      desc: `由播放队列保存 · ${songs.length} 首`,
+      cover: songs.find((s) => typeof s.cover === 'string' && s.cover.startsWith('http'))?.cover || '',
+      songs,
+    });
+    if (r && r.success) {
+      if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
+      showToast(`💾 已存为歌单「${r.playlist?.name || defaultQueuePlaylistName(new Date())}」（${songs.length} 首）`, 'success', 3000);
+    } else {
+      showToast((r && r.error) || '保存歌单失败', 'error');
+    }
+  } catch (e) {
+    showToast('保存失败: ' + (e.message || e), 'error');
+  }
 };
 
 async function downloadPqSong(s) {

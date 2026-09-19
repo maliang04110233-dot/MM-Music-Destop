@@ -73,6 +73,7 @@ const COMMANDS = [
   { id: 'pl-prev', icon: '⏮', group: '播放', label: '上一首', keywords: ['prev', 'previous'], run: () => _call('prevSong') },
   { id: 'pl-report', icon: '📈', group: '播放', label: '听歌报告（播放统计）', keywords: ['report', 'stats', '统计'], run: () => _call('generatePlayReport') },
   { id: 'pq-dedupe', icon: '🧹', group: '播放', label: '播放队列去重（保留首次出现）', keywords: ['dedupe', 'queue', '队列', '去重'], run: () => _call('dedupePlayQueue') },
+  { id: 'pq-save', icon: '💾', group: '播放', label: '播放队列存为歌单', keywords: ['save', 'queue', 'playlist', '队列', '歌单', '保存'], run: () => _call('saveQueueAsPlaylist') },
   { id: 'pl-lyradv', icon: '⏪', group: '播放', label: '歌词提前 0.5s（偏移 -500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', -500) },
   { id: 'pl-lyrdly', icon: '⏩', group: '播放', label: '歌词延后 0.5s（偏移 +500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', 500) },
   { id: 'pl-abloop', icon: '🔁', group: '播放', label: 'A-B 循环：设 A 点 / 设 B 点 / 清除', keywords: ['ab loop', '循环', '片段', '副歌'], run: () => _call('abLoopClick') },

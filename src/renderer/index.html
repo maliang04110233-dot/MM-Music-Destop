@@ -619,6 +619,7 @@
           <span class="pq-header-title" data-i18n="player.playQueue">播放队列</span>
         </div>
         <button class="pq-clear-btn" onclick="dedupePlayQueue()" title="移除队列中的重复曲目（每首保留第一次出现，正在播放跟随）">🧹 去重</button>
+        <button class="pq-clear-btn" onclick="saveQueueAsPlaylist()" title="把当前播放队列整体保存为「我的歌单」，名称自动带时间，之后可在歌单编辑器改名">💾 存为歌单</button>
         <button class="pq-clear-btn" onclick="clearPlayQueue()" title="清空队列" data-i18n="player.queue.clear">清空</button>
       </div>
       <div class="pq-list" id="pqList">
