@@ -58,6 +58,7 @@ import './historyTrend.js';
 import './diagnose.js';
 import './queueSummary.js';
 import './lyricNudge.js';
+import './abLoop.js';
 import './songGroups.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
