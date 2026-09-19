@@ -257,7 +257,9 @@ function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCoun
       if (!check.ok) {
         return Promise.reject(new Error('下载地址被 SSRF 防护拒绝: ' + (check.reason || url)));
       }
-      return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount, options);
+      // rebinding 闭合：把校验出的 IP 透传给真正的连接（Host/SNI 仍是域名）
+      return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount,
+        { ...options, _pinnedIps: check.ips });
     });
   }
   return _downloadFileInner(url, savePath, onProgress, extraHeaders, redirectCount, options);
@@ -304,6 +306,9 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
       headers,
       timeout: 60000,
     };
+    if (options._pinnedIps && options._pinnedIps.length) {
+      reqOptions.lookup = require('./urlGuard').makePinnedLookup(options._pinnedIps);
+    }
 
     const tmpPath = savePath + '.tmp';
     // 统一的 .tmp 清理函数（任何一个失败路径都调用）
@@ -407,7 +412,7 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
  * 下载图片到 Buffer
  * 优化：覆盖 301/302/303/307/308 重定向，与 downloadFile 保持一致
  */
-function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked = false) {
+function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked = false, pinnedIps = null) {
   const MAX_REDIRECTS = 5;
   // 首跳 SSRF 校验（重定向跳已由内部递归前逐跳校验）
   if (!_ssrfChecked && url) {
@@ -417,7 +422,7 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked 
         logger.warn('[downloadBuffer] 下载地址被 SSRF 防护拒绝:', url);
         return null; // 与本函数容错语义一致：失败返回 null
       }
-      return downloadBuffer(url, extraHeaders, redirectCount, true);
+      return downloadBuffer(url, extraHeaders, redirectCount, true, check.ips);
     }).catch(() => null);
   }
   return new Promise((resolve, reject) => {
@@ -437,6 +442,9 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked 
         },
         timeout: 15000,
       };
+      if (pinnedIps && pinnedIps.length) {
+        options.lookup = require('./urlGuard').makePinnedLookup(pinnedIps);
+      }
 
       const req = lib.request(options, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -449,7 +457,7 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked 
               logger.warn('[downloadBuffer] 重定向目标被 SSRF 防护拒绝:', nextUrl);
               return resolve(null);
             }
-            return downloadBuffer(nextUrl, extraHeaders, redirectCount + 1, true).then(resolve).catch(reject);
+            return downloadBuffer(nextUrl, extraHeaders, redirectCount + 1, true, check.ips).then(resolve).catch(reject);
           }).catch(() => resolve(null));
         }
         const chunks = [];

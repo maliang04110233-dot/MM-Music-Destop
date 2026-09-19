@@ -23,7 +23,7 @@ const https = require('https');
 const http = require('http');
 const logger = require('../utils/logger');
 const { USER_AGENT } = require('../utils/userAgent');
-const { assertPublicHttpUrl } = require('../utils/urlGuard');
+const { assertPublicHttpUrl, makePinnedLookup } = require('../utils/urlGuard');
 
 /**
  * 日志脱敏：平台 API 常把鉴权态（authst/key/sign/data）放进 GET 查询串，
@@ -61,7 +61,7 @@ const MAX_REDIRECTS = 5;
 /** 请求超时默认值（ms）：普通 API 请求 / 音频链路探测 */
 const DEFAULT_TIMEOUT_MS = 15000;
 const PROBE_TIMEOUT_MS = 8000;
-function _followRedirects(url, options, redirectCount = 0) {
+function _followRedirects(url, options, redirectCount = 0, pinnedIps = null) {
   return new Promise((resolve, reject) => {
     if (redirectCount > MAX_REDIRECTS) {
       return reject(new Error(`重定向次数超过上限 ${MAX_REDIRECTS}`));
@@ -84,6 +84,11 @@ function _followRedirects(url, options, redirectCount = 0) {
       },
       timeout: options.timeout || DEFAULT_TIMEOUT_MS,
     };
+    // DNS rebinding 闭合：上一跳 guard 校验过本跳域名时，连接固定用校验
+    // 时的 IP（Host/SNI 仍是原域名），杜绝"校验→连接"之间 DNS 调包
+    if (pinnedIps && pinnedIps.length) {
+      reqOptions.lookup = makePinnedLookup(pinnedIps);
+    }
 
     const req = lib.request(reqOptions, (res) => {
       // 跟随重定向（递归时也走本函数，外层 retry 不重做这次内部重定向）
@@ -102,12 +107,12 @@ function _followRedirects(url, options, redirectCount = 0) {
         }
         // M8: 每一跳都过 urlGuard（与 _probeAudio 同规则）—— 平台直链 302
         // 即可把请求送进内网，入口校验拦不住后续跳；skipSsrf 仅供本机测试
-        const proceed = () =>
-          _followRedirects(nextUrl.toString(), options, redirectCount + 1).then(resolve).catch(reject);
-        if (options.skipSsrf) return proceed();
+        const proceed = (ips) =>
+          _followRedirects(nextUrl.toString(), options, redirectCount + 1, ips).then(resolve).catch(reject);
+        if (options.skipSsrf) return proceed(null);
         return assertPublicHttpUrl(nextUrl.toString())
           .then(g => g.ok
-            ? proceed()
+            ? proceed(g.ips)
             : reject(new Error(`ssrf-blocked redirect: ${nextUrl.origin} (${g.reason})`)))
           .catch(reject);
       }
@@ -218,23 +223,28 @@ async function _probeAudio(url, method, headers, timeout, redirectLeft, skipSsrf
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     return { status: null, reason: 'unsupported-protocol' };
   }
+  let guardIps = null;
   if (!skipSsrf) {
     const guard = await assertPublicHttpUrl(url);
     if (!guard.ok) return { status: null, reason: `ssrf-blocked: ${guard.reason}` };
+    guardIps = guard.ips; // 校验与连接同源：钉住本次解析出的 IP（rebinding 闭合）
   }
 
   return await new Promise((resolve) => {
     const isHttps = parsed.protocol === 'https:';
     const lib = isHttps ? https : http;
 
-    const req = lib.request({
+    const reqOptions = {
       hostname: parsed.hostname,
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method,
       headers,
       timeout,
-    }, (res) => {
+    };
+    if (guardIps && guardIps.length) reqOptions.lookup = makePinnedLookup(guardIps);
+
+    const req = lib.request(reqOptions, (res) => {
       const status = res.statusCode || 0;
 
       // 直链常 302 到 CDN，跟到底（手动跟，避免 request() 的 body 累积）
