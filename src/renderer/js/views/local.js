@@ -15,6 +15,7 @@ import {
   collectProbeTargets, runSequentialScan, summarizeProbe,
   probeReportLine, showProbeReportModal,
 } from '../batchProbe.js';
+import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -114,7 +115,7 @@ async function scanLocalDir() {
       const retry = await api.scanLocalLibrary(localDirPath);
       if (retry.error) { showToast('扫描失败: ' + retry.error, 'error'); return; }
       setState('localSongs', retry.songs || []);
-      setState('localFiltered', [...(retry.songs || [])]);
+      setState('localFiltered', sortLocalSongs([...(retry.songs || [])], _localSortMode));
       document.getElementById('localInfo').textContent = `共 ${(retry.songs || []).length} 首 · ${localDirPath}`;
       if (_localGridView) renderLocalGrid();
       else renderLocalSongs();
@@ -123,7 +124,7 @@ async function scanLocalDir() {
     }
     const localSongs = result.songs || [];
     setState('localSongs', localSongs);
-    setState('localFiltered', [...localSongs]);
+    setState('localFiltered', sortLocalSongs([...localSongs], _localSortMode));
     document.getElementById('localInfo').textContent = `共 ${localSongs.length} 首 · ${localDirPath}`;
     if (_localGridView) renderLocalGrid();
     else renderLocalSongs();
@@ -134,20 +135,30 @@ async function scanLocalDir() {
 }
 
 // ── 过滤 ──────────────────────────────────────────────
+let _localSortMode = 'default'; // 本地曲库排序（会话级，扫描/过滤后都保持生效）
+
 function filterLocalSongs() {
   const kw = document.getElementById('localFilter').value.trim().toLowerCase();
   const localSongs = getState('localSongs');
   if (!kw) {
-    setState('localFiltered', [...localSongs]);
+    setState('localFiltered', sortLocalSongs([...localSongs], _localSortMode));
   } else {
-    setState('localFiltered', localSongs.filter(s =>
+    setState('localFiltered', sortLocalSongs(localSongs.filter(s =>
       (s.title || '').toLowerCase().includes(kw) ||
       (s.artist || '').toLowerCase().includes(kw) ||
       (s.album || '').toLowerCase().includes(kw)
-    ));
+    ), _localSortMode));
   }
   if (_localGridView) renderLocalGrid();
   else renderLocalSongs();
+}
+
+/** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
+function cycleLocalSort() {
+  _localSortMode = nextLocalSortMode(_localSortMode);
+  const btn = document.getElementById('localSortBtn');
+  if (btn) btn.textContent = localSortLabel(_localSortMode);
+  filterLocalSongs();
 }
 
 // ── 曲库目录监听自动刷新（主进程 fs.watch → local-library-changed 推送）──
@@ -1172,6 +1183,7 @@ export {
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.scanLocalDir = scanLocalDir;
 window.filterLocalSongs = filterLocalSongs;
+window.cycleLocalSort = cycleLocalSort;
 window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;

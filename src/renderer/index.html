@@ -259,6 +259,7 @@
                         <input class="search-input" id="localFilter" placeholder="过滤本地歌曲..."
                           oninput="filterLocalSongs()" onkeydown="if(event.key==='Enter')filterLocalSongs()">
                       </div>
+                      <button class="tab" id="localSortBtn" title="切换本地曲库排序：默认 / 标题 / 歌手 / 时长 / 大小" onclick="cycleLocalSort()">↕ 默认序</button>
                       <span class="local-info" id="localInfo" data-i18n="local.notScanned">未扫描</span>
                     </div>
                     <!-- 批量选择操作栏 -->
