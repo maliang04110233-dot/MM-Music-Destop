@@ -11,6 +11,7 @@ import {
   addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
   restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
   getPlayStats, getMostPlayed, loadPlayStats, resetPlayStats, generatePlayReport,
+  copyPlayReportText,
 } from './player/stats.js';
 import {
   parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
@@ -884,6 +885,7 @@ export function onAudioEnded() {
 export {
   getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
   getPlayStats, getMostPlayed, loadPlayStats, resetPlayStats, generatePlayReport,
+  copyPlayReportText,
   parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
 };
 
@@ -946,4 +948,5 @@ window.getPlayStats = getPlayStats;
 window.getMostPlayed = getMostPlayed;
 window.resetPlayStats = resetPlayStats;
 window.generatePlayReport = generatePlayReport;
+window.copyPlayReportText = copyPlayReportText;
 window.loadPlayStats = loadPlayStats;

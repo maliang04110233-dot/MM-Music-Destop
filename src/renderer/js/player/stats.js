@@ -5,6 +5,9 @@
  * 依赖全局：api、showToast、esc（由 preload / utils.js 注入）
  */
 
+import { topArtistsFromPlayCount, formatReportText } from '../playReportText.js';
+import { copyText } from '../songShare.js';
+
 // ── 播放 ─────────────────────────────────────────────
 // 最近播放记录（内存缓存，最多 50 首）
 const _recentlyPlayed = [];
@@ -166,15 +169,9 @@ export function generatePlayReport() {
   const stats = getPlayStats();
   const mostPlayed = getMostPlayed(5);
 
-  // 最爱歌手
-  const artistCounts = {};
-  for (const [key, count] of Object.entries(stats.playCount)) {
-    const artist = key.split('|||')[1] || '未知';
-    artistCounts[artist] = (artistCounts[artist] || 0) + count;
-  }
-  const topArtists = Object.entries(artistCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
+  // 最爱歌手（增量110 起与复制文本共用 playReportText 聚合）
+  const artists = topArtistsFromPlayCount(stats.playCount);
+  const topArtists = artists.slice(0, 3).map(a => [a.artist, a.count]);
 
   const html = `
     <div class="report-grid">
@@ -190,7 +187,7 @@ export function generatePlayReport() {
       </div>
       <div class="report-card">
         <div class="report-icon">🎤</div>
-        <div class="report-value">${Object.keys(artistCounts).length}</div>
+        <div class="report-value">${artists.length}</div>
         <div class="report-label">收听歌手数</div>
       </div>
     </div>
@@ -238,6 +235,22 @@ export function generatePlayReport() {
   showReportModal(html);
 }
 
+/** 📋 复制听歌报告（增量110）：与弹层同一份统计投影成纯文本进剪贴板，零新通道 */
+export async function copyPlayReportText() {
+  const stats = getPlayStats();
+  const artists = topArtistsFromPlayCount(stats.playCount);
+  const text = formatReportText({
+    totalPlayTimeText: formatPlayTime(stats.totalPlayTime),
+    totalSongs: stats.totalSongs,
+    artistTotal: artists.length,
+    mostPlayed: getMostPlayed(5),
+    topArtists: artists.slice(0, 3),
+    lastPlayed: stats.lastPlayed,
+  });
+  const ok = await copyText(text);
+  showToast(ok ? '📋 听歌报告已复制，可直接粘贴分享' : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
+}
+
 function showReportModal(html) {
   let overlay = document.getElementById('reportModal');
   if (overlay) overlay.remove();
@@ -250,7 +263,10 @@ function showReportModal(html) {
     <div class="stats-panel report-panel">
       <div class="stats-header">
         <span>📊 听歌报告</span>
-        <button onclick="document.getElementById('reportModal').remove()">✕</button>
+        <span style="display:flex;gap:6px;">
+          <button onclick="copyPlayReportText()" title="复制报告为纯文本，发群聊直接贴">📋</button>
+          <button onclick="document.getElementById('reportModal').remove()">✕</button>
+        </span>
       </div>
       <div class="stats-body">${html}</div>
     </div>
