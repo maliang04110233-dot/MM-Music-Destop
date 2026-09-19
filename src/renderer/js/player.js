@@ -14,7 +14,7 @@ import {
 } from './player/stats.js';
 import {
   parseLrc, showStaticLyrics, showNoLyrics, updateLyric, toggleLyricsArea,
-  applyLyricFontSize, applyLyricOffset,
+  applyLyricFontSize, applyLyricOffset, getLyricOffset,
 } from './player/lyrics.js';
 
 const audio = document.getElementById('audioPlayer');
@@ -876,6 +876,7 @@ window.updateLyric = updateLyric;
 window.toggleLyricsArea = toggleLyricsArea;
 window.applyLyricFontSize = applyLyricFontSize;
 window.applyLyricOffset = applyLyricOffset;
+window.getLyricOffset = getLyricOffset;
 window.setCoverAnimation = setCoverAnimation;
 window.cycleCoverAnimation = cycleCoverAnimation;
 window.updatePlayerCard = updatePlayerCard;

@@ -26,6 +26,10 @@ export function applyLyricOffset(ms) {
   _lyricOffset = +ms || 0;
 }
 
+export function getLyricOffset() {
+  return _lyricOffset;
+}
+
 // ── 歌词系统（逐字高亮）──────────────────────────────
 export function parseLrc(lrc) {
   if (!lrc) { showNoLyrics(); return; }

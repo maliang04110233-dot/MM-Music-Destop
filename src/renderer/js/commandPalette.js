@@ -52,9 +52,9 @@ function _goto(tab) {
   if (btn && typeof window.switchTab === 'function') window.switchTab(tab, btn);
 }
 
-function _call(name) {
+function _call(name, ...args) {
   const f = window[name];
-  if (typeof f === 'function') return f();
+  if (typeof f === 'function') return f(...args);
   try { showToast('当前界面不支持该操作', 'warn', 2000); } catch (_e) { /* 无 toast 环境 */ }
 }
 
@@ -72,6 +72,8 @@ const COMMANDS = [
   { id: 'pl-next', icon: '⏭', group: '播放', label: '下一首', keywords: ['next'], run: () => _call('nextSong') },
   { id: 'pl-prev', icon: '⏮', group: '播放', label: '上一首', keywords: ['prev', 'previous'], run: () => _call('prevSong') },
   { id: 'pl-report', icon: '📈', group: '播放', label: '听歌报告（播放统计）', keywords: ['report', 'stats', '统计'], run: () => _call('generatePlayReport') },
+  { id: 'pl-lyradv', icon: '⏪', group: '播放', label: '歌词提前 0.5s（偏移 -500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', -500) },
+  { id: 'pl-lyrdly', icon: '⏩', group: '播放', label: '歌词延后 0.5s（偏移 +500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', 500) },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
   { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },
