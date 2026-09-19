@@ -325,3 +325,35 @@ test('history: schema 版本化（user_version）—— 重开幂等，版本落
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('history: remove 按 {id,source} 删记录——脏输入忽略、可重加、assets 徽标语义不破坏', () => {
+  const dir = makeTempDir();
+  const h = require('../src/utils/history');
+  h.init(dir);
+  h.clear();
+  h.add({ id: 'a', source: 'qq', title: 'A', status: 'done', savePath: '/nonexistent/a.mp3', finishedAt: 1 });
+  h.add({ id: 'b', source: 'netease', title: 'B', status: 'error', finishedAt: 2 });
+  // 同 id 不同 source 是两条记录：只删指定 (id,source) 对
+  h.add({ id: 'a', source: 'netease', title: 'A-on-netease', status: 'done', finishedAt: 3 });
+
+  const n = h.remove([
+    { id: 'a', source: 'qq' },
+    null, { id: null }, { id: 'ghost', source: 'qq' }, { id: 123 },
+  ]);
+  assert.strictEqual(n, 1, '只应删掉真实存在的那一条');
+  const r = h.query();
+  assert.strictEqual(r.total, 2);
+  assert.ok(!r.items.some(x => x.source === 'qq'), '同 id 其他 source 不受影响');
+  assert.ok(r.items.some(x => x.id === 'a' && x.source === 'netease'), '同 id 不同 source 必须保留');
+
+  // 删后重加走正常 upsert（不留主键残骸）
+  h.add({ id: 'a', source: 'qq', title: 'A2', status: 'done', finishedAt: 4 });
+  assert.strictEqual(h.query().total, 3);
+  assert.strictEqual(h.remove([]), 0);
+  assert.strictEqual(h.remove('not-an-array'), 0);
+
+  // assets 设计：文件不存在时 findDownloaded 自愈回收，返回 null
+  assert.strictEqual(h.findDownloaded('a', 'qq'), null);
+  h.destroy();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

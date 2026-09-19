@@ -372,6 +372,28 @@ function clear() {
   _count = 0;
 }
 
+/**
+ * 按 {id, source} 删除历史展示记录（不动磁盘文件）。
+ * 刻意保留 assets 去重索引：徽标语义是「文件还在」而非「有历史记录」，
+ * findDownloaded 对已删文件自愈回收，删记录不应把仍存在的文件的下载状态抹掉。
+ * @param {Array<{id:string|number, source:string}>} entries
+ * @returns {number} 实际删除的历史行数
+ */
+function remove(entries) {
+  _ensure();
+  if (!Array.isArray(entries) || !entries.length) return 0;
+  const del = _db.prepare('DELETE FROM history WHERE key_id = ? AND key_source = ?');
+  let removed = 0;
+  for (const e of entries) {
+    if (!e || typeof e !== 'object') continue;
+    const kid = _keyId(e.id);
+    if (!kid) continue;
+    removed += del.run(kid, String(e.source ?? '')).changes;
+  }
+  _count = Math.max(0, _count - removed);
+  return removed;
+}
+
 function destroy() {
   if (_db) {
     try { _db.close(); } catch (_e) { /* 已关闭 */ }
@@ -382,6 +404,6 @@ function destroy() {
 }
 
 module.exports = {
-  init, add, query, stats, flush, clear, destroy, importEntries, findDownloaded,
+  init, add, query, stats, flush, clear, remove, destroy, importEntries, findDownloaded,
   MAX_ENTRIES,
 };

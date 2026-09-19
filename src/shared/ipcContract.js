@@ -139,6 +139,7 @@ const CHANNELS = {
   'query-history': { invoke: MAIN, args: [['opts', t.obj()]] },
   'history-stats': { invoke: MAIN },
   'clear-history': { invoke: MAIN },
+  'remove-history': { invoke: MAIN, args: [['entries', t.arr(1000)]] },
 
   // ── AI（invoke） ──────────────────────────────────
   'ai-generate-music':   { invoke: MAIN, args: [['params', t.obj()]] },
@@ -302,6 +303,7 @@ const METHODS = {
   queryHistory: 'query-history',
   getHistoryStats: 'history-stats',
   clearHistory: 'clear-history',
+  removeHistory: 'remove-history',
   // 缓存
   getCacheSize: 'get-cache-size',
   clearPlayCache: 'clear-play-cache',

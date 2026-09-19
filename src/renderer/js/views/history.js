@@ -247,6 +247,23 @@ function _historySongLike(s) {
   };
 }
 
+// 删除单条记录：只清历史行，磁盘文件与「已下载」徽标（assets 索引按文件存在性自愈）不受影响
+async function deleteHistoryItem(idx) {
+  const s = _historyItems[idx];
+  if (!s || s.id == null) { showToast('无法删除：记录缺少标识', 'warn'); return; }
+  try {
+    const r = await api.removeHistory([{ id: s.id, source: s.source }]);
+    if (!r || typeof r.removed !== 'number') { showToast('删除失败', 'error'); return; }
+    // 删的是本页最后一条时回退一页，避免停在空页
+    if (_historyItems.length <= 1 && historyPage > 0) historyPage--;
+    loadHistory();
+    showToast('记录已删除（不影响已下载的文件）', 'success');
+  } catch (e) {
+    logger.warn('[history] 删除失败:', e.message);
+    showToast('删除失败：' + e.message, 'error');
+  }
+}
+
 function historyRowContext(e) {
   const row = e.target && e.target.closest ? e.target.closest('.history-row') : null;
   if (!row || !_historyDom.list || !_historyDom.list.contains(row)) return;
@@ -279,6 +296,10 @@ function historyRowContext(e) {
       } },
     );
   }
+  items.push(
+    { sep: true },
+    { icon: '🗑', label: '删除记录', onClick: () => deleteHistoryItem(idx) },
+  );
   showContextMenu(e.clientX, e.clientY, items);
 }
 document.addEventListener('contextmenu', historyRowContext);
@@ -296,6 +317,7 @@ export {
   retryFromHistory,
   playHistoryItem,
   exportHistoryM3u,
+  deleteHistoryItem,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
