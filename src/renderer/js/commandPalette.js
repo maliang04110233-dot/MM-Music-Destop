@@ -71,6 +71,7 @@ const COMMANDS = [
   { id: 'pl-toggle', icon: '▶⏸', group: '播放', label: '播放 / 暂停', keywords: ['play', 'pause', '暂停'], run: () => _call('togglePlay') },
   { id: 'pl-next', icon: '⏭', group: '播放', label: '下一首', keywords: ['next'], run: () => _call('nextSong') },
   { id: 'pl-prev', icon: '⏮', group: '播放', label: '上一首', keywords: ['prev', 'previous'], run: () => _call('prevSong') },
+  { id: 'pl-report', icon: '📈', group: '播放', label: '听歌报告（播放统计）', keywords: ['report', 'stats', '统计'], run: () => _call('generatePlayReport') },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
   { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },

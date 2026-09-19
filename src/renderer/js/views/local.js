@@ -41,9 +41,9 @@ async function batchFetchCovers() {
   const total = needCover.length;
   let done = 0, ok = 0, fail = 0;
 
-  const progressWrap = document.getElementById('batchProgressWrap');
-  const progressBar = document.getElementById('batchProgressBar');
-  const progressLabel = document.getElementById('batchProgressLabel');
+  const progressWrap = document.getElementById('localBatchProgressWrap');
+  const progressBar = document.getElementById('localBatchProgressBar');
+  const progressLabel = document.getElementById('localBatchProgressLabel');
   if (progressWrap) progressWrap.style.display = 'flex';
   if (progressLabel) progressLabel.textContent = `正在补全封面 (0/${total})`;
 
@@ -676,9 +676,9 @@ async function batchFetchLyrics() {
   const total = candidates.length;
   let done = 0, ok = 0, fail = 0;
 
-  const progressWrap = document.getElementById('batchProgressWrap');
-  const progressBar = document.getElementById('batchProgressBar');
-  const progressLabel = document.getElementById('batchProgressLabel');
+  const progressWrap = document.getElementById('localBatchProgressWrap');
+  const progressBar = document.getElementById('localBatchProgressBar');
+  const progressLabel = document.getElementById('localBatchProgressLabel');
   if (progressWrap) progressWrap.style.display = 'flex';
   if (progressBar) progressBar.style.width = '0%';
   if (progressLabel) progressLabel.textContent = `正在补全歌词 (0/${total})`;
@@ -798,9 +798,9 @@ async function batchAutoMeta() {
     return;
   }
 
-  const progressWrap = document.getElementById('batchProgressWrap');
-  const progressBar = document.getElementById('batchProgressBar');
-  const progressLabel = document.getElementById('batchProgressLabel');
+  const progressWrap = document.getElementById('localBatchProgressWrap');
+  const progressBar = document.getElementById('localBatchProgressBar');
+  const progressLabel = document.getElementById('localBatchProgressLabel');
   progressWrap.style.display = 'flex';
   _batchCancelled = false;
 
@@ -958,9 +958,9 @@ async function executeBatchRename() {
   const localFiltered = getState('localFiltered');
   let ok = 0, fail = 0;
 
-  const progressWrap = document.getElementById('batchProgressWrap');
-  const progressBar = document.getElementById('batchProgressBar');
-  const progressLabel = document.getElementById('batchProgressLabel');
+  const progressWrap = document.getElementById('localBatchProgressWrap');
+  const progressBar = document.getElementById('localBatchProgressBar');
+  const progressLabel = document.getElementById('localBatchProgressLabel');
   progressWrap.style.display = 'flex';
   progressBar.style.width = '0%';
   progressLabel.textContent = `正在重命名 (0/${count})`;
@@ -1031,9 +1031,9 @@ async function batchDownloadCovers() {
   const total = needCover.length;
   let done = 0, ok = 0, fail = 0;
 
-  const progressWrap = document.getElementById('batchProgressWrap');
-  const progressBar = document.getElementById('batchProgressBar');
-  const progressLabel = document.getElementById('batchProgressLabel');
+  const progressWrap = document.getElementById('localBatchProgressWrap');
+  const progressBar = document.getElementById('localBatchProgressBar');
+  const progressLabel = document.getElementById('localBatchProgressLabel');
   progressWrap.style.display = 'flex';
   progressBar.style.width = '0%';
   progressLabel.textContent = `正在下载封面 (0/${total})`;
