@@ -11,6 +11,10 @@ import { VirtualScroller } from '../virtualList.js';
 // 转码共用弹窗 + 批量 runner（下载页/转换页/本地库三处共用）
 import { openConvertModal, runConvertBatch } from '../converter-core.js';
 import { showContextMenu } from '../contextMenu.js';
+import {
+  collectProbeTargets, runSequentialScan, summarizeProbe,
+  probeReportLine, showProbeReportModal,
+} from '../batchProbe.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -608,6 +612,56 @@ function showLocalRowMenu(e, idx) {
   ]);
 }
 
+// ── 全库音质扫描 ─────────────────────────────────────
+let _probeScanCancelled = false;
+function cancelProbeScan() { _probeScanCancelled = true; }
+
+async function batchProbeQuality() {
+  const localSongs = (typeof getState === 'function' && getState('localSongs')) || [];
+  const { targets, cached } = collectProbeTargets(localSongs, _probeCache);
+  if (!targets.length) {
+    if (!cached) { showToast('本地库还没有歌曲可扫描，请先「扫描目录」', 'warn', 3500); return; }
+    showToast(probeReportLine(summarizeProbe(Array.from(_probeCache.values())), false) + '（全部命中缓存）', 'info', 5500);
+    return;
+  }
+  _probeScanCancelled = false;
+  const wrap = document.getElementById('probeProgressWrap');
+  const bar = document.getElementById('probeProgressBar');
+  const label = document.getElementById('probeProgressLabel');
+  if (wrap) wrap.style.display = 'flex';
+  if (bar) bar.style.width = '0%';
+  const flagged = []; // 本轮发现的存疑/有损曲目
+  try {
+    const { cancelled } = await runSequentialScan({
+      items: targets,
+      worker: (s) => api.probeAudio(s.filePath),
+      isCancelled: () => _probeScanCancelled,
+      onProgress: (done, total, r, s) => {
+        if (r && r.ok) {
+          _probeCache.set(s.filePath, r);
+          if (r.verdict === 'suspicious' || r.verdict === 'lossy') flagged.push({ s, r });
+        }
+        if (bar) bar.style.width = Math.round((done / total) * 100) + '%';
+        if (label) label.textContent = `正在扫描音质 (${done}/${total})` + (flagged.length ? ` · 已发现 ${flagged.length} 首非真无损` : '');
+      },
+    });
+    // 汇总口径 = 全库缓存（含本轮新结果 + 此前逐曲实测）
+    const full = summarizeProbe(Array.from(_probeCache.values()));
+    const bad = full.suspicious + full.lossy;
+    showToast(probeReportLine(full, cancelled), cancelled ? 'warn' : (bad ? 'warn' : 'success'), 6000);
+    if (flagged.length) {
+      showProbeReportModal(flagged.map(({ s, r }) => ({
+        icon: r.verdict === 'suspicious' ? '⚠️' : '❌',
+        text: `${s.title || '未知曲目'} - ${s.artist || '未知艺人'}（${(r.codec || '?').toUpperCase()}${r.bitrateKbps ? ' · ' + r.bitrateKbps + 'kbps' : ''}）`,
+      })));
+    }
+  } finally {
+    _probeScanCancelled = false;
+    if (wrap) wrap.style.display = 'none';
+    if (bar) bar.style.width = '0%';
+  }
+}
+
 // ── 批量歌词 ─────────────────────────────────────────
 async function batchFetchLyrics() {
   const localSongs = getState('localSongs');
@@ -1128,6 +1182,8 @@ window.batchFetchCovers = batchFetchCovers;
 window.batchFetchLyrics = batchFetchLyrics;
 window.batchAutoMeta = batchAutoMeta;
 window.cancelBatchFetch = cancelBatchFetch;
+window.batchProbeQuality = batchProbeQuality;
+window.cancelProbeScan = cancelProbeScan;
 window.enterLocalSelectionMode = enterLocalSelectionMode;
 window.exitLocalSelectionMode = exitLocalSelectionMode;
 window.toggleLocalSelect = toggleLocalSelect;

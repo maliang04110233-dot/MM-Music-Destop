@@ -252,6 +252,7 @@
             <button class="tab tab-neon" onclick="batchFetchLyrics()" data-i18n="local.batchLyric">🎵 批量补歌词</button>
                       <button class="tab" onclick="showLibraryStats()" data-i18n="local.stats">📊 统计</button>
                       <button class="tab" onclick="detectDuplicateSongs()" data-i18n="local.dedup">🔍 查重</button>
+                      <button class="tab" onclick="batchProbeQuality()">🔬 音质扫描</button>
                       <button class="tab tab-neon" onclick="convertSelectedAudio()" data-i18n="local.convert">🔄 转码</button>
                       <div class="search-input-wrap">
                         <input class="search-input" id="localFilter" placeholder="过滤本地歌曲..."
@@ -273,6 +274,11 @@
             <div id="batchProgressLabel" class="batch-progress-label" data-i18n="local.completingCover">正在补全封面...</div>
             <div id="batchProgressBar" class="batch-progress-bar"></div>
             <button class="tab" onclick="cancelBatchFetch()" style="flex-shrink:0;padding:3px 10px;font-size:11px" data-i18n="local.cancel">取消</button>
+          </div>
+          <div id="probeProgressWrap" class="batch-progress-wrap" style="display:none">
+            <div id="probeProgressLabel" class="batch-progress-label">正在扫描音质...</div>
+            <div id="probeProgressBar" class="batch-progress-bar"></div>
+            <button class="tab" onclick="cancelProbeScan()" style="flex-shrink:0;padding:3px 10px;font-size:11px">取消</button>
           </div>
           <div class="local-list" id="localList"></div>
                     <div class="local-grid" id="localGrid" style="display:none"></div>
