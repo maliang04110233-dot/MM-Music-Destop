@@ -28,11 +28,25 @@ function _ts(x, field = 'updatedAt') {
   return Number.isFinite(n) ? n : 0;
 }
 
+// 渲染层会把条目 id 用作 data-id / onclick 实参，外来快照（NAS/备份文件）的
+// id 可任意 —— 非法形状的 id 一律换成安全生成 id（条目保留），封堵存储型 XSS。
+const SAFE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+let _fixedSeq = 0;
+function repairIds(list, prefix) {
+  return _arr(list).filter(x => x && typeof x === 'object').map((item, i) => {
+    if (item.id == null) return item;
+    const id = String(item.id);
+    if (SAFE_ID_RE.test(id)) return item;
+    const seq = _fixedSeq++;
+    return { ...item, id: `${prefix}_fixed_${i}_${seq}` };
+  });
+}
+
 function mergePlaylists(local, remote) {
-  const out = _arr(local).filter(p => p && p.id != null).map(p => ({ ...p }));
+  const out = repairIds(local, 'pl').filter(p => p.id != null).map(p => ({ ...p }));
   const byId = new Map(out.map(p => [String(p.id), p]));
 
-  for (const r of _arr(remote)) {
+  for (const r of repairIds(remote, 'pl')) {
     if (!r || r.id == null) continue;
     const key = String(r.id);
     const l = byId.get(key);
@@ -57,9 +71,9 @@ function mergePlaylists(local, remote) {
 }
 
 function mergeTemplates(local, remote) {
-  const out = _arr(local).filter(t => t && t.id != null);
+  const out = repairIds(local, 'tpl').filter(t => t.id != null);
   const byId = new Map(out.map(t => [String(t.id), t]));
-  for (const r of _arr(remote)) {
+  for (const r of repairIds(remote, 'tpl')) {
     if (!r || r.id == null) continue;
     const key = String(r.id);
     const l = byId.get(key);
@@ -98,4 +112,4 @@ function mergeSnapshotData(localData, remoteData) {
   };
 }
 
-module.exports = { mergePlaylists, mergeTemplates, mergeHistory, mergeSnapshotData };
+module.exports = { mergePlaylists, mergeTemplates, mergeHistory, mergeSnapshotData, repairIds };

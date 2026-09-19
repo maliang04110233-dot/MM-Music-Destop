@@ -11,6 +11,7 @@ const history = require('../../utils/history');
 const secretStore = require('../../utils/secretStore');
 const webdav = require('../../utils/webdav');
 const { syncOnce } = require('../../utils/cloudSyncCore');
+const { repairIds } = require('../../utils/syncMerge');
 const approvedDirs = require('../approvedDirs');
 const { DIR_PREF_KEYS } = approvedDirs;
 const path = require('path');
@@ -115,14 +116,17 @@ function register() {
       const results = [];
 
       // 恢复歌单 / 模板 / 活动模板（真实存储键）
+      // 备份文件是外部数据：id 修复后再入库（渲染层拿 id 拼 onclick）
       if (Array.isArray(data.userPlaylists)) {
-        prefs.set('userPlaylists', data.userPlaylists);
-        results.push(`歌单: ${data.userPlaylists.length} 个`);
+        const playlists = repairIds(data.userPlaylists, 'pl');
+        prefs.set('userPlaylists', playlists);
+        results.push(`歌单: ${playlists.length} 个`);
       }
 
       if (Array.isArray(data.downloadTemplates)) {
-        prefs.set('downloadTemplates', data.downloadTemplates);
-        results.push(`下载模板: ${data.downloadTemplates.length} 个`);
+        const templates = repairIds(data.downloadTemplates, 'tpl');
+        prefs.set('downloadTemplates', templates);
+        results.push(`下载模板: ${templates.length} 个`);
       }
 
       if (data.activeTemplate !== undefined) {

@@ -571,7 +571,7 @@ async function openAlbumSongsModal(platform, albumId) {
   }
 }
 
-function doSearch(page = 1) {
+async function doSearch(page = 1) {
   const keyword = _dom.searchInput?.value?.trim();
   if (!keyword) { showToast('请输入搜索关键词', 'error'); return; }
 
@@ -583,7 +583,8 @@ function doSearch(page = 1) {
   }
 
   // 粘贴链接智能识别：输入是平台链接（含分享文案）→ 直接拉歌，不走关键词搜索
-  handleLinkInput(keyword);
+  // 必须 await：handleLinkInput 首个语句就是网络请求，同步读 _linkHandled 恒 false
+  await handleLinkInput(keyword);
   if (_linkHandled) { _linkHandled = false; return; }
 
   addSearchHistory(keyword);

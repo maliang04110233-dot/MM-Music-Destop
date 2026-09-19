@@ -113,3 +113,32 @@ test('mergeSnapshotData: 三类数据各走各的合并规则', () => {
   const m2 = mergeSnapshotData({}, undefined);
   assert.deepStrictEqual(m2.userPlaylists, []);
 });
+
+// ── 外部数据 id 修复（2026-09 审计：恶意快照 id 直达渲染层 onclick → XSS）──
+
+test('mergeTemplates: 远端快照中的非法 id 被修复为安全形式且条目保留', () => {
+  const remote = [{ id: "a');alert(1);//", name: 'evil', path: 'D:/music', updatedAt: 2 }];
+  const out = mergeTemplates([], remote);
+  assert.strictEqual(out.length, 1);
+  assert.doesNotMatch(String(out[0].id), /['";()]/, 'id 不得残留可注入 HTML/JS 的字符');
+  assert.match(String(out[0].id), /^[A-Za-z0-9_-]+$/);
+  assert.strictEqual(out[0].name, 'evil');
+});
+
+test('mergePlaylists: 本地+远端非法 id 同样修复，合法 id 原样保留', () => {
+  const local = [{ id: 'ok_1', updatedAt: 1, songs: [] }];
+  const remote = [{ id: '<script>', updatedAt: 1, songs: [] }];
+  const m = mergePlaylists(local, remote);
+  assert.ok(m.some(p => p.id === 'ok_1'), '合法 id 不应被改动');
+  assert.ok(m.every(p => /^[A-Za-z0-9_-]+$/.test(String(p.id))), '所有 id 必须安全');
+});
+
+test('repairIds: 非对象条目过滤、非法 id 换成带前缀的安全 id 且互不重复', () => {
+  const { repairIds } = require('../src/utils/syncMerge');
+  const out = repairIds([null, 'str', { id: 12345 }, { id: 'x y' }, { id: 'x y' }], 'tpl');
+  assert.strictEqual(out.length, 3);
+  assert.strictEqual(out[0].id, 12345, '纯数字 id 视为安全');
+  const fixed = out.slice(1).map(t => t.id);
+  assert.ok(fixed.every(id => /^tpl_fixed_\d+_\d+$/.test(String(id))), '修复 id 形如 tpl_fixed_*');
+  assert.strictEqual(new Set(fixed).size, 2, '修复后的 id 不得撞车');
+});

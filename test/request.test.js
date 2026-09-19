@@ -209,3 +209,43 @@ test('testAudioLink: 非法 URL 与连接失败均不抛异常', async () => {
   assert.strictEqual(empty.ok, false);
   assert.strictEqual(empty.reason, 'empty-url');
 });
+
+// ── SSRF：302 目标必须逐跳过 urlGuard（2026-09 审计：首跳有校验、重定向跳裸奔）──
+
+test('request: 302 重定向到内网地址被拒绝（ssrf-blocked）', async () => {
+  const { server: dest, port: destPort } = await startServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ internal: true }));
+  });
+  const { server, port } = await startServer((req, res) => {
+    res.writeHead(302, { Location: `http://127.0.0.1:${destPort}/secret` });
+    res.end();
+  });
+  try {
+    await assert.rejects(
+      request(`http://127.0.0.1:${port}/jump`, { retries: 0, timeout: 5000 }),
+      /ssrf-blocked/,
+    );
+  } finally {
+    server.close();
+    dest.close();
+  }
+});
+
+test('request: skipSsrf 显式放行时仍跟随重定向（本机测试场景）', async () => {
+  const { server: dest, port: destPort } = await startServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ reached: true }));
+  });
+  const { server, port } = await startServer((req, res) => {
+    res.writeHead(302, { Location: `http://127.0.0.1:${destPort}/ok` });
+    res.end();
+  });
+  try {
+    const result = await request(`http://127.0.0.1:${port}/jump`, { retries: 0, timeout: 5000, skipSsrf: true });
+    assert.deepStrictEqual(result, { reached: true });
+  } finally {
+    server.close();
+    dest.close();
+  }
+});

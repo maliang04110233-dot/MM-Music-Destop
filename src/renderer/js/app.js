@@ -163,14 +163,20 @@ const mockApi = {
 // 优先使用 preload 暴露的真实 musicAPI，否则回退 mock
 // 注意：const api 在模块加载时 window.musicAPI 可能还未就绪（ESM 加载顺序问题）
 // 所以用 let，在 init() 开头再确认一次
-// 用 Object.assign 合并：真实 musicAPI 的方法优先，缺失的方法回退 mock（防止 is not a function 崩溃）
+// 用 Object.assign 合并：真实 musicAPI 的方法优先；仅浏览器预览环境缺失的方法回退 mock
 function buildApi() {
   const real = (typeof window.musicAPI !== 'undefined' && window.musicAPI) ? window.musicAPI : null;
-  const merged = Object.assign({}, mockApi, real || {});
+  // mock 只服务于纯浏览器预览（vite http）场景；打包/Electron 是 file://，
+  // 桥接缺失时必须明确失败（checkAPI 会提示"音乐API未加载"），
+  // 绝不允许静默假成功（审计发现：mock 兜底让 preload 故障整体隐身）
+  const allowMock = location.protocol.startsWith('http');
+  const merged = allowMock ? Object.assign({}, mockApi, real || {}) : Object.assign({}, real || {});
   if (real) {
     logger.warn('[app.js] buildApi: 使用 REAL musicAPI, 方法数 =', Object.keys(merged).length);
+  } else if (allowMock) {
+    logger.warn('[app.js] buildApi: musicAPI undefined（浏览器预览，使用 mockApi）');
   } else {
-    logger.warn('[app.js] buildApi: musicAPI undefined, 使用 mockApi');
+    logger.error('[app.js] buildApi: musicAPI undefined 且非预览环境，桥接加载失败');
   }
   return merged;
 }

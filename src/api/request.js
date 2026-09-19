@@ -97,7 +97,16 @@ function _followRedirects(url, options, redirectCount = 0) {
         if (nextUrl.hostname !== parsedUrl.hostname) {
           options = { ...options, headers: stripCredentials(options.headers || {}) };
         }
-        return _followRedirects(nextUrl.toString(), options, redirectCount + 1).then(resolve).catch(reject);
+        // M8: 每一跳都过 urlGuard（与 _probeAudio 同规则）—— 平台直链 302
+        // 即可把请求送进内网，入口校验拦不住后续跳；skipSsrf 仅供本机测试
+        const proceed = () =>
+          _followRedirects(nextUrl.toString(), options, redirectCount + 1).then(resolve).catch(reject);
+        if (options.skipSsrf) return proceed();
+        return assertPublicHttpUrl(nextUrl.toString())
+          .then(g => g.ok
+            ? proceed()
+            : reject(new Error(`ssrf-blocked redirect: ${nextUrl.origin} (${g.reason})`)))
+          .catch(reject);
       }
       let data = '';
       res.on('data', chunk => data += chunk);

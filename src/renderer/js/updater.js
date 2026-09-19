@@ -89,7 +89,7 @@ async function checkForUpdate() {
 
 window.checkForUpdate = checkForUpdate;
 
-function downloadUpdate() {
+async function downloadUpdate() {
   _updateState.downloading = true;
   showUpdate(`
     <div style="padding:4px 0;">
@@ -100,6 +100,25 @@ function downloadUpdate() {
       <div id="update-progress-text" style="font-size:12px;color:var(--text-dim);margin-top:4px;">0%</div>
     </div>
   `);
+  // 真正触发主进程下载（进度经 update-download-progress 事件回填）；
+  // 此前这里只画了个 0% 假进度条，通道从未被调用，按钮形同虚设
+  try {
+    let result;
+    if (window.ipcRenderer && window.ipcRenderer.invoke) {
+      result = await window.ipcRenderer.invoke('download-update');
+    } else if (window.musicAPI && window.musicAPI.downloadUpdate) {
+      result = await window.musicAPI.downloadUpdate();
+    } else {
+      result = { success: false, error: '更新模块不可用' };
+    }
+    if (result && result.success === false) {
+      _updateState.downloading = false;
+      showUpdate(`<div style="color:var(--neon-orange);">下载失败：${result.error || '未知错误'}</div>`);
+    }
+  } catch (err) {
+    _updateState.downloading = false;
+    showUpdate(`<div style="color:var(--neon-orange);">下载失败：${err.message}</div>`);
+  }
 }
 
 function handleDownloadProgress(percent) {

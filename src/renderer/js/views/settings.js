@@ -717,9 +717,11 @@ function renderDownloadTemplates() {
 
   container.innerHTML = _dlTemplates.map(tpl => {
     const isActive = tpl.id === _dlActiveTemplate;
+    // id 可能是云同步/导入的外部数据 —— 与账号卡片同一约定：实参走 escQ、属性走 escAttr
+    const idArg = "'" + escQ(tpl.id) + "'";
     return `
-      <div class="dl-template-item ${isActive ? 'active' : ''}" data-id="${tpl.id}">
-        <div class="dl-template-info" onclick="setActiveTemplate('${tpl.id}')">
+      <div class="dl-template-item ${isActive ? 'active' : ''}" data-id="${escAttr(tpl.id)}">
+        <div class="dl-template-info" onclick="setActiveTemplate(${idArg})">
           <div class="dl-template-name">
             ${isActive ? '✅ ' : ''}${escHtml(tpl.name)}
             ${isActive ? '<span class="dl-template-badge">使用中</span>' : ''}
@@ -727,8 +729,8 @@ function renderDownloadTemplates() {
           <div class="dl-template-path">${escHtml(tpl.path)}</div>
         </div>
         <div class="dl-template-actions">
-          <button class="btn-icon" onclick="openDlTemplateEditor('${tpl.id}')" title="编辑">✏️</button>
-          <button class="btn-icon" onclick="deleteDlTemplate('${tpl.id}')" title="删除">🗑️</button>
+          <button class="btn-icon" onclick="openDlTemplateEditor(${idArg})" title="编辑">✏️</button>
+          <button class="btn-icon" onclick="deleteDlTemplate(${idArg})" title="删除">🗑️</button>
         </div>
       </div>`;
   }).join('');
