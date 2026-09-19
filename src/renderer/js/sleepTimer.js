@@ -1,14 +1,16 @@
 /**
- * 睡眠定时器 —— N 分钟后自动暂停播放
+ * 睡眠定时器 —— N 分钟后自动暂停播放，或「播完当前歌曲再停」（增量120）
  *
  * 核心是 createSleepTimer 纯工厂（定时器/时钟全部可注入，node 可单测）；
  * UI 侧把播放器「更多」菜单项接上预设档位弹层：
  *   到点只「暂停」不「停止」——复用 togglePlay 的暂停路径，
  *   播放进度与收听统计照常落盘，醒来点继续还能接着听。
+ *   「播完再停」是另一条轴：不看钟看曲，收口点在 player.js onAudioEnded。
  */
 
 import { showContextMenu } from './contextMenu.js';
 import { logger } from './logger.js';
+import { createEndStop } from './sleepOnEnd.js';
 
 const PRESETS = [15, 30, 45, 60, 90];
 const MAX_SLEEP_MIN = 1440; // 自定义上限：一天
@@ -65,16 +67,26 @@ function createSleepTimer({ setTimeoutFn, clearTimeoutFn, nowFn = Date.now, onFi
 // ── UI 单例 ──────────────────────────────────────────
 let _st = null;
 let _armedPreset = 0; // 仅用于菜单里给当前档位打 ✓（剩余分钟随时间漂移，档位不变）
+let _endStop = null; // 「播完当前歌曲再停」一次性闩（增量120）
 
 function _timer() {
   if (!_st) _st = createSleepTimer({ setTimeoutFn: setTimeout, clearTimeoutFn: clearTimeout, onFire: _fire });
   return _st;
 }
 
+function _es() {
+  if (!_endStop) _endStop = createEndStop({ onFire: _fireEndStop });
+  return _endStop;
+}
+
 function _renderVal() {
   const el = document.getElementById('btnSleepTimerVal');
+  if (!el) return;
+  const parts = [];
   const t = _st;
-  if (el) el.textContent = (t && t.active()) ? `${t.remainingMin()}分` : '';
+  if (t && t.active()) parts.push(`${t.remainingMin()}分`);
+  if (_endStop && _endStop.active()) parts.push('播完停');
+  el.textContent = parts.join(' · ');
 }
 
 function _fire() {
@@ -98,6 +110,34 @@ function _arm(minutes) {
   _renderVal();
 }
 
+/** 闩命中时的播报（真正的停播动作在 player.js onAudioEnded 里） */
+function _fireEndStop() {
+  showToast('⏹ 已按「播完当前歌曲再停」停止，不再切下一首', 'info', 3500);
+  _renderVal();
+}
+
+/** 菜单/面板入口：开或关「播完当前歌曲再停」 */
+function toggleEndStop() {
+  const s = _es();
+  try { if (typeof window.closePlayerMore === 'function') window.closePlayerMore(); } catch (_e) { /* 收起失败不挡切换 */ }
+  if (s.active()) {
+    s.cancel();
+    showToast('已取消「播完当前歌曲再停」', 'info', 2200);
+  } else {
+    s.arm();
+    showToast('⏹ 播完当前这首就停（不切下一首）', 'info', 2600);
+  }
+  _renderVal();
+}
+
+/**
+ * player.js onAudioEnded 消费口。
+ * @returns {boolean} true = 本次歌曲结束由睡眠闩收口，调用方不要再连播/循环
+ */
+function consumeSleepEndStop() {
+  return _es().consume();
+}
+
 function openSleepTimerMenu() {
   try { if (typeof window.closePlayerMore === 'function') window.closePlayerMore(); } catch (_e) { /* 收起失败不挡菜单 */ }
   const t = _timer();
@@ -106,6 +146,11 @@ function openSleepTimerMenu() {
     label: `${m} 分钟`,
     onClick: () => _arm(m),
   }));
+  items.push({
+    icon: _es().active() ? '✓' : '⏹',
+    label: '播完当前歌曲再停',
+    onClick: () => toggleEndStop(),
+  });
   items.push({ icon: '⌛', label: '自定义分钟…', onClick: () => openSleepCustomDialog() });
   items.push({ sep: true });
   items.push({
@@ -197,5 +242,10 @@ function openSleepCustomDialog() {
 // ── window 桥接 ───────────────────────────────────────
 window.openSleepTimerMenu = openSleepTimerMenu;
 window.openSleepCustomDialog = openSleepCustomDialog;
+window.toggleEndStop = toggleEndStop;
+window.consumeSleepEndStop = consumeSleepEndStop;
 
-export { createSleepTimer, openSleepTimerMenu, openSleepCustomDialog, parseSleepMinutes, PRESETS, MAX_SLEEP_MIN };
+export {
+  createSleepTimer, openSleepTimerMenu, openSleepCustomDialog, parseSleepMinutes,
+  toggleEndStop, consumeSleepEndStop, PRESETS, MAX_SLEEP_MIN,
+};

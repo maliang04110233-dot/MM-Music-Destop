@@ -867,6 +867,12 @@ export function onAudioEnded() {
   // 播放结束时清除进度记忆（已播完不需要恢复）
   const curSong = getState('currentPlaying');
   if (curSong) { try { savePlayProgress(curSong, 0); } catch (_e) { /* ignore */ } }
+  // 「播完当前歌曲再停」（增量120）排在连播/单曲循环之前：闩命中即收口，否则单曲循环永远等不到停
+  if (typeof window.consumeSleepEndStop === 'function' && window.consumeSleepEndStop()) {
+    updatePlayStatsOnStop();
+    audio.pause();
+    return;
+  }
   if (loopMode === 2) {
     // 修复：单曲循环时也要记录播放时长，避免统计丢失
     updatePlayStatsOnStop();

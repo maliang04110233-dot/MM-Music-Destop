@@ -136,6 +136,7 @@ const COMMANDS = [
   { id: 'lc-folders', icon: '🗂', group: '本地库', label: '按所在文件夹分组过滤曲库', keywords: ['folder', 'dir', 'path', '文件夹', '目录', '分组', 'group'], run: () => _call('showFolderGroups') },
 
   { id: 'misc-sleep', icon: '⏾', group: '其他', label: '睡眠定时（N 分钟后暂停）', keywords: ['sleep timer'], run: () => _call('openSleepTimerMenu') },
+  { id: 'misc-endstop', icon: '⏹', group: '其他', label: '播完当前歌曲再停（不切下一首）', keywords: ['sleep after song', 'end stop', '播完', '睡眠', '停止', '定时'], run: () => _call('toggleEndStop') },
   { id: 'misc-sort', icon: '↕', group: '其他', label: '切换搜索结果排序（时长/来源）', keywords: ['sort', '排序', 'duration'], run: () => _call('cycleSearchSort') },
   { id: 'misc-groups', icon: '🔗', group: '其他', label: '查看跨平台同名分组', keywords: ['cross platform', '分组', '同名', '聚合'], run: () => _call('showSongGroupsModal') },
   { id: 'misc-dism', icon: '🚫', group: '其他', label: '已屏蔽管理（不感兴趣列表，可恢复/清空）', keywords: ['dismiss', '屏蔽', '不感兴趣', 'blacklist'], run: () => _call('showDismissedManager') },
