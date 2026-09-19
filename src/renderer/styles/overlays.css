@@ -89,6 +89,18 @@
   border-color: color-mix(in srgb, var(--c-danger) 30%, transparent);
 }
 
+/* ── 设置页搜索（增量102）：只加减 .srch-hide，不碰条件隐藏行的内联样式 ── */
+.settings-search-input { flex: 0 1 260px; margin: 0 var(--sp-4); }
+.settings-nav-item { position: relative; }
+.settings-nav-hit {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  min-width: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--neon-blue); color: #04070d;
+  font-size: 10px; line-height: 16px; text-align: center;
+}
+.settings-page .srch-hide { display: none !important; }
+.settings-search-empty { padding: var(--sp-6); text-align: center; color: var(--neon-dim); font-size: 12px; }
+
 /* ── 主体布局 ────────────────────────────────────────── */
 .settings-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 

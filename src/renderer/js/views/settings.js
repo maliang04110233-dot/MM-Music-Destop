@@ -10,6 +10,7 @@ import {
   cookiePlaceholder,
   cookieHint,
 } from '../accountPlatforms.js';
+import { planSettingsSearch } from '../settingsSearch.js';
 
 // ── 平台账号清单 ─────────────────────────────────────
 // 账号页不再持有平台字面量：清单从主进程插件能力派生（插件实现 verifyCookie
@@ -87,6 +88,10 @@ function openSettings() {
   if (_settingsDom.overlay) _settingsDom.overlay.classList.remove('hidden');
   const firstNav = document.querySelector('.settings-nav-item');
   if (firstNav) switchSettingsTab('accounts', firstNav);
+  // 上次留下的搜索过滤会盖住本次要看的条目，开面板先复位
+  const searchInput = document.getElementById('settingsSearchInput');
+  if (searchInput) searchInput.value = '';
+  clearSettingsSearch();
   // 账号卡片按主进程平台清单动态渲染；同步渲染完再读状态，避免读到空卡片
   loadAccountPlatforms();
   // 并行加载所有设置
@@ -1028,6 +1033,99 @@ function rotateMcpToken() {
   showToast('令牌已重置，旧令牌立即失效，请在 Agent 配置中更新', 'warn', 5000);
 }
 
+// ── 设置项搜索（增量102：settingsSearch.js 纯函数的接线层）────────
+// DOM 拍平成 {title, blocks:[{kind,text}]} 喂纯函数，计划用 .srch-hide 类回写：
+// 只加减这个类、绝不碰行内 display —— 有些行本就按条件隐藏，清了会把它放出来。
+function _settingBlockNodes(el) {
+  if (el.classList.contains('setting-row')) {
+    return [{ kind: 'row', el, text: el.textContent || '' }];
+  }
+  const rows = Array.from(el.querySelectorAll('.setting-row'));
+  if (!rows.length) return [{ kind: 'other', el, text: el.textContent || '' }];
+  // 卡片容器整体随节显隐（text='' 永不命中），卡内行逐条匹配
+  const nodes = rows.map((r) => ({ kind: 'row', el: r, text: r.textContent || '' }));
+  nodes.push({ kind: 'other', el, text: '' });
+  return nodes;
+}
+
+function _parseSettingsPages() {
+  const parsed = [];
+  document.querySelectorAll('.settings-page').forEach((page) => {
+    const sections = [];
+    let cur = null;
+    const ensure = () => {
+      if (!cur) { cur = { title: null, titleEl: null, blocks: [] }; sections.push(cur); }
+      return cur;
+    };
+    Array.from(page.children).forEach((el) => {
+      if (el.classList.contains('settings-section-title')) {
+        cur = { title: (el.textContent || '').trim(), titleEl: el, blocks: [] };
+        sections.push(cur);
+      } else {
+        ensure().blocks.push(..._settingBlockNodes(el));
+      }
+    });
+    parsed.push({ page, sections });
+  });
+  return parsed;
+}
+
+function runSettingsSearch(term) {
+  const parsed = _parseSettingsPages();
+  const navItems = Array.from(document.querySelectorAll('.settings-nav-item'));
+  const emptyEl = document.getElementById('settingsSearchEmpty');
+  const plan = planSettingsSearch(
+    parsed.map((pg) => pg.sections.map((sec) => ({ title: sec.title, blocks: sec.blocks }))),
+    term
+  );
+  if (!plan) { clearSettingsSearch(); return; }
+  let switchTo = -1;
+  plan.pages.forEach((pp, pi) => {
+    const secs = parsed[pi].sections;
+    secs.forEach((sec, si) => {
+      const sp = pp.sections[si];
+      if (sec.titleEl) sec.titleEl.classList.toggle('srch-hide', !sp.keep);
+      sec.blocks.forEach((b, bi) => b.el.classList.toggle('srch-hide', !sp.visible[bi]));
+    });
+    const nav = navItems[pi];
+    if (nav) {
+      let badge = nav.querySelector('.settings-nav-hit');
+      if (pp.hits > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'settings-nav-hit';
+          nav.appendChild(badge);
+        }
+        badge.textContent = String(pp.hits);
+      } else if (badge) {
+        badge.remove();
+      }
+    }
+    if (pp.hits > 0 && switchTo < 0) switchTo = pi;
+  });
+  if (emptyEl) emptyEl.classList.toggle('hidden', plan.total > 0);
+  // 当前页没命中就自动跳到第一个有命中的 tab，省得用户手动翻页找结果
+  const active = document.querySelector('.settings-page:not(.hidden)');
+  const activeIdx = parsed.findIndex((pg) => pg.page === active);
+  if (switchTo >= 0 && activeIdx !== switchTo) {
+    const btn = navItems[switchTo];
+    if (btn) switchSettingsTab(btn.dataset.tab, btn);
+  }
+}
+
+function clearSettingsSearch() {
+  document.querySelectorAll('.settings-page .srch-hide').forEach((el) => el.classList.remove('srch-hide'));
+  document.querySelectorAll('.settings-nav-hit').forEach((el) => el.remove());
+  const emptyEl = document.getElementById('settingsSearchEmpty');
+  if (emptyEl) emptyEl.classList.add('hidden');
+}
+
+function focusSettingsSearch() {
+  openSettings();
+  const input = document.getElementById('settingsSearchInput');
+  if (input) { input.focus(); input.select(); }
+}
+
 // ── ES Module 导出 ──────────────────────────────────────
 export {
   openSettings,
@@ -1053,6 +1151,9 @@ export {
   loadSourceHealth,
   probeSourcesUI,
   applyTheme,
+  runSettingsSearch,
+  clearSettingsSearch,
+  focusSettingsSearch,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -1090,6 +1191,8 @@ window.saveDlTemplate = saveDlTemplate;
 window.setActiveTemplate = setActiveTemplate;
 window.deleteDlTemplate = deleteDlTemplate;
 window.applyTheme = applyTheme;
+window.runSettingsSearch = runSettingsSearch;
+window.focusSettingsSearch = focusSettingsSearch;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheSettingsDom();

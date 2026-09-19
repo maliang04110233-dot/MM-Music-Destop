@@ -103,6 +103,7 @@ const COMMANDS = [
   { id: 'dl-pause', icon: '⏸', group: '下载', label: '暂停 / 继续下载队列', keywords: ['pause queue'], run: () => _call('toggleQueuePause') },
   { id: 'dl-clear', icon: '🧹', group: '下载', label: '清空已完成任务', keywords: ['clear done'], run: () => _call('clearFinishedDownloads') },
   { id: 'dl-after', icon: '🏁', group: '下载', label: '设置「完成后动作」', keywords: ['shutdown', '关机', '退出'], run: () => _call('openAfterQueueMenu') },
+  { id: 'set-search', icon: '🔍', group: '通用', label: '搜索设置项（打开设置面板并聚焦搜索框）', keywords: ['settings', 'search', '设置', '搜索', '限速', '主题'], run: () => _call('focusSettingsSearch') },
   { id: 'dl-trend', icon: '📊', group: '下载', label: '下载趋势（近 14 天）', keywords: ['trend', '趋势', 'history stats'], run: () => _call('showTrendPanel') },
   { id: 'dl-diag', icon: '🆘', group: '下载', label: '诊断最近一个失败任务', keywords: ['diagnose', '失败', 'error'], run: () => _call('diagnoseLatestFailure') },
   { id: 'dl-diagall', icon: '🩹', group: '下载', label: '失败诊断报告（全部失败按原因聚合）', keywords: ['failure report', '批量诊断', '报告'], run: () => _call('openFailureReport') },

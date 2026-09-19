@@ -695,6 +695,8 @@
   <div class="settings-panel" id="settingsPanel">
     <div class="settings-header">
       <span class="settings-title" data-i18n="settings.title">⚙️ 设置</span>
+      <input type="text" class="setting-input settings-search-input" id="settingsSearchInput"
+        data-i18n="settings.searchPh" placeholder="🔍 搜索设置项（空格分词，多词同时满足）" oninput="runSettingsSearch(this.value)">
       <button class="settings-close" onclick="closeSettings()" aria-label="关闭">✕</button>
     </div>
 
@@ -1096,6 +1098,7 @@
           </div>
         </div>
 
+        <div class="settings-search-empty hidden" id="settingsSearchEmpty" data-i18n="settings.searchEmpty">没有匹配的设置项，换个词试试</div>
       </div>
     </div>
   </div>

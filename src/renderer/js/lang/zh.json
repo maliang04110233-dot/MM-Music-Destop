@@ -117,6 +117,8 @@
   "player.queue.hint": "点击歌曲播放以添加",
   "player.queue.clear": "🗑️ 清空",
   "settings.title": "⚙️ 设置",
+  "settings.searchPh": "🔍 搜索设置项（空格分词，多词同时满足）",
+  "settings.searchEmpty": "没有匹配的设置项，换个词试试",
   "settings.accounts": "账号",
   "settings.group.preferences": "偏好",
   "settings.download": "下载",

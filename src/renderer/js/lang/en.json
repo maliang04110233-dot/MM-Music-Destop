@@ -117,6 +117,8 @@
   "player.queue.hint": "Click a song to play",
   "player.queue.clear": "🗑️ Clear",
   "settings.title": "⚙️ Settings",
+  "settings.searchPh": "🔍 Search settings (space = AND)",
+  "settings.searchEmpty": "No matching settings",
   "settings.accounts": "Accounts",
   "settings.group.preferences": "Preferences",
   "settings.download": "Downloads",
