@@ -127,6 +127,7 @@ function renderQueue(queue) {
   const active = queue.filter(s => s.status !== 'done');
   badge.textContent = active.length;
   state.set('queueSnapshot', queue);
+  if (typeof window.refreshQueueSummary === 'function') window.refreshQueueSummary();
 
   // 按筛选过滤
   let filtered = queue;

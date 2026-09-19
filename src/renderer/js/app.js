@@ -55,6 +55,7 @@ import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
 import './diagnose.js';
+import './queueSummary.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
@@ -313,6 +314,7 @@ async function init() {
       if (el) el.style.width = progress + '%';
       const meta = document.getElementById('progmeta-' + id);
       if (meta && typeof dlProgressText === 'function') meta.textContent = dlProgressText(info);
+      if (typeof window.recordDlProgress === 'function') window.recordDlProgress(info);
     });
 
     api.onDownloadError(({ title, error, fatal }) => {

@@ -308,6 +308,7 @@
               <button class="filter-tab" onclick="setDownloadFilter('done')" data-i18n="download.filterDone">已完成</button>
               <button class="filter-tab" onclick="setDownloadFilter('error')" data-i18n="download.filterError">失败</button>
             </div>
+            <span class="queue-dl-meta" id="queueSummaryBar" style="display:none;margin-left:10px;white-space:nowrap;" title="队列实时总览：下载中/排队/总速度/预计剩余"></span>
             <div style="flex:1"></div>
             <button class="tab tab-neon" id="dlSelectBtn" onclick="enterDlSelectionMode()">☑ 选择</button>
             <button class="tab" onclick="clearFinishedDownloads()" data-i18n="download.clearDone">🗑 清空已完成</button>
