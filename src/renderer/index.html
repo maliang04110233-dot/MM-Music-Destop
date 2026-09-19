@@ -457,6 +457,7 @@
         </div>
         <input class="search-input" id="playlistCardFilter" placeholder="搜索歌单..." oninput="filterPlaylistCards()" style="max-width:170px;" title="按名称或描述过滤歌单卡片">
         <button class="tab" id="playlistCardSortBtn" title="切换歌单卡片排序：默认 / 名称 / 曲数 / 最近更新（收藏恒置顶）" onclick="cyclePlCardSort()">↕ 默认</button>
+        <button class="tab" title="选择 .m3u/.m3u8 文件，按本地曲库匹配（路径优先、曲名+歌手兜底）直接建为歌单，导入即可播" onclick="pickM3uForPlaylist()" style="white-space:nowrap;">📥 导入 m3u</button>
         <button class="btn-primary" onclick="openPlaylistEditor(null)" style="white-space:nowrap;">➕ 新建歌单</button>
       </div>
       <div id="userPlaylistGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;"></div>

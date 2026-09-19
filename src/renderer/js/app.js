@@ -56,6 +56,7 @@ import { queueToSongs, defaultQueuePlaylistName } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
+import './m3uToPlaylist.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
