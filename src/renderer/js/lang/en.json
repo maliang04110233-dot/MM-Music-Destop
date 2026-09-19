@@ -143,6 +143,8 @@
   "settings.general.qualityHint": "Default quality for search and download",
   "settings.general.concurrency": "Max concurrent downloads",
   "settings.general.concurrencyHint": "Number of tasks downloading at once (1-10)",
+  "settings.general.perSourceConcurrency": "Per-platform concurrency",
+  "settings.general.perSourceConcurrencyHint": "Concurrent downloads from the same platform (anti-throttle; never exceeds the global limit above)",
   "settings.general.speedLimit": "Download speed limit (KB/s)",
   "settings.general.speedLimitHint": "Speed cap per task, 0 = unlimited",
   "settings.general.filenameTmpl": "Filename template",
