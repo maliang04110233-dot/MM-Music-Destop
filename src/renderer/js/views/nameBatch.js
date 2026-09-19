@@ -9,6 +9,7 @@
  */
 
 import { normKey } from '../songGroups.js';
+import { parseM3u } from '../m3uImport.js';
 // resolveQuality 走 quality.js 挂载的 window 全局（同 batchImport.js 约定），
 // 避免 node 测试环境经 logger.js 顶层 window 炸链
 
@@ -70,6 +71,8 @@ function _ensureOverlay() {
           placeholder="每行一首「歌手 - 歌名」（也支持纯歌名 / 带序号 / 带格式后缀），最多 ${MAX_NAMES} 行&#10;逐行搜索匹配后预览，可勾选、🔄 换一换候选"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button class="edit-btn-cancel" id="nameBatchSearchBtn" onclick="runNameBatchSearch()">🔍 搜索匹配</button>
+          <button class="edit-btn-cancel" id="m3uImportBtn" title="选择 .m3u/.m3u8 文件，解析出歌单行后自动开始匹配">📁 导入 m3u 文件</button>
+          <input type="file" id="m3uFileInput" accept=".m3u,.m3u8,.txt" style="display:none;">
         </div>
         <div class="batch-import-status" id="nameBatchStatus"></div>
         <div id="nameBatchRows" style="max-height:320px;overflow:auto;margin-top:6px;"></div>
@@ -80,8 +83,31 @@ function _ensureOverlay() {
       </div>
     </div>`;
   el.addEventListener('click', (e) => { if (e.target === el && !_searching) closeNameBatch(); });
+  // m3u 导入走渲染层原生 <input type=file>+FileReader 即可读用户选中的文本文件，
+  // 不必新增主进程文件选择/读取 IPC
+  el.querySelector('#m3uImportBtn').addEventListener('click', () => {
+    el.querySelector('#m3uFileInput').click();
+  });
+  el.querySelector('#m3uFileInput').addEventListener('change', (e) => _onM3uFilePicked(e.target));
   document.body.appendChild(el);
   return el;
+}
+
+async function _onM3uFilePicked(input) {
+  const file = input.files && input.files[0];
+  input.value = ''; // 复位以便重选同一文件
+  if (!file || _searching) return;
+  try {
+    const text = await file.text();
+    const names = parseM3u(text, MAX_NAMES);
+    if (!names.length) { showToast('没从歌单里解析出可识别的歌曲行', 'warn', 2500); return; }
+    const ta = document.getElementById('nameBatchText');
+    if (ta) ta.value = names.join('\n');
+    showToast(`📁 「${file.name}」解析出 ${names.length} 首，开始匹配`, 'info', 2200);
+    runNameBatchSearch();
+  } catch (e) {
+    showToast('读取歌单文件失败: ' + e.message, 'error');
+  }
 }
 
 function _setStatus(text) {
@@ -225,4 +251,9 @@ if (typeof document !== 'undefined') {
   window.runNameBatchSearch = runNameBatchSearch;
   window.cycleNameBatchCand = cycleNameBatchCand;
   window.enqueueNameBatch = enqueueNameBatch;
+  window.openM3uImport = function () {
+    openNameBatch();
+    const fi = document.getElementById('m3uFileInput');
+    if (fi) fi.click();
+  };
 }
