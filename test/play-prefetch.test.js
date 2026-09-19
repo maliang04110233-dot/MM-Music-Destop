@@ -82,7 +82,7 @@ test('接线钉：player.js 命中缓存时跳过取流，未命中照原路', (
   const hitBlock = [
     '  const pkey = prefetchKeyOf(song);',
     '  const hit = pkey ? _prefetch.take(pkey) : null;',
-    '  if (hit) {',
+    '  // 预热时的音质与当前设置不一致（用户在剩余 20s 窗口里改过音质）则弃用缓存，走原路重取',
   ].join('\n');
   assert.ok(PLAYER_JS.includes(hitBlock), 'playSongByIdx 开头先查预热缓存');
   assert.ok(PLAYER_JS.includes('await loadAndPlay(song, hit.fileUrl, true);'), '命中就直接用预热好的直链开播');
@@ -92,6 +92,7 @@ test('接线钉：player.js 命中缓存时跳过取流，未命中照原路', (
   // 命中分支要作废在飞的旧取流请求，否则快速连点会让上一首的结果后到并覆盖
   assert.ok(PLAYER_JS.includes('++_playRequestId; // 命中预取：作废仍在飞的旧取流'));
   assert.ok(PLAYER_JS.includes('_startPrefetch();'), '有预热入口');
+  assert.ok(PLAYER_JS.includes('if (hit && hit.quality !== resolveQuality(song.source)) {'), '音质改过则弃用预热结果');
   assert.ok(PLAYER_JS.includes("if (!shouldPrefetchNow({ currentTime: audio.currentTime, duration: audio.duration })) return;"), 'timeupdate 里按窗口触发');
   assert.equal((PLAYER_JS.match(/api\.getDownloadUrlSmart\(song, quality\)/g) || []).length, 2, '原路 + 预热路各一次');
 });

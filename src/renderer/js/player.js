@@ -443,7 +443,10 @@ async function playSongByIdx(idx, song) {
   }
   const pkey = prefetchKeyOf(song);
   const hit = pkey ? _prefetch.take(pkey) : null;
-  if (hit) {
+  // 预热时的音质与当前设置不一致（用户在剩余 20s 窗口里改过音质）则弃用缓存，走原路重取
+  if (hit && hit.quality !== resolveQuality(song.source)) {
+    logger.error('预取音质与当前设置不符，弃用缓存:', hit.quality);
+  } else if (hit) {
     ++_playRequestId; // 命中预取：作废仍在飞的旧取流
     song._playedQuality = hit.quality;
     if (hit.altSource) song._altSource = hit.altSource;
