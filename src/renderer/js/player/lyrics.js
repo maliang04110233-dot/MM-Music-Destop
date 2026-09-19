@@ -5,6 +5,10 @@
  * 依赖全局：api、getState、setState、esc
  */
 
+import { showContextMenu } from '../contextMenu.js';
+import { copyText } from '../songShare.js';
+import { lrcToPlain } from '../lyricEdit.js';
+
 // ── 歌词设置（同步缓存，避免 timeupdate 热路径异步） ────
 let _lyricFontSize = 18;
 let _lyricOffset = 0;
@@ -120,7 +124,7 @@ export function parseLrc(lrc) {
     const subHtml = l.subText
       ? `<div class="lyric-sub-text">${esc(l.subText)}</div>`
       : '';
-    return `<div class="lyric-line${hasBilingual ? ' bilingual' : ''}" id="lyric-${i}">${wordSpans || '&nbsp;'}${subHtml}</div>`;
+    return `<div class="lyric-line${hasBilingual ? ' bilingual' : ''}" id="lyric-${i}" data-t-line="${l.t.toFixed(3)}">${wordSpans || '&nbsp;'}${subHtml}</div>`;
   }).join('');
   // 应用歌词字体大小
   if (lyricsArea) lyricsArea.style.fontSize = _lyricFontSize + 'px';
@@ -277,3 +281,41 @@ export function updateLyric(t) {
     });
   }
 }
+
+// ── 歌词区交互（增量60）：点行跳播 + 右键复制/编辑 ──────────
+function _lyricRowUnder(e) {
+  const la = document.getElementById('lyricsArea');
+  const row = e.target && e.target.closest ? e.target.closest('.lyric-line') : null;
+  return la && row && la.contains(row) ? row : null;
+}
+
+document.addEventListener('click', (e) => {
+  const row = _lyricRowUnder(e);
+  if (!row) return;
+  const t = parseFloat(row.getAttribute('data-t-line'));
+  if (!Number.isFinite(t)) return; // 静态歌词无时间戳，不接管
+  const audio = document.getElementById('audioPlayer');
+  if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+  // 行时间按带偏移的口径换算回播放时间：显示匹配用 playT+offset≥T
+  const target = Math.max(0, t - _lyricOffset / 1000);
+  audio.currentTime = Math.min(target, Math.max(0, audio.duration - 0.5));
+});
+
+document.addEventListener('contextmenu', (e) => {
+  const row = _lyricRowUnder(e);
+  if (!row) return;
+  const raw = String(getState('_currentLyricRaw') || '');
+  const items = [];
+  if (raw.trim()) {
+    const plain = lrcToPlain(raw);
+    if (plain) items.push({ icon: '💬', label: '复制歌词纯文本', onClick: () => copyText(plain).then(ok => showToast(ok ? '歌词已复制' : '复制失败', ok ? 'success' : 'error')) });
+    if (raw.includes('[')) items.push({ icon: '⏱', label: '复制带时间戳歌词', onClick: () => copyText(raw).then(ok => showToast(ok ? '带时间戳歌词已复制' : '复制失败', ok ? 'success' : 'error')) });
+  }
+  if (typeof window.openLyricEditor === 'function') {
+    if (items.length) items.push({ sep: true });
+    items.push({ icon: '✏️', label: '编辑歌词', onClick: () => window.openLyricEditor() });
+  }
+  if (!items.length) return;
+  e.preventDefault();
+  showContextMenu(e.clientX, e.clientY, items);
+});

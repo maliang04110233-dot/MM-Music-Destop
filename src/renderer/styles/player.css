@@ -534,6 +534,10 @@
   text-align: center;
   transition: color var(--dur-2) var(--ease), font-size var(--dur-2) var(--ease);
 }
+/* 带时间戳的行可点击跳播（增量60），静态/占位行无此属性 */
+.lyric-line[data-t-line] {
+  cursor: pointer;
+}
 .lyric-line.active {
   color: var(--accent-ui);
   font-size: var(--fs-md);

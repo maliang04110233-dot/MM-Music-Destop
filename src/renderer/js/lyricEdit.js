@@ -8,9 +8,9 @@
 
 const MAX_LYRIC_CHARS = 100 * 1024;
 
-/** CRLF/CR → LF，并钳到长度上限（防手滑粘贴整本书） */
+/** CRLF/CR → LF，剥 BOM（write-local-lrc 读回带 EF BB BF），并钳到长度上限 */
 function normalizeLrcText(text) {
-  return String(text == null ? '' : text).replace(/\r\n?/g, '\n').slice(0, MAX_LYRIC_CHARS);
+  return String(text == null ? '' : text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').slice(0, MAX_LYRIC_CHARS);
 }
 
 /** 覆写优先（非空即覆盖网络歌词）；键缺失/空文本退回 fetched */
@@ -49,4 +49,15 @@ function parseOverrideMap(raw) {
   } catch (_e) { return {}; }
 }
 
-export { MAX_LYRIC_CHARS, normalizeLrcText, pickLyricText, overridePatch, parseOverrideMap };
+/**
+ * LRC → 纯文本歌词：剥掉行首全部 [] 标签（时间戳/元信息/双语标记），
+ * 只留有正文的行——复制歌词发朋友圈不再带一串方括号。
+ */
+function lrcToPlain(text) {
+  return normalizeLrcText(text).split('\n')
+    .map(line => line.replace(/^(?:\[[^\]\n]*\]\s*)+/, '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+export { MAX_LYRIC_CHARS, normalizeLrcText, pickLyricText, overridePatch, parseOverrideMap, lrcToPlain };
