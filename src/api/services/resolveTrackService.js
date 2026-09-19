@@ -178,9 +178,12 @@ function createResolveTrackService({
       return normalizeTrackResult({ error: '参数无效：缺少歌曲 id/source', code: 'INVALID_ARGS' });
     }
 
-    // 1. _altSource 记忆：上次换源成功的源先试
+    // 1. _altSource 记忆：上次换源成功的源先试。
+    //    但本源已配置 Cookie 时跳过记忆、优先回试本源 —— 否则用户补了
+    //    登录/Cookie 后，队列里带着旧换源记忆的歌（_altSource 随 play-queue
+    //    持久化）会永远绕回别家源，本源 VIP 明明已可用却不再被尝试。
     const alt = rawSong && rawSong._altSource;
-    if (alt && alt.source && alt.id && alt.source !== song.source) {
+    if (alt && alt.source && alt.id && alt.source !== song.source && !hasCookie(song.source)) {
       const r = await trySource(String(alt.id), alt.source, quality);
       if (isTrackSuccess(r)) {
         return normalizeTrackResult({

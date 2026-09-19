@@ -249,6 +249,18 @@ test('resolve: _altSource 记忆命中 ⇒ 直接返回，并标记 fromAltMemor
   assert.deepStrictEqual(getUrl.calls, [['kugou', 'k9']]);
 });
 
+test('resolve: 本源已配 Cookie ⇒ 跳过 _altSource 记忆，先回试本源（登录后回正源）', async () => {
+  const song = { ...SONG, _altSource: { source: 'kugou', id: 'k9' } };
+  const { svc, getUrl } = build(
+    { 'netease:1': okResult({ url: 'https://cdn/origin.mp3' }), 'kugou:k9': okResult() },
+    { hasCookie: (p) => p === 'netease' },
+  );
+  const r = await svc.resolve(song, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/origin.mp3', '应返回本源直链而非记忆源');
+  assert.strictEqual(r.fromAltMemory, undefined);
+  assert.deepStrictEqual(getUrl.calls, [['netease', '1']], '有 Cookie 时不应先请求记忆源');
+});
+
 test('resolve: _altSource 记忆失效 ⇒ 回落正常流程（本源 → 换源）', async () => {
   const song = { ...SONG, _altSource: { source: 'kugou', id: 'k9' } };
   const cand = { id: 'w1', source: 'kuwo', title: 't' };
