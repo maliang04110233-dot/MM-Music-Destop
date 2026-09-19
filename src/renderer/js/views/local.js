@@ -26,6 +26,7 @@ import { buildExportSongs } from '../localExport.js';
 import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from '../favorites.js';
 import { favOnlyFilter } from '../localFavFilter.js';
+import { listFormats, nextFmtMode, fmtModeLabel, filterByFmt } from '../localFormatFilter.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 
@@ -163,6 +164,7 @@ async function _doScanLocalDir() {
 // ── 过滤 ──────────────────────────────────────────────
 let _localSortMode = 'default'; // 本地曲库排序（会话级，扫描/过滤后都保持生效）
 let _localFavOnly = false;      // 仅看收藏开关（会话级，增量89）
+let _localFmtMode = 'all';      // 格式过滤循环态（会话级，增量107）
 
 /** 统一排序入口：plays-desc 需要注入 stats 的播放计数表 */
 function _sortL(songs) {
@@ -174,6 +176,7 @@ function filterLocalSongs() {
   const kw = document.getElementById('localFilter').value.trim().toLowerCase();
   let songs = getState('localSongs') || [];
   if (_localFavOnly) songs = favOnlyFilter(songs, getState('favoriteKeys'));
+  if (_localFmtMode !== 'all') songs = filterByFmt(songs, _localFmtMode);
   if (kw) {
     songs = songs.filter(s =>
       (s.title || '').toLowerCase().includes(kw) ||
@@ -199,6 +202,14 @@ function toggleLocalFavOnly() {
 
 // 收藏钩子（favorites.js 在本地歌收藏切换成功后回调）：仅收藏视图即时重过滤
 window.onLocalFavToggle = () => { if (_localFavOnly) filterLocalSongs(); };
+
+/** 格式过滤循环：只在曲库实际存在的扩展名间走一格，按钮文案同步 */
+function cycleLocalFmt() {
+  _localFmtMode = nextFmtMode(_localFmtMode, listFormats(getState('localSongs') || []));
+  const btn = document.getElementById('localFmtBtn');
+  if (btn) btn.textContent = fmtModeLabel(_localFmtMode);
+  filterLocalSongs();
+}
 
 /** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
 function cycleLocalSort() {
@@ -1292,6 +1303,7 @@ window.scanLocalDir = scanLocalDir;
 window.filterLocalSongs = filterLocalSongs;
 window.cycleLocalSort = cycleLocalSort;
 window.toggleLocalFavOnly = toggleLocalFavOnly;
+window.cycleLocalFmt = cycleLocalFmt;
 window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;

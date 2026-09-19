@@ -88,6 +88,7 @@ const COMMANDS = [
   { id: 'pl-msave', icon: '📥', group: '播放', label: '把平台歌单/专辑弹层勾选歌存为我的歌单（在线引用不下载）', keywords: ['save', '平台歌单', '弹层', '存为歌单', '专辑'], run: () => _call('savePlModalAsPlaylist') },
   { id: 'pl-bulkrm', icon: '☑', group: '播放', label: '歌单详情多选模式：勾选后批量移出歌单', keywords: ['bulk remove', '多选', '批量', '移除', '歌单'], run: () => _call('togglePlBulkMode') },
   { id: 'pl-dlfilt', icon: '⬇', group: '下载', label: '歌单详情切换下载状态过滤（全部/未下载/已下载）', keywords: ['playlist downloaded filter', '未下载', '已下载', '过滤', '歌单'], run: () => _call('cyclePlDlFilter') },
+  { id: 'loc-fmt', icon: '🎞', group: '下载', label: '本地曲库格式过滤循环（全部 / 曲库实际存在的格式）', keywords: ['local', 'format', '格式', '本地', 'flac', 'mp3', '过滤'], run: () => { _goto('local'); _call('cycleLocalFmt'); } },
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
   { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },
   { id: 'pl-dup', icon: '📋', group: '播放', label: '当前歌单另存副本（整单复制建新歌单，撞名自动让位）', keywords: ['duplicate playlist', 'copy', '副本', '另存', '备份', '歌单'], run: () => _call('duplicateCurrentPlaylist') },
