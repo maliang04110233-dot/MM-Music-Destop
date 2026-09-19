@@ -22,6 +22,7 @@ import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
 import { mergeSongLists } from '../playlistMerge.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 import { sanitizeFileBase } from '../artistGroups.js';
+import { plSongKey, splitBySelection, keysOf } from '../plBulkRemove.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -32,6 +33,9 @@ let _plCardSortMode = ''; // 歌单页卡片排序（会话级，收藏系统单
 let _plCardKw = ''; // 歌单页卡片过滤词（会话级，先过滤后排序）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _playlistPlayRequestId = 0;
+// 增量99：详情弹层多选移除（会话级）。键是歌的身份（id:source），过滤/排序/重渲染不丢选中
+let _plSelMode = false;
+let _plSelKeys = new Set();
 
 // ── 加载歌单列表 ──────────────────────────────────────
 async function loadUserPlaylists() {
@@ -96,6 +100,7 @@ async function openPlaylistDetail(playlistId) {
     _plSongKw = '';
     _plSortMode = '';
     _syncPlSortBtn();
+    _resetPlSel();
     const filterInput = document.getElementById('playlistSongFilter');
     if (filterInput) filterInput.value = '';
     const playlists = getState('userPlaylists') || [];
@@ -117,6 +122,7 @@ function closePlaylistDetail() {
   document.getElementById('playlistDetailModal').classList.add('hidden');
   _currentPlaylistId = null;
   _currentDetailSongs = [];
+  _resetPlSel();
 }
 
 // ── 渲染歌单歌曲列表 ──────────────────────────────────
@@ -124,6 +130,7 @@ function renderPlaylistDetailSongs(songs) {
   const list = document.getElementById('playlistDetailSongs');
   if (!list) return;
   _currentDetailSongs = songs || [];
+  _syncPlSelBtns(); // 计数/显隐跟渲染走，早退分支也不留脏按钮
   dlEnsureHistoryLoaded(); // 跨会话"已下载"懒回填，完成后经监听器重渲染徽标
 
   if (!songs || songs.length === 0) {
@@ -139,6 +146,7 @@ function renderPlaylistDetailSongs(songs) {
   }
   list.innerHTML = pairs.map(({ song, i: idx }) => `
     <div class="song-row" data-pidx="${idx}" ondblclick="playPlaylistSong(${idx})">
+      ${_plSelMode ? `<input type="checkbox" class="pl-sel-chk" ${_plSelKeys.has(plSongKey(song)) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="togglePlSongSel(${idx})" title="勾选后可一键移出歌单" style="width:15px;height:15px;flex-shrink:0;cursor:pointer;margin-right:6px;">` : ''}
       ${reorderable ? '<span class="pl-drag-handle" draggable="true" title="按住拖动排序">⠿</span>' : ''}
       <span class="song-num" style="color:var(--neon-dim);font-size:12px;width:22px;text-align:right;flex-shrink:0;">${idx + 1}</span>
       <div class="song-info">
@@ -398,6 +406,85 @@ async function removeSongFromPlaylist(songId, source) {
       }
     }
   } catch (e) {
+    showToast('移除失败: ' + e.message, 'error');
+  }
+}
+
+// ── 多选批量移除（增量99）───────────────────────────────
+function _resetPlSel() {
+  _plSelMode = false;
+  _plSelKeys = new Set();
+  _syncPlSelBtns();
+}
+
+function _syncPlSelBtns() {
+  const modeBtn = document.getElementById('plSelModeBtn');
+  const allBtn = document.getElementById('plSelAllBtn');
+  const rmBtn = document.getElementById('plSelRemoveBtn');
+  if (modeBtn) modeBtn.textContent = _plSelMode ? '⬚ 退出多选' : '☑ 多选';
+  if (allBtn) allBtn.classList.toggle('hidden', !_plSelMode);
+  if (rmBtn) {
+    rmBtn.classList.toggle('hidden', !_plSelMode);
+    rmBtn.textContent = `🗑 移除 ${_plSelKeys.size}`;
+  }
+}
+
+function togglePlBulkMode() {
+  _plSelMode = !_plSelMode;
+  if (!_plSelMode) _plSelKeys = new Set();
+  renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
+function togglePlSongSel(idx) {
+  const song = _currentDetailSongs[idx];
+  if (!song) return;
+  const k = plSongKey(song);
+  if (_plSelKeys.has(k)) _plSelKeys.delete(k);
+  else _plSelKeys.add(k);
+  renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
+/** 全选/取消全选「当前过滤视图」的歌（隐形歌不动） */
+function plSelectAllVisible() {
+  const pairs = sortPlaylistPairs(filterPlaylistSongs(_currentDetailSongs, _plSongKw), _plSortMode);
+  const vis = keysOf(pairs.map(p => p.song));
+  if (!vis.size) { showToast('当前视图没有歌曲', 'info'); return; }
+  const allOn = [...vis].every(k => _plSelKeys.has(k));
+  for (const k of vis) {
+    if (allOn) _plSelKeys.delete(k);
+    else _plSelKeys.add(k);
+  }
+  renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
+async function removeCheckedFromPlaylist() {
+  if (!_plSelKeys.size) { showToast('先勾选要移除的歌曲', 'warn'); return; }
+  if (!_currentPlaylistId) return;
+  const playlists = getState('userPlaylists') || [];
+  const pl = playlists.find(p => p.id === _currentPlaylistId);
+  if (!pl) return;
+  const { keep, removed } = splitBySelection(pl.songs || [], _plSelKeys);
+  if (!removed.length) { _plSelKeys = new Set(); _syncPlSelBtns(); return; }
+  if (!confirm(`确认把 ${removed.length} 首歌移出歌单「${pl.name}」？（不会删除已下载的文件）`)) return;
+  try {
+    const r = await api.saveUserPlaylist({
+      id: pl.id, name: pl.name, desc: pl.desc || '', cover: pl.cover || '', songs: keep,
+    });
+    if (r && r.success && r.playlist) {
+      const i = playlists.findIndex(p => p.id === pl.id);
+      if (i >= 0) {
+        playlists[i] = r.playlist;
+        setState('userPlaylists', playlists);
+      }
+      _plSelKeys = new Set();
+      renderPlaylistDetailSongs(r.playlist.songs || []);
+      renderPlaylistList(playlists);
+      showToast(`🗑 已移出 ${removed.length} 首`, 'success');
+    } else {
+      showToast((r && r.error) || '移除失败', 'error');
+    }
+  } catch (e) {
+    logger.error('[removeCheckedFromPlaylist] 失败:', e);
     showToast('移除失败: ' + e.message, 'error');
   }
 }
@@ -999,3 +1086,7 @@ window.quickAddToPlaylist = quickAddToPlaylist;
 window.closePlaylistSelectModal = closePlaylistSelectModal;
 window.addToSelectedPlaylist = addToSelectedPlaylist;
 window.initPlaylistView = initPlaylistView;
+window.togglePlBulkMode = togglePlBulkMode;
+window.togglePlSongSel = togglePlSongSel;
+window.plSelectAllVisible = plSelectAllVisible;
+window.removeCheckedFromPlaylist = removeCheckedFromPlaylist;
