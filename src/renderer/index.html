@@ -1173,6 +1173,7 @@
       <button class="playlist-modal-close" onclick="closePlaylistDetail()">✕</button>
     </div>
     <div style="padding:4px 16px;font-size:12px;color:var(--neon-dim);" id="playlistDetailDesc">暂无描述</div>
+    <input type="text" class="setting-input" id="playlistSongFilter" placeholder="🔍 过滤本歌单歌曲（标题/歌手/专辑）" style="margin:4px 16px 0;width:calc(100% - 32px);box-sizing:border-box;" oninput="onPlaylistSongFilterInput(this.value)">
     <div class="playlist-modal-body" id="playlistDetailSongs" style="flex:1;min-height:0;overflow-y:auto;padding:12px 16px 16px;"></div>
   </div>
 </div>

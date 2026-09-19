@@ -16,10 +16,12 @@ import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlSt
 import { openSongRowMenu } from '../songMenu.js';
 import { moveInList } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
+import { filterPlaylistSongs } from '../playlistFilter.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
 let _currentDetailSongs = [];
+let _plSongKw = ''; // 详情弹层会话级过滤词（切歌单/关闭即清）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _playlistPlayRequestId = 0;
 
@@ -76,6 +78,9 @@ function renderPlaylistList(playlists) {
 async function openPlaylistDetail(playlistId) {
   try {
     _currentPlaylistId = playlistId;
+    _plSongKw = '';
+    const filterInput = document.getElementById('playlistSongFilter');
+    if (filterInput) filterInput.value = '';
     const playlists = getState('userPlaylists') || [];
     const pl = playlists.find(p => p.id === playlistId);
     if (!pl) return;
@@ -110,7 +115,12 @@ function renderPlaylistDetailSongs(songs) {
   }
 
   const reorderable = songs.length > 1;
-  list.innerHTML = songs.map((song, idx) => `
+  const pairs = filterPlaylistSongs(songs, _plSongKw);
+  if (!pairs.length) {
+    list.innerHTML = `<div class="empty-hint" style="text-align:center;padding:30px 0;">没有匹配「${esc(_plSongKw.trim())}」的歌曲</div>`;
+    return;
+  }
+  list.innerHTML = pairs.map(({ song, i: idx }) => `
     <div class="song-row" data-pidx="${idx}" ondblclick="playPlaylistSong(${idx})">
       ${reorderable ? '<span class="pl-drag-handle" draggable="true" title="按住拖动排序">⠿</span>' : ''}
       <span class="song-num" style="color:var(--neon-dim);font-size:12px;width:22px;text-align:right;flex-shrink:0;">${idx + 1}</span>
@@ -569,6 +579,12 @@ async function addToPlaylistAndNotify(playlistId, song) {
   }
 }
 
+// ── 详情过滤框（藏行不重排，行索引恒为原始下标）────────
+function onPlaylistSongFilterInput(v) {
+  _plSongKw = String(v || '');
+  if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
 // ── 初始化 ────────────────────────────────────────────
 function initPlaylistView() {
   loadUserPlaylists();
@@ -586,6 +602,7 @@ window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
 window.useFirstSongCover = useFirstSongCover;
+window.onPlaylistSongFilterInput = onPlaylistSongFilterInput;
 window.closePlaylistEditor = closePlaylistEditor;
 window.savePlaylist = savePlaylist;
 window.editPlaylist = editPlaylist;
