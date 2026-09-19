@@ -19,6 +19,7 @@ import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
 import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
 import { mergeSongLists } from '../playlistMerge.js';
+import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 import { sanitizeFileBase } from '../artistGroups.js';
 
 // ── 状态 ─────────────────────────────────────────────
@@ -930,6 +931,22 @@ function initPlaylistView() {
   loadUserPlaylists();
 }
 
+// 🎯 定位正在播放的歌：行选择器 data-pidx 存的是存储序下标，排序视图也能命中
+function locatePlayingInDetail() {
+  if (!_currentPlaylistId) { showToast('先打开一个歌单', 'info'); return; }
+  const cur = typeof getState === 'function' ? getState('currentPlaying') : null;
+  const idx = indexOfPlaying(_currentDetailSongs, cur);
+  if (idx < 0) { showToast('正在播放的歌不在本歌单', 'info'); return; }
+  let row = document.querySelector(`#playlistDetailSongs .song-row[data-pidx="${idx}"]`);
+  if (!row && _plSongKw) { // 被关键词过滤藏了：清过滤重渲染后再找
+    _plSongKw = '';
+    renderPlaylistDetailSongs(_currentDetailSongs);
+    row = document.querySelector(`#playlistDetailSongs .song-row[data-pidx="${idx}"]`);
+  }
+  if (!row) { showToast('该行当前不在可见列表（检查排序/过滤）', 'info'); return; }
+  flashRow(row);
+}
+
 // ── window 桥接（HTML onclick / 跨模块调用）────────────
 window.loadUserPlaylists = loadUserPlaylists;
 window.openPlaylistDetail = openPlaylistDetail;
@@ -943,6 +960,7 @@ window.openPlaylistMergePicker = openPlaylistMergePicker;
 window.closePlaylistMergePicker = closePlaylistMergePicker;
 window.mergePlaylistIntoCurrent = mergePlaylistIntoCurrent;
 window.dedupeCurrentPlaylist = dedupeCurrentPlaylist;
+window.locatePlayingInDetail = locatePlayingInDetail;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;

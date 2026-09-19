@@ -25,6 +25,7 @@ import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
 import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { copyText } from '../songShare.js';
+import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -690,6 +691,21 @@ async function copyLocalPath(fp) {
   showToast(ok ? '📋 文件路径已复制' : '复制失败，请检查剪贴板权限', ok ? 'success' : 'error');
 }
 
+// 🎯 定位正在播放的歌：虚拟滚动先跳过去，重绘前后各闪一次（后一次兜底）
+function locatePlayingLocal() {
+  const cur = typeof getState === 'function' ? getState('currentPlaying') : null;
+  const list = (typeof getState === 'function' && getState('localFiltered')) || [];
+  const idx = indexOfPlaying(list, cur);
+  if (idx < 0) { showToast('正在播放的歌不在当前曲库视图（未在播放或已被过滤）', 'info', 2500); return; }
+  if (_localVirtualScroller) _localVirtualScroller.scrollToIndex(idx);
+  const flash = () => {
+    const row = document.querySelector(`.local-row[data-idx="${idx}"]`);
+    if (row) flashRow(row);
+  };
+  flash();
+  setTimeout(flash, 200);
+}
+
 // ── 全库音质扫描 ─────────────────────────────────────
 let _probeScanCancelled = false;
 function cancelProbeScan() { _probeScanCancelled = true; }
@@ -1247,6 +1263,7 @@ export {
   openBatchRename,
   executeBatchRename,
   batchDownloadCovers,
+  locatePlayingLocal,
   localCleanup,
 }
 
@@ -1259,6 +1276,7 @@ window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;
 window.toggleLocalView = toggleLocalView;
 window.playLocalSong = playLocalSong;
+window.locatePlayingLocal = locatePlayingLocal;
 window.refetchCover = refetchCover;
 window.batchFetchCovers = batchFetchCovers;
 window.batchFetchLyrics = batchFetchLyrics;
