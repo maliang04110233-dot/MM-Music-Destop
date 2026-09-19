@@ -501,9 +501,11 @@ async function deletePlaylist(playlistId) {
   }
 }
 
-// ── 快速添加到歌单（搜索结果右键等场景调用）────────────
-async function quickAddToPlaylist(song) {
+// ── 快速添加到歌单（搜索结果右键/批量工具条调用；单曲或数组皆可）──
+async function quickAddToPlaylist(songOrList) {
   try {
+    const list = Array.isArray(songOrList) ? songOrList.filter(Boolean) : [songOrList];
+    if (!list.length) return;
     const playlists = getState('userPlaylists') || [];
     if (playlists.length === 0) {
       showToast('请先创建一个歌单', 'warn');
@@ -511,10 +513,11 @@ async function quickAddToPlaylist(song) {
       return;
     }
     if (playlists.length === 1) {
-      await addToPlaylistAndNotify(playlists[0].id, song);
+      if (list.length === 1) await addToPlaylistAndNotify(playlists[0].id, list[0]);
+      else await _addListToPlaylist(playlists[0].id, list);
       return;
     }
-    showPlaylistSelectModal(song, playlists);
+    showPlaylistSelectModal(list, playlists);
   } catch (e) {
     logger.error('[quickAddToPlaylist] error:', e);
   }
@@ -550,12 +553,44 @@ async function addToSelectedPlaylist(playlistId) {
     const modal = document.getElementById('playlistSelectModal');
     const songStr = modal.dataset.song;
     if (!songStr) return;
-    const song = JSON.parse(songStr);
-    await addToPlaylistAndNotify(playlistId, song);
+    const raw = JSON.parse(songStr);
+    const list = Array.isArray(raw) ? raw : [raw];
+    if (!list.length) return;
+    if (list.length === 1) await addToPlaylistAndNotify(playlistId, list[0]);
+    else await _addListToPlaylist(playlistId, list);
     closePlaylistSelectModal();
   } catch (e) {
     logger.error('[addToSelectedPlaylist] error:', e);
   }
+}
+
+/** 批量逐条加歌（引擎端自带 id+source 去重=skipped）；一次汇总 toast */
+async function _addListToPlaylist(playlistId, list) {
+  let added = 0, skipped = 0, failed = 0, lastPl = null;
+  for (const song of list) {
+    try {
+      const r = await api.addToUserPlaylist(playlistId, song);
+      if (r && r.success) {
+        if (r.skipped) skipped++;
+        else { added++; if (r.playlist) lastPl = r.playlist; }
+      } else failed++;
+    } catch (_e) { failed++; }
+  }
+  if (lastPl) {
+    const playlists = getState('userPlaylists') || [];
+    const idx = playlists.findIndex(p => p.id === playlistId);
+    if (idx >= 0) {
+      playlists[idx] = lastPl;
+      setState('userPlaylists', playlists);
+      renderPlaylistList(playlists);
+      if (_currentPlaylistId === playlistId) renderPlaylistDetailSongs(lastPl.songs || []);
+    }
+  }
+  const parts = [];
+  if (added) parts.push(`已加入 ${added} 首`);
+  if (skipped) parts.push(`跳过已在歌单 ${skipped} 首`);
+  if (failed) parts.push(`失败 ${failed} 首`);
+  showToast(parts.length ? parts.join('，') : '没有歌曲被加入', added ? 'success' : 'warn');
 }
 
 async function addToPlaylistAndNotify(playlistId, song) {

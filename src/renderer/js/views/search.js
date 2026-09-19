@@ -1074,6 +1074,26 @@ function batchPlay() {
   showToast(`▶ 将播放 ${playList.length} 首歌曲`, 'info', 2000);
 }
 
+/** 批量：追加到播放队列尾部（不切换当前播放） */
+function batchAddToQueue() {
+  const selected = getState('selectedSongs') || new Set();
+  const songs = getState('songs') || [];
+  if (!selected.size) { showToast('请先勾选歌曲', 'warn'); return; }
+  const picks = Array.from(selected).sort((a, b) => a - b).map(i => songs[i]).filter(Boolean);
+  if (!picks.length) return;
+  setState('playQueue', (getState('playQueue') || []).concat(picks));
+  showToast(`➕ 已加入播放队列 ${picks.length} 首`, 'success');
+}
+
+/** 批量：加入用户歌单（复用歌单选择弹层，quickAddToPlaylist 已支持数组） */
+function batchAddToPlaylist() {
+  const selected = getState('selectedSongs') || new Set();
+  const songs = getState('songs') || [];
+  const picks = Array.from(selected).sort((a, b) => a - b).map(i => songs[i]).filter(Boolean);
+  if (!picks.length) { showToast('请先勾选歌曲', 'warn'); return; }
+  window.quickAddToPlaylist(picks);
+}
+
 // ── 单曲下载 ─────────────────────────────────────────
 async function addDownload(idx, qualityOverride) {
   try {
@@ -1250,6 +1270,8 @@ window.toggleSongSelect = toggleSongSelect;
 window.toggleSelectAllSongs = toggleSelectAllSongs;
 window.batchDownload = batchDownload;
 window.batchPlay = batchPlay;
+window.batchAddToQueue = batchAddToQueue;
+window.batchAddToPlaylist = batchAddToPlaylist;
 window.openAlbumDetail = openAlbumDetail;
 window.downloadAlbum = downloadAlbum;
 window.playSong = playSong;
