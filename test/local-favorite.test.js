@@ -74,7 +74,8 @@ test('接线钉桩：favorites 桥 + local.js fav/favOn 注入 + 行菜单 ♥ �
   assert.match(FAV_JS, /window\.toggleLocalFavorite = toggleLocalFavorite;/);
   assert.match(FAV_JS, /registerFavSong\(s\);\r?\n\s*return toggleFavoriteByKey\(favKey\('local', s\.filePath\)\);/);
   assert.match(LOCAL_JS, /import \{ isLocalFavorite, toggleLocalFavorite \} from '\.\.\/favorites\.js';/);
-  assert.match(LOCAL_JS, /fav: \(song\) => toggleLocalFavorite\(song\)/);
+  // 89 起 fav 动作包了一层 Promise.resolve(...).finally(仅收藏态重过滤)
+  assert.match(LOCAL_JS, /Promise\.resolve\(toggleLocalFavorite\(song\)\)/);
   assert.match(LOCAL_JS, /favOn: isLocalFavorite\(s\)/);
   assert.match(MENU_JS, /actions\.favOn \? '💔' : '♥'/);
 });

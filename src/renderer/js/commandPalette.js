@@ -108,6 +108,7 @@ const COMMANDS = [
   { id: 'lc-dup', icon: '🧬', group: '本地库', label: '查重相同歌曲', keywords: ['duplicate', '重复'], run: () => _call('detectDuplicateSongs') },
   { id: 'lc-cdup', icon: '🧬', group: '本地库', label: '内容级查重（字节哈希找相同副本）', keywords: ['content duplicate', '哈希', '副本'], run: () => _call('detectContentDuplicates') },
   { id: 'lc-locate', icon: '🎯', group: '本地库', label: '定位正在播放的歌（滚动+闪烁）', keywords: ['locate', '定位', '正在播放'], run: () => _call('locatePlayingLocal') },
+  { id: 'lc-favonly', icon: '♥', group: '本地库', label: '本地曲库仅看收藏开关', keywords: ['favorite', 'fav', '收藏', '本地', '过滤'], run: () => _call('toggleLocalFavOnly') },
   { id: 'lc-probe', icon: '🔬', group: '本地库', label: '全库音质扫描（查伪无损）', keywords: ['probe', '音质', 'lossless'], run: () => _call('batchProbeQuality') },
   { id: 'lc-m3u', icon: '⤴', group: '本地库', label: '导出曲库为 m3u 歌单（勾选优先）', keywords: ['export', 'm3u', '导出', 'playlist'], run: () => _call('exportLocalM3u') },
   { id: 'lc-agroups', icon: '🎤', group: '本地库', label: '按歌手分组统计曲库（点击即过滤）', keywords: ['artist', '歌手', '分组', 'group'], run: () => _call('showArtistGroups') },

@@ -25,6 +25,7 @@ import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
 import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { isLocalFavorite, toggleLocalFavorite } from '../favorites.js';
+import { favOnlyFilter } from '../localFavFilter.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 
@@ -161,6 +162,7 @@ async function _doScanLocalDir() {
 
 // ── 过滤 ──────────────────────────────────────────────
 let _localSortMode = 'default'; // 本地曲库排序（会话级，扫描/过滤后都保持生效）
+let _localFavOnly = false;      // 仅看收藏开关（会话级，增量89）
 
 /** 统一排序入口：plays-desc 需要注入 stats 的播放计数表 */
 function _sortL(songs) {
@@ -170,18 +172,29 @@ function _sortL(songs) {
 
 function filterLocalSongs() {
   const kw = document.getElementById('localFilter').value.trim().toLowerCase();
-  const localSongs = getState('localSongs');
-  if (!kw) {
-    setState('localFiltered', _sortL([...localSongs]));
-  } else {
-    setState('localFiltered', _sortL(localSongs.filter(s =>
+  let songs = getState('localSongs') || [];
+  if (_localFavOnly) songs = favOnlyFilter(songs, getState('favoriteKeys'));
+  if (kw) {
+    songs = songs.filter(s =>
       (s.title || '').toLowerCase().includes(kw) ||
       (s.artist || '').toLowerCase().includes(kw) ||
       (s.album || '').toLowerCase().includes(kw)
-    )));
+    );
   }
+  setState('localFiltered', _sortL([...songs]));
   if (_localGridView) renderLocalGrid();
   else renderLocalSongs();
+}
+
+/** ♥ 仅看收藏开关：只留进了收藏歌单的本地曲，按钮文案同步 */
+function toggleLocalFavOnly() {
+  _localFavOnly = !_localFavOnly;
+  const btn = document.getElementById('localFavBtn');
+  if (btn) {
+    btn.textContent = _localFavOnly ? '♥ 仅收藏' : '♥ 全部';
+    btn.classList.toggle('active', _localFavOnly);
+  }
+  filterLocalSongs();
 }
 
 /** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
@@ -669,7 +682,11 @@ function showLocalRowMenu(e, idx) {
   showContextMenu(e.clientX, e.clientY, buildLocalRowMenuItems(s, {
     play: () => playLocalSong(idx),
     edit: () => openEdit(idx),
-    fav: (song) => toggleLocalFavorite(song),
+    fav: (song) => {
+      // 仅收藏视图下，取消收藏应立刻看到行消失
+      Promise.resolve(toggleLocalFavorite(song))
+        .finally(() => { if (_localFavOnly) filterLocalSongs(); });
+    },
     favOn: isLocalFavorite(s),
     probe: () => probeLocalQuality(s),
     reveal: () => revealLocalFile(s),
@@ -1274,6 +1291,7 @@ export {
 window.scanLocalDir = scanLocalDir;
 window.filterLocalSongs = filterLocalSongs;
 window.cycleLocalSort = cycleLocalSort;
+window.toggleLocalFavOnly = toggleLocalFavOnly;
 window.refreshLocalLibrary = refreshLocalLibrary;
 window.renderLocalSongs = renderLocalSongs;
 window.renderLocalGrid = renderLocalGrid;
