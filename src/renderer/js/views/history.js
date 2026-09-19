@@ -103,7 +103,8 @@ async function exportHistoryM3u() {
         title: s.title,
         artist: s.artist,
         filePath: s.savePath,
-        duration: s.duration || 0,
+        // 主进程写 EXTINF 前 ÷1000，历史里 duration 是秒 → 必须乘回毫秒
+        duration: (s.duration || 0) * 1000,
       })),
       format: 'm3u',
       name: 'MusicDL History',

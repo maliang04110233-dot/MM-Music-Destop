@@ -93,6 +93,7 @@ const COMMANDS = [
   { id: 'lc-dup', icon: '🧬', group: '本地库', label: '查重相同歌曲', keywords: ['duplicate', '重复'], run: () => _call('detectDuplicateSongs') },
   { id: 'lc-cdup', icon: '🧬', group: '本地库', label: '内容级查重（字节哈希找相同副本）', keywords: ['content duplicate', '哈希', '副本'], run: () => _call('detectContentDuplicates') },
   { id: 'lc-probe', icon: '🔬', group: '本地库', label: '全库音质扫描（查伪无损）', keywords: ['probe', '音质', 'lossless'], run: () => _call('batchProbeQuality') },
+  { id: 'lc-m3u', icon: '⤴', group: '本地库', label: '导出曲库为 m3u 歌单（勾选优先）', keywords: ['export', 'm3u', '导出', 'playlist'], run: () => _call('exportLocalM3u') },
 
   { id: 'misc-sleep', icon: '⏾', group: '其他', label: '睡眠定时（N 分钟后暂停）', keywords: ['sleep timer'], run: () => _call('openSleepTimerMenu') },
   { id: 'misc-sort', icon: '↕', group: '其他', label: '切换搜索结果排序（时长/来源）', keywords: ['sort', '排序', 'duration'], run: () => _call('cycleSearchSort') },

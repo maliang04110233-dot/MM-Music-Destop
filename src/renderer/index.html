@@ -263,6 +263,7 @@
                       <button class="tab" onclick="detectContentDuplicates()" data-i18n="local.dedupContent" title="按文件字节哈希查找内容完全相同的副本（改名/换目录也能抓到）">🧬 内容查重</button>
                       <button class="tab" onclick="batchProbeQuality()">🔬 音质扫描</button>
                       <button class="tab tab-neon" onclick="convertSelectedAudio()" data-i18n="local.convert">🔄 转码</button>
+                      <button class="tab" onclick="exportLocalM3u()" title="把当前过滤/排序视图导出为 m3u 歌单文件（选择模式下勾选优先）">⤴ 导出m3u</button>
                       <div class="search-input-wrap">
                         <input class="search-input" id="localFilter" placeholder="过滤本地歌曲..."
                           oninput="filterLocalSongs()" onkeydown="if(event.key==='Enter')filterLocalSongs()">
@@ -276,6 +277,7 @@
                       <button class="tab" onclick="selectAllLocal()" data-i18n="search.selectAll">全选</button>
                       <button class="tab" onclick="deselectAllLocal()" data-i18n="local.deselectAll">取消全选</button>
                       <div style="flex:1"></div>
+                      <button class="tab" onclick="exportLocalM3u()" title="导出为 m3u 歌单文件（勾选优先，未勾选导出当前过滤视图）">⤴ 导出m3u</button>
                       <button class="tab tab-neon" onclick="openBatchEdit()" data-i18n="local.batchEdit">✏️ 批量编辑</button>
                       <button class="tab tab-neon" onclick="openBatchRename()" data-i18n="local.batchRename">📝 批量重命名</button>
                       <button class="tab" onclick="exitLocalSelectionMode()" data-i18n="local.done">完成</button>

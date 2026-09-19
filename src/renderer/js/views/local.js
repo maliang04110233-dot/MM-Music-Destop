@@ -16,6 +16,7 @@ import {
   probeReportLine, showProbeReportModal,
 } from '../batchProbe.js';
 import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.js';
+import { buildExportSongs } from '../localExport.js';
 
 // 统计/查重已拆到 local-stats.js（回调在文件末尾注入）
 import {
@@ -256,6 +257,26 @@ function updateLocalSelectionBar() {
   }
   count.textContent = n;
   bar.style.display = 'flex';
+}
+
+// 导出 m3u：选择模式下勾了歌就导勾选，否则导当前过滤/排序视图（所见即所得）
+async function exportLocalM3u() {
+  const localFiltered = getState('localFiltered') || [];
+  const songs = buildExportSongs(localFiltered, _localSelectionMode ? _selectedLocal : null);
+  if (!songs.length) {
+    showToast('没有可导出的本地歌曲（需已有文件路径）', 'warn');
+    return;
+  }
+  try {
+    const r = await api.exportPlaylist({ songs, format: 'm3u', name: 'MusicDL-本地库' });
+    if (r && r.canceled) return;
+    if (!r || r.error) { showToast('导出失败：' + ((r && r.error) || '未知错误'), 'error'); return; }
+    const scope = _localSelectionMode && _selectedLocal.size ? '已选' : '当前';
+    showToast(`✅ 已导出${scope}视图 ${songs.length} 首`, 'success');
+  } catch (e) {
+    logger.warn('[local] 导出 m3u 失败:', e.message);
+    showToast('导出失败：' + e.message, 'error');
+  }
 }
 
 // ── 渲染列表（虚拟滚动版）─────────────────────────────
@@ -1215,6 +1236,7 @@ window.exitLocalSelectionMode = exitLocalSelectionMode;
 window.toggleLocalSelect = toggleLocalSelect;
 window.selectAllLocal = selectAllLocal;
 window.deselectAllLocal = deselectAllLocal;
+window.exportLocalM3u = exportLocalM3u;
 window.openBatchEdit = openBatchEdit;
 window.openEdit = openEdit;
 window.closeEdit = closeEdit;
