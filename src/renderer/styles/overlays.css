@@ -747,8 +747,13 @@ kbd {
   background: var(--accent); color: white; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .edit-btn-save:hover { background: var(--accent2); }
+.edit-btn-save:disabled { opacity: .5; cursor: not-allowed; }
 .edit-btn-cancel {
   padding: 7px 14px; border-radius: 8px; border: 1px solid var(--neon-blue-dim);
   background: transparent; color: var(--neon-dim); font-size: 13px; cursor: pointer;
 }
 .edit-btn-cancel:hover { border-color: var(--neon-dim); color: var(--neon-text); }
+
+/* ── 批量链接导入（batchImport.js 动态弹层复用 edit-* 体系）─── */
+.batch-import-text { resize: vertical; min-height: 140px; line-height: 1.6; font-family: var(--font); }
+.batch-import-status { font-size: 12px; color: var(--neon-dim); min-height: 16px; }
