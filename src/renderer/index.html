@@ -1196,6 +1196,7 @@
       <button class="btn-sm" style="flex-shrink:0;" title="整个歌单加入下载队列" onclick="downloadAllPlaylist()">⬇ 下载全部</button>
       <button class="btn-sm" style="flex-shrink:0;" title="导出为 m3u：已下载歌写本地文件路径，在线歌写平台歌曲页链接" onclick="exportCurrentPlaylistM3u()">⤴ 导出</button>
       <button class="btn-sm" style="flex-shrink:0;" title="把其他歌单的歌合并进本歌单（按平台+ID去重，源歌单保留）" onclick="openPlaylistMergePicker()">📥 合并</button>
+      <button class="btn-sm" style="flex-shrink:0;" title="移除本歌单内的重复歌曲（按平台+ID识别，保留首次出现）" onclick="dedupeCurrentPlaylist()">🧹 清重复</button>
       <button class="btn-sm" style="flex-shrink:0;" title="搜索歌曲并添加进本歌单" onclick="openPlaylistAddSongs()">➕ 加歌</button>
       <button class="playlist-modal-close" onclick="closePlaylistDetail()">✕</button>
     </div>

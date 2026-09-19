@@ -899,6 +899,32 @@ async function mergePlaylistIntoCurrent(srcId) {
   }
 }
 
+// 🧹 清理本歌单内重复歌：复用合入键（平台:id，无键退 标题|歌手），保留首次出现
+let _plDedupeBusy = false;
+
+async function dedupeCurrentPlaylist() {
+  if (!_currentPlaylistId || _plDedupeBusy) return;
+  _plDedupeBusy = true;
+  try {
+    const all = (await api.getUserPlaylists()) || [];
+    const pl = all.find(p => p && p.id === _currentPlaylistId);
+    if (!pl) { showToast('歌单已不存在，请刷新重试', 'warn'); return; }
+    const before = (pl.songs || []).length;
+    const merged = mergeSongLists(pl.songs || [], []);
+    const removed = before - merged.songs.length;
+    if (!removed) { showToast('本歌单没有重复歌曲', 'info'); return; }
+    const r = await api.saveUserPlaylist({ id: pl.id, name: pl.name, songs: merged.songs });
+    if (!r || !r.success) { showToast('清理失败：' + ((r && r.error) || '未知错误'), 'error'); return; }
+    renderPlaylistDetailSongs((r.playlist && r.playlist.songs) || merged.songs);
+    loadUserPlaylists(); // 卡片曲数同步
+    showToast(`🧹 已移除 ${removed} 首重复歌曲，保留 ${merged.songs.length} 首`, 'success', 3000);
+  } catch (e) {
+    showToast('清理失败: ' + (e.message || e), 'error');
+  } finally {
+    _plDedupeBusy = false;
+  }
+}
+
 // ── 初始化 ────────────────────────────────────────────
 function initPlaylistView() {
   loadUserPlaylists();
@@ -916,6 +942,7 @@ window.exportCurrentPlaylistM3u = exportCurrentPlaylistM3u;
 window.openPlaylistMergePicker = openPlaylistMergePicker;
 window.closePlaylistMergePicker = closePlaylistMergePicker;
 window.mergePlaylistIntoCurrent = mergePlaylistIntoCurrent;
+window.dedupeCurrentPlaylist = dedupeCurrentPlaylist;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;

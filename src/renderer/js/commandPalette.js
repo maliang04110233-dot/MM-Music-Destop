@@ -83,6 +83,7 @@ const COMMANDS = [
   { id: 'pl-cfilter', icon: '🔍', group: '播放', label: '搜索我的歌单（名称/描述过滤卡片）', keywords: ['playlist filter', '歌单', '搜索'], run: () => { _goto('playlist'); const el = document.getElementById('playlistCardFilter'); if (el) setTimeout(() => el.focus(), 80); } },
   { id: 'pl-export', icon: '⤴', group: '播放', label: '导出当前打开的歌单为 m3u', keywords: ['export', 'm3u', '歌单', '导出'], run: () => _call('exportCurrentPlaylistM3u') },
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
+  { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },
   { id: 'pl-csort', icon: '↕', group: '播放', label: '歌单卡片排序：默认 / 名称 / 曲数 / 最近更新', keywords: ['playlist', 'card', 'sort', '歌单排序'], run: () => _call('cyclePlCardSort') },
   { id: 'pl-fade', icon: '🌊', group: '播放', label: '播放淡入档位：关 / 0.5s / 1s / 2s', keywords: ['fade', '淡入', '音量', '渐变'], run: () => _call('cycleFadeIn') },
   { id: 'viz-toggle', icon: '📊', group: '播放', label: '频谱可视化开关（进度条下方实时频谱）', keywords: ['visualizer', 'spectrum', '频谱', '可视化'], run: () => _call('toggleVisualizer') },
