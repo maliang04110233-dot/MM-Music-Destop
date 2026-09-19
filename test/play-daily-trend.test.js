@@ -81,7 +81,7 @@ test('formatReportText：每日段只列有账的天，全无则整段省略（1
 });
 
 test('stats.js 接线：daily 初值/停表归集/载入守卫/重置清零/两条报告线共用桶', async () => {
-  assert.ok(/import \{ addDailySeconds, bucketDailySeconds, PLAY_TREND_DAYS \} from '\.\.\/playDailyTrend\.js';/.test(STATS_JS));
+  assert.ok(/import \{ addDailySeconds, bucketDailySeconds, weekSummary, monthSummary, PLAY_TREND_DAYS \} from '\.\.\/playDailyTrend\.js';/.test(STATS_JS));
   assert.ok(/import \{ barPct \} from '\.\.\/historyTrend\.js';/.test(STATS_JS), '柱高共用下载趋势 barPct');
   assert.ok(STATS_JS.includes('daily: {},'), '初值含 daily 桶');
   assert.ok(/_playStats\.totalPlayTime \+= elapsed;\n {4}_playStats\.daily = addDailySeconds\(_playStats\.daily, Date\.now\(\), elapsed\);/.test(STATS_JS), '停表即归集当日');

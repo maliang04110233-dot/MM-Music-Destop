@@ -43,6 +43,55 @@ export function addDailySeconds(daily, ts, secs) {
 }
 
 /**
+ * daily × [fromKey,toKey] 闭区间按天求和（'YYYY-MM-DD' 字典序即时间序；
+ * 非正数/脏值不入账）。周/月聚合共用。
+ */
+export function sumDailyBetween(daily, fromKey, toKey) {
+  const src = (daily && typeof daily === 'object') ? daily : {};
+  let total = 0;
+  for (const [k, raw] of Object.entries(src)) {
+    if (k >= fromKey && k <= toKey) total += Math.max(0, Math.floor(Number(raw) || 0));
+  }
+  return total;
+}
+
+function _shiftDay(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+/**
+ * 本周汇总（增量116，周一起始）：{secs, prevSecs, label}。
+ * label 为 'M/D-M/D'；上周只作对比基数，daily 脏当空。
+ */
+export function weekSummary(daily, now = Date.now()) {
+  const today = _startOfDay(Number(now) || Date.now());
+  const monday = _shiftDay(today, -((new Date(today).getDay() + 6) % 7));
+  const sunday = _shiftDay(monday, 6);
+  return {
+    secs: sumDailyBetween(daily, _dateKey(monday), _dateKey(sunday)),
+    prevSecs: sumDailyBetween(daily, _dateKey(_shiftDay(monday, -7)), _dateKey(_shiftDay(monday, -1))),
+    label: `${monday.getMonth() + 1}/${monday.getDate()}-${sunday.getMonth() + 1}/${sunday.getDate()}`,
+  };
+}
+
+/** 本月汇总：{secs, prevSecs, label 'YYYY年M月'}；上月界自带跨年进位 */
+export function monthSummary(daily, now = Date.now()) {
+  const t = new Date(Number(now) || Date.now());
+  const first = new Date(t.getFullYear(), t.getMonth(), 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0);
+  const prevFirst = new Date(t.getFullYear(), t.getMonth(), 1);
+  prevFirst.setMonth(prevFirst.getMonth() - 1);
+  const prevLast = new Date(t.getFullYear(), t.getMonth(), 0);
+  return {
+    secs: sumDailyBetween(daily, _dateKey(first), _dateKey(last)),
+    prevSecs: sumDailyBetween(daily, _dateKey(prevFirst), _dateKey(prevLast)),
+    label: `${t.getFullYear()}年${t.getMonth() + 1}月`,
+  };
+}
+
+/**
  * daily → [{key,label,secs}]（oldest → newest，最后一桶为 now 当天）。
  * 窗口外/未来日/非正数一律不入账。
  */

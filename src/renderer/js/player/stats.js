@@ -7,7 +7,7 @@
 
 import { topArtistsFromPlayCount, formatReportText } from '../playReportText.js';
 import { copyText } from '../songShare.js';
-import { addDailySeconds, bucketDailySeconds, PLAY_TREND_DAYS } from '../playDailyTrend.js';
+import { addDailySeconds, bucketDailySeconds, weekSummary, monthSummary, PLAY_TREND_DAYS } from '../playDailyTrend.js';
 import { barPct } from '../historyTrend.js';
 
 // ── 播放 ─────────────────────────────────────────────
@@ -187,6 +187,9 @@ export function generatePlayReport() {
   const dailyTotal = dailyBuckets.reduce((a, b) => a + b.secs, 0);
   const maxDaily = dailyBuckets.reduce((a, b) => Math.max(a, b.secs), 0);
   const activeDays = dailyBuckets.filter(b => b.secs > 0).length;
+  // 周/月聚合（增量116）：daily 桶只攒不清，窗口能看穿 14 天图
+  const wk = weekSummary(stats.daily);
+  const mo = monthSummary(stats.daily);
 
   const html = `
     <div class="report-grid">
@@ -251,6 +254,16 @@ export function generatePlayReport() {
     </div>
     ` : ''}
 
+    ${(wk.secs > 0 || mo.secs > 0) ? `
+    <div class="report-section">
+      <div class="report-section-title">🗓 周期听歌 · 本周/本月</div>
+      <div class="report-last" style="font-size:12px;opacity:0.75;">
+        ${wk.secs > 0 ? `本周(${wk.label})：${formatPlayTime(wk.secs)}${wk.prevSecs > 0 ? ` · 上周 ${formatPlayTime(wk.prevSecs)}` : ''}${mo.secs > 0 ? '<br>' : ''}` : ''}
+        ${mo.secs > 0 ? `本月(${mo.label})：${formatPlayTime(mo.secs)}${mo.prevSecs > 0 ? ` · 上月 ${formatPlayTime(mo.prevSecs)}` : ''}` : ''}
+      </div>
+    </div>
+    ` : ''}
+
     ${stats.lastPlayed ? `
     <div class="report-section">
       <div class="report-section-title">📀 最后播放</div>
@@ -275,6 +288,8 @@ export async function copyPlayReportText() {
     mostPlayed: getMostPlayed(5),
     topArtists: artists.slice(0, 3),
     daily: bucketDailySeconds(stats.daily, Date.now(), PLAY_TREND_DAYS),
+    week: weekSummary(stats.daily),
+    month: monthSummary(stats.daily),
     lastPlayed: stats.lastPlayed,
   });
   const ok = await copyText(text);

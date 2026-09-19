@@ -36,6 +36,8 @@ export function topArtistsFromPlayCount(playCount, limit) {
  *          mostPlayed?:Array<{title:string,artist:string,count:number}>,
  *          topArtists?:Array<{artist:string,count:number}>,
  *          daily?:Array<{label:string,secs:number}>,
+ *          week?:{label:string,secs:number,prevSecs:number},
+ *          month?:{label:string,secs:number,prevSecs:number},
  *          lastPlayed?:{title:string,artist:string}}} d
  */
 export function formatReportText(d) {
@@ -61,6 +63,19 @@ export function formatReportText(d) {
   if (daily.length) {
     lines.push('', `📅 每日听歌 · 近 ${s.daily.length} 天`);
     daily.forEach(b => lines.push(`${b.label}：${Math.max(1, Math.round(+b.secs / 60))}分钟`));
+  }
+  // 本周/本月（增量116）：账到才出段；上周期基数只在该周有账时附带
+  const _mins = (x) => `${Math.max(1, Math.round(+x / 60))}分钟`;
+  const wk = s.week && +s.week.secs > 0 ? s.week : null;
+  const mo = s.month && +s.month.secs > 0 ? s.month : null;
+  if (wk || mo) {
+    lines.push('', '🗓 周期听歌');
+    if (wk) {
+      lines.push(`本周（${wk.label || ''}）：${_mins(wk.secs)}${+wk.prevSecs > 0 ? ` · 上周 ${_mins(wk.prevSecs)}` : ''}`);
+    }
+    if (mo) {
+      lines.push(`本月（${mo.label || ''}）：${_mins(mo.secs)}${+mo.prevSecs > 0 ? ` · 上月 ${_mins(mo.prevSecs)}` : ''}`);
+    }
   }
   if (s.lastPlayed && s.lastPlayed.title) {
     lines.push('', `📀 最后播放：${toTrackLine(s.lastPlayed)}`);
