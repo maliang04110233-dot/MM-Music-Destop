@@ -12,6 +12,7 @@ const { autoUpdater } = require('electron-updater');
 const { handle } = require('./ipc/register');
 const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
+const { getMirrorFeeds, useMirrorFeed } = require('./updateMirror');
 
 // ── 配置 ──────────────────────────────────────────────
 // 更新源固定为本仓库 GitHub Releases，但**不在这里写 URL**。
@@ -121,11 +122,34 @@ autoUpdater.on('error', (err) => {
   }
 });
 
-// ── IPC 端点 ──────────────────────────────────────────
+// ── 镜像兜底 ──────────────────────────────────────────
+// GitHub 直连在部分网络下间歇性全灭（实测检查更新 3 连败）。
+// 直连耗尽重试后，逐个尝试镜像 feed（派生自 app-update.yml，见 updateMirror.js）。
+// 镜像路径每次只做一次尝试：镜像本身是兜底，多试只会让用户等更久。
+async function tryMirrorFeeds(label) {
+  const feeds = getMirrorFeeds();
+  for (let i = 0; i < feeds.length; i++) {
+    try {
+      logger.warn(`[Updater] ${label}：直连失败，尝试镜像源 ${i + 1}/${feeds.length}`);
+      useMirrorFeed(autoUpdater, feeds[i]);
+      await autoUpdater.checkForUpdates();
+      return true;
+    } catch (err) {
+      logger.warn(`[Updater] 镜像源 ${i + 1} 失败: ${err.message}`);
+    }
+  }
+  return false;
+}
+
+// ── IPC 端点（直连失败自动落镜像）──────────────────────
 handle('check-for-update', async () => {
   _userInitiated = true;
   try {
-    await checkForUpdatesWithRetry();
+    try {
+      await checkForUpdatesWithRetry();
+    } catch (err) {
+      if (!(await tryMirrorFeeds('检查更新'))) throw err;
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: describeUpdateError(err) };
@@ -136,12 +160,19 @@ handle('check-for-update', async () => {
 
 handle('download-update', async () => {
   try {
-    await withRetry(() => autoUpdater.downloadUpdate(), {
-      delays: DOWNLOAD_DELAYS,
-      onAttempt: (err, attempt, total) => {
-        logger.warn(`[Updater] 下载更新失败（${attempt}/${total}）: ${err.message}`);
-      },
-    });
+    try {
+      await withRetry(() => autoUpdater.downloadUpdate(), {
+        delays: DOWNLOAD_DELAYS,
+        onAttempt: (err, attempt, total) => {
+          logger.warn(`[Updater] 下载更新失败（${attempt}/${total}）: ${err.message}`);
+        },
+      });
+    } catch (err) {
+      // 切镜像 feed 后必须重新 check 一次：downloadUpdate 用的是最近一次
+      // check 解析出的 provider，只换 feed 不重查会继续走旧的 GitHub 通道
+      if (!(await tryMirrorFeeds('下载更新'))) throw err;
+      await autoUpdater.downloadUpdate();
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: describeUpdateError(err) };
