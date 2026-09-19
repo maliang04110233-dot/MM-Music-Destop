@@ -51,6 +51,7 @@ import './favorites.js';
 import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
+import { removeQueueItem, dedupeQueue } from './playQueueEdit.js';
 import './afterQueueDone.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
@@ -1180,6 +1181,71 @@ window.clearPlayQueue = () => {
   setState('currentPlaying', null);
   showToast('播放队列已清空', 'info');
 };
+
+// ── 队列单行移除 / 一键去重（playQueueEdit 纯函数的接线层）──────
+window.removePqItem = (idx) => {
+  const r = removeQueueItem(getState('playQueue') || [], getState('playIdx') || 0, idx);
+  if (!r) return;
+  setState('playQueue', r.queue);
+  if (r.removedCurrent) {
+    if (!r.queue.length) {
+      const audio = document.getElementById('audioPlayer');
+      if (audio) audio.pause();
+      setState('playIdx', 0);
+      setState('currentPlaying', null);
+    } else {
+      // 删的是当前播放曲 → 让补位曲接着播，连播语义不断
+      setState('playIdx', r.playIdx);
+      window._playQueueIdx(r.playIdx);
+    }
+  } else {
+    setState('playIdx', r.playIdx);
+  }
+  showToast('已从播放队列移除', 'info');
+};
+
+window.dedupePlayQueue = () => {
+  const r = dedupeQueue(getState('playQueue') || [], getState('playIdx') || 0);
+  if (!r.removed) { showToast('队列里没有重复曲目', 'info'); return; }
+  setState('playQueue', r.queue);
+  setState('playIdx', Math.max(0, r.playIdx));
+  showToast(`🧹 已移除 ${r.removed} 首重复`, 'success');
+};
+
+async function downloadPqSong(s) {
+  try {
+    const task = { ...s, saveDir: getState('saveDir'), quality: resolveQuality(s.source) };
+    const r = await api.addToQueue(task);
+    if (r && r.duplicated) {
+      showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
+      return;
+    }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(s.title, r.finishedAt, () => {
+        api.addToQueue({ ...task, forceRedownload: true })
+          .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+      });
+      return;
+    }
+    showToast(`「${s.title}」已加入下载队列`, 'success');
+  } catch (e) {
+    showToast('加入失败: ' + e.message, 'error');
+  }
+}
+
+document.addEventListener('contextmenu', (e) => {
+  const row = e.target && e.target.closest ? e.target.closest('.pq-item') : null;
+  if (!row) return;
+  const idx = Number(row.getAttribute('data-pqidx'));
+  const song = (getState('playQueue') || [])[idx];
+  if (!song) return;
+  openSongRowMenu(e, song, {
+    play: () => window._playQueueIdx(idx),
+    download: () => downloadPqSong(song),
+    extra: [{ icon: '✕', label: '从队列移除', onClick: () => window.removePqItem(idx) }],
+  });
+});
 
 // 监听 playQueue 变化自动刷新 UI
 state.subscribe('playQueue', () => renderPlayQueueUI());
