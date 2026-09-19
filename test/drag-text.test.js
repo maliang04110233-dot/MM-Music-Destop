@@ -38,3 +38,29 @@ test('pickDroppedText：超长文本钳到 500 字符', async () => {
   const r = m.pickDroppedText(dt(['text/plain'], { 'text/plain': long }));
   assert.strictEqual(r.length, 500);
 });
+
+test('isLrcFilename：.lrc/.txt 认（大小写不限），其余与空值不接管', async () => {
+  const m = await load();
+  assert.strictEqual(m.isLrcFilename('晴天.lrc'), true);
+  assert.strictEqual(m.isLrcFilename('LYRICS.LRC'), true);
+  assert.strictEqual(m.isLrcFilename('notes.txt'), true);
+  assert.strictEqual(m.isLrcFilename('song.mp3'), false);
+  assert.strictEqual(m.isLrcFilename('readme'), false);
+  assert.strictEqual(m.isLrcFilename(null), false);
+});
+
+test('looksLikeLrc：≥3 行时间戳才算歌词，格式变体都认', async () => {
+  const m = await load();
+  assert.strictEqual(m.looksLikeLrc(
+    '[00:01.00]第一行\n[00:02.30]第二行\n[00:03]第三行\n'
+  ), true);
+  assert.strictEqual(m.looksLikeLrc('[0:05.5]a\n[0:06.5]b'), false, '只有 2 行不算');
+  assert.strictEqual(m.looksLikeLrc('[tag] 普通文本\n[id] 笔记\n[00:01.0] 唯一一行'), false);
+  assert.strictEqual(m.looksLikeLrc(''), false);
+  assert.strictEqual(m.looksLikeLrc(null), false);
+});
+
+test('MAX_LRC_BYTES 是 512KB 量级的合理上限', async () => {
+  const m = await load();
+  assert.strictEqual(m.MAX_LRC_BYTES, 512 * 1024);
+});

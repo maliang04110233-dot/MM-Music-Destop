@@ -20,3 +20,19 @@ export function pickDroppedText(dt) {
   const trimmed = String(raw).trim();
   return trimmed ? trimmed.slice(0, MAX_DROP_CHARS) : null;
 }
+
+// ── 歌词文件拖入（增量56）──────────────────────────────
+export const MAX_LRC_BYTES = 512 * 1024;
+
+/** .lrc 直接认；.txt 只是候选（内容须过 looksLikeLrc），其余不接管 */
+export function isLrcFilename(name) {
+  const s = String(name == null ? '' : name);
+  return /\.lrc$/i.test(s) || /\.txt$/i.test(s);
+}
+
+/** 时间戳行（[mm:ss] / [mm:ss.xx] / [m:ss.xx]）≥3 行才像歌词，防误拖普通文本 */
+export function looksLikeLrc(text) {
+  const t = String(text == null ? '' : text);
+  const lines = t.match(/^\[\d{1,3}[:.]\d{1,2}([:.]\d{1,3})?\]/gm);
+  return !!lines && lines.length >= 3;
+}
