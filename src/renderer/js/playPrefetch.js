@@ -60,6 +60,19 @@ export function isEntryFresh(entry, now = Date.now()) {
   return now - Number(entry.ts) <= PREFETCH_TTL_MS;
 }
 
+/** 预热失败后的冷却时长：取流/代理失败通常是音源本身不可用，逐帧重试只会打风暴 */
+export const PREFETCH_RETRY_MS = 60 * 1000;
+
+/**
+ * 该不该再试一次预热。fail 记录形如 { key, at }：
+ * 只有「同一首歌」且「还在冷却期内」才拦住，换歌或冷却到期即放行。
+ */
+export function prefetchRetryAllowed(fail, key, now = Date.now()) {
+  if (!fail || !key) return true;
+  if (fail.key !== key) return true;
+  return now - Number(fail.at) >= PREFETCH_RETRY_MS;
+}
+
 /** 预热缓存（可注入时钟，便于单测不靠 sleep） */
 export function createPrefetchStore(nowFn = Date.now) {
   const map = new Map();

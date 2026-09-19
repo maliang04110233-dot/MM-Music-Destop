@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PREFETCH_LEAD_SEC, PREFETCH_TTL_MS, PREFETCH_MAX,
-  createPrefetchStore, isEntryFresh, nextPrefetchIdx, prefetchKeyOf, shouldPrefetchNow,
+  PREFETCH_LEAD_SEC, PREFETCH_TTL_MS, PREFETCH_MAX, PREFETCH_RETRY_MS,
+  createPrefetchStore, isEntryFresh, nextPrefetchIdx, prefetchKeyOf, prefetchRetryAllowed, shouldPrefetchNow,
 } from '../src/renderer/js/playPrefetch.js';
 
 const PLAYER_JS = readFileSync(new URL('../src/renderer/js/player.js', import.meta.url), 'utf8');
@@ -76,8 +76,20 @@ test('缓存：脏条目拒收，超出上限按插入序淘汰', () => {
   assert.equal(isEntryFresh(null, 0), false);
 });
 
+test('失败冷却：同一首歌 60s 内不重复预热', () => {
+  const fail = { key: 'netease:1', at: 1000 };
+  assert.equal(prefetchRetryAllowed(null, 'netease:1'), true, '没失败过当然放行');
+  assert.equal(prefetchRetryAllowed(fail, 'netease:1'), false);
+  assert.equal(prefetchRetryAllowed(fail, 'qq:9'), true, '换下一首要热的歌不受影响');
+  assert.equal(prefetchRetryAllowed(fail, 'netease:1', 1000 + PREFETCH_RETRY_MS), true, '冷却到期再试一次');
+  assert.equal(prefetchRetryAllowed(fail, null), true, '无键不预热（由 keyOf 兜底）');
+  assert.equal(PREFETCH_RETRY_MS, 60000);
+});
+
 test('接线钉：player.js 命中缓存时跳过取流，未命中照原路', () => {
-  assert.ok(PLAYER_JS.includes("import { createPrefetchStore, prefetchKeyOf, nextPrefetchIdx, shouldPrefetchNow } from './playPrefetch.js';"));
+  assert.ok(PLAYER_JS.includes("import { createPrefetchStore, prefetchKeyOf, nextPrefetchIdx, shouldPrefetchNow, prefetchRetryAllowed } from './playPrefetch.js';"));
+  assert.ok(PLAYER_JS.includes('if (!prefetchRetryAllowed(_prefetchFail, key)) return;'), '失败冷却必须拦在发请求之前');
+  assert.equal((PLAYER_JS.match(/markFail\(\)/g) || []).length, 3, '取流空/代理空/抛错三条失败路都要记冷却');
   assert.equal((PLAYER_JS.match(/const _prefetch = createPrefetchStore\(\);/g) || []).length, 1, '缓存只应有一份');
   const hitBlock = [
     '  const pkey = prefetchKeyOf(song);',

@@ -7,7 +7,7 @@
 
 import { logger } from './logger.js';
 import { resolveQuality, playedQualityLabel } from './quality.js';
-import { createPrefetchStore, prefetchKeyOf, nextPrefetchIdx, shouldPrefetchNow } from './playPrefetch.js';
+import { createPrefetchStore, prefetchKeyOf, nextPrefetchIdx, shouldPrefetchNow, prefetchRetryAllowed } from './playPrefetch.js';
 import {
   addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
   restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
@@ -488,6 +488,7 @@ async function playSongByIdx(idx, song) {
 // 下一首播时直接开播（判定口径全在 playPrefetch.js，此处只做网络调用与缓存）。
 const _prefetch = createPrefetchStore();
 let _prefetchBusy = null;
+let _prefetchFail = null;
 
 function _startPrefetch() {
   const playQueue = getState('playQueue');
@@ -500,13 +501,15 @@ function _startPrefetch() {
   const song = playQueue[idx];
   const key = prefetchKeyOf(song);
   if (!key || _prefetch.has(key) || _prefetchBusy === key) return;
+  if (!prefetchRetryAllowed(_prefetchFail, key)) return;
   _prefetchBusy = key;
+  const markFail = () => { _prefetchFail = { key, at: Date.now() }; };
   const quality = resolveQuality(song.source);
   api.getDownloadUrlSmart(song, quality).then(async (result) => {
-    if (!result || !result.url) return;
+    if (!result || !result.url) { markFail(); return; }
     const referer = playReferer(result.matchedSong?.source || song.source, result);
     const proxied = await api.proxyPlay(result.url, referer);
-    if (!proxied || !proxied.fileUrl) return;
+    if (!proxied || !proxied.fileUrl) { markFail(); return; }
     _prefetch.put(key, {
       fileUrl: proxied.fileUrl,
       quality,
@@ -514,7 +517,9 @@ function _startPrefetch() {
         ? { source: result.matchedSong.source, id: String(result.matchedSong.id) }
         : null,
     });
+    _prefetchFail = null;
   }).catch((e) => {
+    markFail();
     // 预热失败不该惊动用户：下一首退回常规取流链路，最多是回到「切歌有空白」的旧行为
     logger.error('下一首预热失败:', e);
   }).finally(() => {
