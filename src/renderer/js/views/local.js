@@ -27,6 +27,7 @@ import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from '../favorites.js';
 import { favOnlyFilter } from '../localFavFilter.js';
 import { listFormats, nextFmtMode, fmtModeLabel, filterByFmt } from '../localFormatFilter.js';
+import { qualityBadge } from '../localQualityBadge.js';
 import { applyFolderToSongs } from '../folderGroups.js';
 import { toTrackLines } from '../songListText.js';
 import { copyText } from '../songShare.js';
@@ -352,6 +353,7 @@ function _renderLocalRow(s, i) {
       <div class="local-row-title" style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.title)}</div>
       <div class="local-row-artist" style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(s.artist || '未知艺术家')}${s.album ? ' · ' + esc(s.album) : ''}</div>
     </div>
+    ${(() => { const q = qualityBadge(s, _probeCache.get(s.filePath)); return q ? `<span class="local-row-quality" title="${escAttr(q.title)}" style="font-size:11px;color:${q.color};white-space:nowrap;">${esc(q.text)}</span>` : ''; })()}
     <span class="local-row-duration" style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${fmtDuration(s.durationMs)}</span>
     <span class="local-row-size" style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${formatBytes(s.fileSize)}</span>
     <div class="local-row-actions" style="display:flex;gap:4px;">
@@ -698,7 +700,7 @@ async function probeLocalQuality(s) {
   let r;
   try { r = await api.probeAudio(s.filePath); }
   catch (e) { r = { error: e.message }; }
-  if (r && r.ok) _probeCache.set(s.filePath, r);
+  if (r && r.ok) { _probeCache.set(s.filePath, r); renderLocalSongs(); }
   _toastProbeResult(r, s);
 }
 
