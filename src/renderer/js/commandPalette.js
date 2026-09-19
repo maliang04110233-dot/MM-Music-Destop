@@ -89,6 +89,7 @@ const COMMANDS = [
   { id: 'pl-dlfilt', icon: '⬇', group: '下载', label: '歌单详情切换下载状态过滤（全部/未下载/已下载）', keywords: ['playlist downloaded filter', '未下载', '已下载', '过滤', '歌单'], run: () => _call('cyclePlDlFilter') },
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
   { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },
+  { id: 'pl-dup', icon: '📋', group: '播放', label: '当前歌单另存副本（整单复制建新歌单，撞名自动让位）', keywords: ['duplicate playlist', 'copy', '副本', '另存', '备份', '歌单'], run: () => _call('duplicateCurrentPlaylist') },
   { id: 'pl-locate', icon: '🎯', group: '播放', label: '在歌单详情中定位正在播放的歌', keywords: ['locate', '定位', '正在播放', '歌单'], run: () => _call('locatePlayingInDetail') },
   { id: 'pq-locate', icon: '🎯', group: '播放', label: '在播放队列面板中定位正在播放的歌（未开自动展开）', keywords: ['queue', 'locate', '定位', '队列', '正在播放'], run: () => _call('locatePlayingInQueue') },
   { id: 'pq-bulkrm', icon: '☑', group: '播放', label: '播放队列多选模式：勾选后批量移出队列', keywords: ['queue', 'bulk remove', '多选', '批量', '移除', '队列'], run: () => _call('togglePqSelMode') },

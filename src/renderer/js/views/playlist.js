@@ -24,6 +24,7 @@ import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 import { sanitizeFileBase } from '../artistGroups.js';
 import { plSongKey, splitBySelection, keysOf } from '../plBulkRemove.js';
 import { filterByDlMode, nextPlDlMode, plDlModeLabel } from '../plDlFilter.js';
+import { dupPlaylistName, dupPlaylistPayload } from '../plDuplicate.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -1043,6 +1044,29 @@ async function dedupeCurrentPlaylist() {
   }
 }
 
+// 📋 另存副本：实时重拉整单原样复制（在线曲目 source+id 全带走），撞名递增让位；
+// 无 id 的 save-user-playlist 即新建，零新通道
+let _plDupBusy = false;
+
+async function duplicateCurrentPlaylist() {
+  if (!_currentPlaylistId || _plDupBusy) return;
+  _plDupBusy = true;
+  try {
+    const all = (await api.getUserPlaylists()) || [];
+    const pl = all.find(p => p && p.id === _currentPlaylistId);
+    if (!pl) { showToast('歌单已不存在，请刷新重试', 'warn'); return; }
+    const newName = dupPlaylistName(pl.name, all.map(p => p && p.name).filter(Boolean));
+    const r = await api.saveUserPlaylist(dupPlaylistPayload(pl, newName));
+    if (!r || !r.success) { showToast('复制失败：' + ((r && r.error) || '未知错误'), 'error'); return; }
+    loadUserPlaylists(); // 卡片列表随新副本刷新
+    showToast(`📋 已另存副本「${newName}」（${(pl.songs || []).length} 首）`, 'success', 3000);
+  } catch (e) {
+    showToast('复制失败: ' + (e.message || e), 'error');
+  } finally {
+    _plDupBusy = false;
+  }
+}
+
 // ── 初始化 ────────────────────────────────────────────
 // 收藏状态变化 → 收藏夹详情即时同步（行内 ♥ 取消收藏后该行立刻消失）。
 // router 每次进歌单页都会调 initPlaylistView，故用一次性绑定防重复订阅。
@@ -1119,3 +1143,4 @@ window.togglePlSongSel = togglePlSongSel;
 window.plSelectAllVisible = plSelectAllVisible;
 window.removeCheckedFromPlaylist = removeCheckedFromPlaylist;
 window.cyclePlDlFilter = cyclePlDlFilter;
+window.duplicateCurrentPlaylist = duplicateCurrentPlaylist;
