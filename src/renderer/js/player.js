@@ -428,6 +428,17 @@ let _playRequestId = 0;
 
 async function playSongByIdx(idx, song) {
   if (!song) return;
+  // 拖放即播行（增量97）：blob URL 是 drop 现场造的，不走取流链路；
+  // 跨会话残留（理论上已被 sanitizeSavedQueue 滤掉）只提示不发起请求
+  if (song.source === 'drop') {
+    if (song._blobUrl) {
+      setState('currentPlaying', song);
+      await loadAndPlay(song, song._blobUrl, true);
+      return;
+    }
+    showToast('⚠️ 拖放歌曲已失效，请重新拖入文件', 'warn', 2600);
+    return;
+  }
   const quality = resolveQuality(song.source);
   const reqId = ++_playRequestId;
   try {

@@ -57,6 +57,7 @@ import './afterQueueDone.js';
 import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
 import './m3uToPlaylist.js';
+import { sanitizeSavedQueue } from './dropPlay.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
@@ -498,7 +499,7 @@ async function init() {
 
   // 监听 playQueueRestored 事件（主进程启动时推送）
   api.onPlayQueueRestored((saved) => {
-    restorePlayQueueFromSaved(saved);
+    restorePlayQueueFromSaved(sanitizeSavedQueue(saved));
   });
 
   // 订阅 playQueue 变化自动持久化
@@ -544,7 +545,7 @@ async function init() {
   // 加载已持久化的播放队列（兜底）
   try {
     const saved = await api.loadPlayQueue();
-    restorePlayQueueFromSaved(saved);
+    restorePlayQueueFromSaved(sanitizeSavedQueue(saved));
   } catch (e) {
     logger.warn('[init] 加载播放队列失败:', e.message);
   }

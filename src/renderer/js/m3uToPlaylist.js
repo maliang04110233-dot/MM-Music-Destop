@@ -11,14 +11,14 @@
 
 import { logger } from './logger.js';
 
-const AUDIO_EXT_RE = /\.(flac|mp3|m4a|wav|ogg|ape|wma|aac|opus)$/i;
+export const AUDIO_EXT_RE = /\.(flac|mp3|m4a|wav|ogg|ape|wma|aac|opus)$/i;
 
 function _normPath(p) {
   return String(p || '').trim().toLowerCase().replace(/\\/g, '/');
 }
 
-/** 「歌手 - 歌名」拆分；无 " - " 时整串作曲名 */
-function _splitDesc(desc) {
+/** 「歌手 - 歌名」拆分；无 " - " 时整串作曲名（拖放即播复用，见 dropPlay.js） */
+export function splitTitleArtist(desc) {
   const s = String(desc || '').trim();
   const i = s.indexOf(' - ');
   if (i > 0) return { artist: s.slice(0, i).trim(), title: s.slice(i + 3).trim() };
@@ -40,7 +40,7 @@ export function parseM3uEntries(text, max = 500) {
   let pending = null; // 最近一条 #EXTINF 的描述，等路径行确认
   const push = (name, filePath) => {
     if (out.length >= max) return;
-    const { artist, title } = _splitDesc(name);
+    const { artist, title } = splitTitleArtist(name);
     if (title) out.push({ title, artist, filePath: filePath || null });
   };
   const lines = String(text == null ? '' : text).replace(/^\uFEFF/, '').split(/\r?\n/);
@@ -155,5 +155,8 @@ export function pickM3uForPlaylist() {
   input.click();
 }
 
-window.pickM3uForPlaylist = pickM3uForPlaylist;
-window.importM3uAsPlaylist = importM3uAsPlaylist;
+// node 直测（增量97 dropPlay 复用本模块纯函数）不得被 window 桥炸穿
+if (typeof window !== 'undefined') {
+  window.pickM3uForPlaylist = pickM3uForPlaylist;
+  window.importM3uAsPlaylist = importM3uAsPlaylist;
+}
