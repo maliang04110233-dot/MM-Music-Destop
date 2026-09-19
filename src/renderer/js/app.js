@@ -48,6 +48,7 @@ import { dlObserveQueue, dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener
 import { openSongRowMenu } from './songMenu.js';
 import './favorites.js';
 import './player-controls.js';
+import './sleepTimer.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
