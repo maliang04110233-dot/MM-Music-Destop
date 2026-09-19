@@ -27,6 +27,7 @@ import { buildLocalRowMenuItems } from '../localRowMenu.js';
 import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from '../favorites.js';
 import { favOnlyFilter } from '../localFavFilter.js';
 import { listFormats, nextFmtMode, fmtModeLabel, filterByFmt } from '../localFormatFilter.js';
+import { applyFolderToSongs } from '../folderGroups.js';
 import { toTrackLines } from '../songListText.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
@@ -176,6 +177,7 @@ function _sortL(songs) {
 function filterLocalSongs() {
   const kw = document.getElementById('localFilter').value.trim().toLowerCase();
   let songs = getState('localSongs') || [];
+  songs = applyFolderToSongs(songs); // 文件夹过滤在链首：fav→fmt→kw 都在其结果上再筛
   if (_localFavOnly) songs = favOnlyFilter(songs, getState('favoriteKeys'));
   if (_localFmtMode !== 'all') songs = filterByFmt(songs, _localFmtMode);
   if (kw) {
