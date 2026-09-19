@@ -32,6 +32,24 @@ export function qualityDownloadItems(source, current, onPick) {
   }));
 }
 
+/**
+ * 「所属专辑」菜单项（纯组装，便于单测）：行歌曲带 albumMid 才出，
+ * actions.openAlbum / actions.downloadAlbum 由调用方注入（分别落到
+ * 既有的 window.openAlbumView / window.downloadAlbum 桥）。
+ */
+export function albumMenuItems(song, actions = {}) {
+  if (!song || !song.albumMid) return [];
+  const items = [];
+  if (actions.openAlbum) {
+    items.push({ icon: '💿', label: '打开所属专辑（可挑着下载）', onClick: () => actions.openAlbum(song) });
+  }
+  if (actions.downloadAlbum) {
+    items.push({ icon: '⬇️', label: '整张专辑加入下载队列（自动跳过已有）', onClick: () => actions.downloadAlbum(song) });
+  }
+  if (items.length) items.unshift({ sep: true });
+  return items;
+}
+
 /** 「下一首播放」：插到当前曲之后；已在队列则移动而非重复插入 */
 export function playNextHere(song, playNowFallback) {
   const q = (getState('playQueue') || []).slice();
@@ -86,6 +104,14 @@ export function openSongRowMenu(e, song, opts = {}) {
       if (typeof window.searchArtistSongs === 'function') window.searchArtistSongs(song.artist);
     } },
   );
+  items.push(...albumMenuItems(song, {
+    openAlbum: (s) => {
+      if (typeof window.openAlbumView === 'function') window.openAlbumView(s.albumMid, s.source, s.album);
+    },
+    downloadAlbum: (s) => {
+      if (typeof window.downloadAlbum === 'function') window.downloadAlbum(s.albumMid, s.source);
+    },
+  }));
   const share = songShareText(song);
   const pageUrl = songPageUrl(song);
   if (share) items.push({ sep: true }, { icon: '📄', label: '复制分享文案', onClick: () => _copyBack(share, '分享文案已复制') });
