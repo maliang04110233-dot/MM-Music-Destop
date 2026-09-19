@@ -8,6 +8,7 @@ import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } 
 import { openSongRowMenu } from '../songMenu.js';
 import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
 import { markTerm } from '../highlight.js';
+import { dismissedKeySet, filterDismissedPairs, onDismissChanged } from '../dismissed.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -872,6 +873,9 @@ addDlChangeListener(() => {
   }, 300);
 });
 
+// 屏蔽列表变化（启动预取完成/屏蔽/恢复）→ 当前结果视图即时重渲染
+onDismissChanged(() => { if (_dlLastList) renderSongList(_dlLastList); });
+
 function renderSongList(list) {
   _dlLastList = list;
   if (list !== _lastRenderedSongList) _rowIdx = -1; // 新结果集：行焦点归零；徽标重绘保持
@@ -902,6 +906,8 @@ function renderSongList(list) {
     hiddenCount = pairs.length - kept.length;
     pairs = kept;
   }
+  let dismHidden = 0;
+  [pairs, dismHidden] = filterDismissedPairs(pairs, dismissedKeySet()); // 「不感兴趣」屏蔽（增量69）
   pairs = sortPairs(pairs, _searchSortMode); // 先过滤后排序，stable 排序保留组内原序
   _visibleIdxMap = pairs.map(p => p[1]);
   if (!pairs.length && hiddenCount) {
@@ -909,6 +915,14 @@ function renderSongList(list) {
       <div class="empty-icon">✔</div>
       <div class="empty-text">本页 ${hiddenCount} 首都已下载</div>
       <div class="empty-hint"><button class="btn-sm" onclick="toggleHideDownloaded()">取消隐藏</button></div>
+    </div>`;
+    return;
+  }
+  if (!pairs.length && dismHidden) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🚫</div>
+      <div class="empty-text">本页 ${dismHidden} 首已被屏蔽（不感兴趣）</div>
+      <div class="empty-hint"><button class="btn-sm" onclick="showDismissedManager()">查看屏蔽管理</button></div>
     </div>`;
     return;
   }

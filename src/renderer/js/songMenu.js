@@ -79,6 +79,9 @@ export function openSongRowMenu(e, song, opts = {}) {
     { icon: '📋', label: '添加到歌单', onClick: () => {
       if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(song);
     } },
+    { icon: '🚫', label: '不感兴趣（搜索结果中隐藏）', onClick: () => {
+      if (typeof window.dismissSong === 'function') window.dismissSong(song);
+    } },
   );
   const share = songShareText(song);
   const pageUrl = songPageUrl(song);

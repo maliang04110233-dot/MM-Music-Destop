@@ -57,6 +57,7 @@ import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
 import './artistGroups.js';
+import './dismissed.js';
 import './diagnose.js';
 import './queueSummary.js';
 import './lyricNudge.js';
