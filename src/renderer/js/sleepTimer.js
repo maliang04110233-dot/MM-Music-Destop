@@ -11,6 +11,18 @@ import { showContextMenu } from './contextMenu.js';
 import { logger } from './logger.js';
 
 const PRESETS = [15, 30, 45, 60, 90];
+const MAX_SLEEP_MIN = 1440; // 自定义上限：一天
+
+/**
+ * 自定义分钟解析（增量111）：只收 1..1440 的整数字符串，其余一律 null。
+ * @returns {number|null}
+ */
+function parseSleepMinutes(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!/^\d{1,4}$/.test(s)) return null;
+  const n = +s;
+  return (n >= 1 && n <= MAX_SLEEP_MIN) ? n : null;
+}
 
 /**
  * @param {Object} deps
@@ -94,6 +106,7 @@ function openSleepTimerMenu() {
     label: `${m} 分钟`,
     onClick: () => _arm(m),
   }));
+  items.push({ icon: '⌛', label: '自定义分钟…', onClick: () => openSleepCustomDialog() });
   items.push({ sep: true });
   items.push({
     icon: '✕',
@@ -117,7 +130,72 @@ function openSleepTimerMenu() {
   showContextMenu(x, y, items);
 }
 
+function _closeCustomDialog() {
+  const el = document.getElementById('sleepCustomOverlay');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+/** 自定义分钟弹层（增量111）：edit-overlay 模式，Enter 即确认，复用 _arm 落档 */
+function openSleepCustomDialog() {
+  try { if (typeof window.closePlayerMore === 'function') window.closePlayerMore(); } catch (_e) { /* 收起失败不挡弹层 */ }
+  _closeCustomDialog();
+  const overlay = document.createElement('div');
+  overlay.id = 'sleepCustomOverlay';
+  overlay.className = 'edit-overlay';
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeCustomDialog(); });
+
+  const panel = document.createElement('div');
+  panel.className = 'edit-panel';
+
+  const header = document.createElement('div');
+  header.className = 'edit-header';
+  const title = document.createElement('span');
+  title.className = 'edit-title';
+  title.textContent = '⏾ 自定义睡眠定时';
+  const close = document.createElement('button');
+  close.className = 'edit-close';
+  close.textContent = '✕';
+  close.addEventListener('click', () => _closeCustomDialog());
+  header.appendChild(title);
+  header.appendChild(close);
+
+  const body = document.createElement('div');
+  body.className = 'edit-body';
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:11px;opacity:.6;margin-bottom:8px;';
+  hint.textContent = `到点自动暂停播放（1–${MAX_SLEEP_MIN} 分钟，回车即确认）`;
+  const input = document.createElement('input');
+  input.id = 'sleepCustomInput';
+  input.type = 'number';
+  input.min = '1';
+  input.max = String(MAX_SLEEP_MIN);
+  input.placeholder = '如 120';
+  input.style.cssText = 'width:100%;padding:8px 10px;box-sizing:border-box;';
+  const ok = document.createElement('button');
+  ok.className = 'edit-save';
+  ok.textContent = '开始定时';
+  ok.style.cssText = 'margin-top:10px;';
+  function submit() {
+    const m = parseSleepMinutes(input.value);
+    if (m === null) { showToast(`请输入 1–${MAX_SLEEP_MIN} 之间的整数分钟`, 'warn', 2500); return; }
+    _closeCustomDialog();
+    _arm(m);
+  }
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  ok.addEventListener('click', submit);
+  body.appendChild(hint);
+  body.appendChild(input);
+  body.appendChild(ok);
+
+  panel.appendChild(header);
+  panel.appendChild(body);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  input.focus();
+}
+
 // ── window 桥接 ───────────────────────────────────────
 window.openSleepTimerMenu = openSleepTimerMenu;
+window.openSleepCustomDialog = openSleepCustomDialog;
 
-export { createSleepTimer, openSleepTimerMenu, PRESETS };
+export { createSleepTimer, openSleepTimerMenu, openSleepCustomDialog, parseSleepMinutes, PRESETS, MAX_SLEEP_MIN };
