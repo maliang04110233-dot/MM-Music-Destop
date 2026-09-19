@@ -65,6 +65,7 @@ const COMMANDS = [
   { id: 'nav-local', icon: '📂', group: '导航', label: '前往 本地曲库', keywords: ['local', '本地'], run: () => _goto('local') },
   { id: 'nav-playlist', icon: '💿', group: '导航', label: '前往 歌单', keywords: ['playlist', '收藏'], run: () => _goto('playlist') },
   { id: 'nav-sub', icon: '🔔', group: '导航', label: '前往 订阅', keywords: ['subscription', '更新'], run: () => _goto('subscription') },
+  { id: 'sub-check', icon: '📡', group: '下载', label: '立即检查订阅更新（新歌提醒）', keywords: ['subscription check', '订阅', '检查', '新歌'], run: () => _call('subscriptionCheckNow') },
   { id: 'nav-ai', icon: '✨', group: '导航', label: '前往 AI 创作', keywords: ['ai', '生成'], run: () => _goto('ai-music') },
   { id: 'nav-conv', icon: '🎛', group: '导航', label: '前往 格式转换', keywords: ['convert', '转码'], run: () => _goto('converter') },
 

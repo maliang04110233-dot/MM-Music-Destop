@@ -1599,9 +1599,11 @@
 .sub-new-actions { display: flex; gap: 6px; }
 .sub-new-list { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
 .sub-new-row {
-  display: flex; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   font-size: 11.5px; color: var(--text); overflow: hidden;
 }
+.sub-new-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub-new-dl { flex-shrink: 0; padding: 1px 8px; }
 .sub-new-artist { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 .sub-new-more { font-size: 11px; color: var(--text-muted); }
 .pl-toolbar-actions .sub-on { color: var(--neon-cyan); border-color: var(--neon-cyan); }

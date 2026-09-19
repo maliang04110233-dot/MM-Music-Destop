@@ -10,6 +10,9 @@
  * 与 playlist.js 同风格：挂在 window 上供 HTML onclick / app.js 调用。
  */
 
+import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
+import { subDlPayload, subDlPayloadList, subNewSongById, subActiveQueueDup } from '../subNewDl.js';
+
 let _subsLoaded = false;
 let _subList = [];
 
@@ -17,6 +20,7 @@ async function loadSubscriptions() {
   try {
     _subList = await api.subscribeList() || [];
     _subsLoaded = true;
+    dlEnsureHistoryLoaded(); // 徽标的「已下载」来自跨会话历史，懒加载一次
     renderSubscriptionPage(_subList);
     updateSubBadge(_subList);
   } catch (e) {
@@ -55,6 +59,7 @@ function renderSubscriptionPage(entries) {
   }
   wrap.innerHTML = entries.map(e => {
     const unread = e.newCount || 0;
+    const queue = getState('queueSnapshot') || [];
     return `
     <div class="sub-card ${unread ? 'sub-card-unread' : ''}">
       <div class="sub-card-head">
@@ -86,7 +91,7 @@ function renderSubscriptionPage(entries) {
           </div>
         </div>
         <div class="sub-new-list">${(e.newSongs || []).slice(0, 10).map(s =>
-          `<div class="sub-new-row"><span>${esc(s.title)}</span><span class="sub-new-artist">${esc(s.artist)}</span></div>`
+          `<div class="sub-new-row"><span class="sub-new-title">${esc(s.title)}</span><span class="sub-new-artist">${esc(s.artist)}</span>${dlBadgeHtml(s, queue)}<button class="btn-sm sub-new-dl" title="加入下载队列" onclick="subscriptionDownloadNew('${escAttr(e.key)}', '${escAttr(String(s.id))}')">⬇</button></div>`
         ).join('')}${unread > 10 ? '<div class="sub-new-more">…另有 ' + (unread - 10) + ' 首</div>' : ''}</div>
       </div>` : ''}
     </div>`;
@@ -100,6 +105,14 @@ function updateSubBadge(entries) {
   badge.textContent = n > 99 ? '99+' : (n || '');
   badge.style.display = n > 0 ? '' : 'none';
 }
+
+// 下载队列状态变化 → 新歌行徽标（⬇下载中/✔已下载）实时刷新；300ms 防抖合并队列推送风暴
+let _subRenderTimer = null;
+addDlChangeListener(() => {
+  if (!_subsLoaded) return;
+  clearTimeout(_subRenderTimer);
+  _subRenderTimer = setTimeout(() => renderSubscriptionPage(_subList), 300);
+});
 
 // ── 操作 ───────────────────────────────────────────────
 
@@ -158,15 +171,39 @@ async function subscriptionQueueNew(key) {
   const entry = _subList.find(e => e.key === key);
   const songs = entry && entry.newSongs;
   if (!songs || !songs.length) return;
-  const saveDir = getState('saveDir');
-  const payload = {
-    songs: songs.map(s => ({ ...s, saveDir, quality: resolveQuality(s.source) })),
-  };
+  const payload = { songs: subDlPayloadList(songs, getState('saveDir'), resolveQuality) };
   try {
     const r = await api.addPlaylistToQueue(payload);
     showToast(`已加入 ${r.queued} 首${r.skippedDownloaded ? `，跳过 ${r.skippedDownloaded} 首已下载` : ''}`, 'success');
   } catch (e) {
     showToast('批量加入失败: ' + (e.message || e), 'error');
+  }
+}
+
+/** 新歌行「⬇」逐首入队（增量104：语义与 downloadPlaylistSong 对齐，走既有 addToQueue 通道）。
+ *  用 id 而非下标定位：主进程推送会整体替换 _subList，点击时列表可能已变 */
+async function subscriptionDownloadNew(key, songId) {
+  const entry = _subList.find(e => e.key === key);
+  const song = subNewSongById(entry && entry.newSongs, songId);
+  if (!song) { showToast('该歌曲已不在新歌列表，请刷新后重试', 'warn'); return; }
+  const dup = subActiveQueueDup(getState('queueSnapshot'), song);
+  if (dup) { showToast(`「${song.title}」已在队列中`, 'warn', 2500); return; }
+  const payload = subDlPayload(song, getState('saveDir'), resolveQuality);
+  try {
+    const r = await api.addToQueue(payload);
+    if (r && r.duplicated) { showToast(`「${song.title}」已在下载队列中`, 'warn', 2500); return; }
+    if (r && r.alreadyDownloaded) {
+      showRedownloadToast(song.title, r.finishedAt, () => {
+        api.addToQueue({ ...payload, forceRedownload: true })
+          .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
+          .catch(e => showToast('加入失败: ' + (e.message || e), 'error'));
+      });
+      return;
+    }
+    if (r && r.queued) showToast(`「${song.title}」已加入下载队列`, 'success');
+    else showToast((r && r.error) || '加入下载队列失败', 'error');
+  } catch (e) {
+    showToast('加入下载队列失败: ' + (e.message || e), 'error');
   }
 }
 
@@ -230,6 +267,7 @@ window.subscriptionToggleAuto = subscriptionToggleAuto;
 window.subscriptionCheckNow = subscriptionCheckNow;
 window.subscriptionMarkSeen = subscriptionMarkSeen;
 window.subscriptionQueueNew = subscriptionQueueNew;
+window.subscriptionDownloadNew = subscriptionDownloadNew;
 window.subscribeCurrentPlaylist = subscribeCurrentPlaylist;
 window.subscribeCurrentSinger = subscribeCurrentSinger;
 window.wireSubscriptionEvents = wireSubscriptionEvents;
