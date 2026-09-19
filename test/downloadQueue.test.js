@@ -56,6 +56,7 @@ function buildEngine(overrides = {}) {
       || (async () => ({ url: 'https://cdn/x.mp3', ext: 'mp3' })),
     getLyrics: overrides.getLyrics || (async () => ({ lrc: '' })),
     notifier: overrides.notifier || { notifyDownloadDone: () => {} },
+    getDefaultDownloadDir: overrides.getDefaultDownloadDir,
     // 注入替身（避免真实网络/落盘）
     history: { add: (rec) => { historyAdds.push(rec); } },
     fsa: { statOrNull: overrides.statOrNull || (async () => ({ size: 1234 })) },
@@ -194,6 +195,20 @@ test('processQueue: 空队列不抛错', async () => {
   try {
     await engine.processQueue();
     assert.strictEqual(engine.getQueue().length, 0);
+  } finally { restore(); }
+});
+
+test('saveDir 全缺省 ⇒ 落盘到注入的 getDefaultDownloadDir（与 UI 展示目录同源）', async () => {
+  const injectDir = path.join(tmpDir(), 'MusicDownloader');
+  const { engine, downloaded, restore } = buildEngine({
+    getDefaultDownloadDir: () => injectDir,
+  });
+  try {
+    engine.getQueue().push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'x', status: 'pending' });
+    await engine.processQueue();
+    await waitFor(() => downloaded.length === 1);
+    assert.ok(downloaded[0].savePath.startsWith(injectDir + path.sep),
+      `应落在注入的默认目录 ${injectDir}，实际 ${downloaded[0].savePath}`);
   } finally { restore(); }
 });
 

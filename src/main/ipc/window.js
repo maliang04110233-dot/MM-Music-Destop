@@ -11,6 +11,7 @@
 const { BrowserWindow, dialog, shell, app } = require('electron');
 const { handle, on } = require('./register');
 const { buildContractArg } = require('../../shared/ipcContract');
+const { defaultDownloadDir } = require('../../shared/downloadDefaults');
 const path = require('path');
 const { getMainWindow } = require('../context');
 const playCache = require('../playCache');
@@ -193,9 +194,9 @@ function register() {
     return result.filePaths[0];
   });
 
-  // 默认下载目录
+  // 默认下载目录（UI 展示与真实落盘兜底同源，字面量收表 shared/downloadDefaults）
   handle('get-default-dir', () => {
-    return path.join(app.getPath('music'), 'MusicDownloader');
+    return defaultDownloadDir(app.getPath('music'));
   });
 
   // 打开目录 / 外部链接（渲染层经 musicAPI invoke 调用，需 handle）

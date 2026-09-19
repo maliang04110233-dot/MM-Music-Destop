@@ -58,6 +58,9 @@ function isRetriableStatus(status) {
 
 /** 跟着 3xx 重定向（最多 5 次，防止无限递归） */
 const MAX_REDIRECTS = 5;
+/** 请求超时默认值（ms）：普通 API 请求 / 音频链路探测 */
+const DEFAULT_TIMEOUT_MS = 15000;
+const PROBE_TIMEOUT_MS = 8000;
 function _followRedirects(url, options, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (redirectCount > MAX_REDIRECTS) {
@@ -79,7 +82,7 @@ function _followRedirects(url, options, redirectCount = 0) {
         'Accept-Language': 'zh-CN,zh;q=0.9',
         ...options.headers,
       },
-      timeout: options.timeout || 15000,
+      timeout: options.timeout || DEFAULT_TIMEOUT_MS,
     };
 
     const req = lib.request(reqOptions, (res) => {
@@ -276,7 +279,7 @@ async function testAudioLink(url, opts = {}) {
     'Accept': '*/*',
     ...(opts.headers || {}),
   };
-  const timeout = opts.timeout || 8000;
+  const timeout = opts.timeout || PROBE_TIMEOUT_MS;
   const skipSsrf = opts.skipSsrfCheck === true;
 
   let r = await _probeAudio(url, 'HEAD', headers, timeout, MAX_PROBE_REDIRECTS, skipSsrf);

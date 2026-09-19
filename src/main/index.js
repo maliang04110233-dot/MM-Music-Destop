@@ -1,6 +1,7 @@
 const { app, BrowserWindow, session, Menu, Tray, nativeImage, Notification, globalShortcut } = require('electron');
 const { handle: ipcHandle, on: ipcOn, assertContractCoverage } = require('./ipc/register');
 const { buildContractArg } = require('../shared/ipcContract');
+const { defaultDownloadDir } = require('../shared/downloadDefaults');
 const path = require('path');
 const { setCookieStore } = require('../api');
 const logger = require('../utils/logger');
@@ -482,8 +483,8 @@ app.whenReady().then(async () => {
     const v = prefs.get(k);
     if (v) approvedDirs.approve(v);
   }
-  approvedDirs.approve(path.join(app.getPath('music'), 'MusicDownloader'));
-  approvedDirs.approve(path.join(app.getPath('userData'), 'MusicDownloader'));
+  approvedDirs.approve(defaultDownloadDir(app.getPath('music')));
+  approvedDirs.approve(defaultDownloadDir(app.getPath('userData')));
 
   // 初始化下载历史持久化
   history.init(app.getPath('userData'));
@@ -493,6 +494,9 @@ app.whenReady().then(async () => {
   // 拿队列引用，而该引用来自引擎。
   downloadQueueEngine = createDownloadQueueEngine({
     userDataDir: () => app.getPath('userData'),
+    // 落盘兜底必须与 get-default-dir（UI 展示）同源，否则用户没设 saveDir 时
+    // 「打开文件夹」看到的和文件真实落点是两个目录
+    getDefaultDownloadDir: () => defaultDownloadDir(app.getPath('music')),
     safeSend,
     getDownloadUrlSmart,
     getLyrics,
@@ -521,7 +525,7 @@ app.whenReady().then(async () => {
   downloadQueue = downloadQueueEngine.getQueue();
 
   // 确保默认下载目录存在（如果有用户自定义的 saveDir 则用之，否则用系统默认）
-  const defaultDir = prefs.get('saveDir') || path.join(app.getPath('music'), 'MusicDownloader');
+  const defaultDir = prefs.get('saveDir') || defaultDownloadDir(app.getPath('music'));
   await fsa.ensureDir(defaultDir); // mkdir recursive 本身幂等，无需先探测
 
   // 初始化 play_cache 目录 + 清理上次进程遗留的陈旧临时文件

@@ -940,8 +940,15 @@ async function loadWebdavConfig() {
 async function saveWebdavConfig() {
   try {
     const pass = document.getElementById('webdavPass').value;
+    const url = document.getElementById('webdavUrl').value.trim();
+    // 明文 http 且非本机 ⇒ 账号密码可被链路窃听。提示但不阻断：
+    // 局域网 NAS（http://192.168.x.x）是 WebDAV 主流部署形态
+    const isLocalHost = /^https?:\/\/(localhost|127\.|\[::1\])/i.test(url);
+    if (url && url.startsWith('http://') && !isLocalHost) {
+      showToast('⚠️ WebDAV 地址为明文 http 且非本机，密码可能被窃听，建议改用 https', 'warn', 6000);
+    }
     const r = await window.ipcRenderer.invoke('cloud-sync-config-set', {
-      url: document.getElementById('webdavUrl').value.trim(),
+      url,
       user: document.getElementById('webdavUser').value.trim(),
       // 留空 = 不修改已存密码（undefined 不上送该字段）
       ...(pass ? { pass } : {}),

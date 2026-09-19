@@ -79,3 +79,20 @@ test('settings.js: resetAllSettings 必须由 GENERAL_PREFS 表派生默认值�
   assert.match(src, /Object\.values\(GENERAL_PREFS\)/, '恢复默认需遍历派生自表');
   assert.doesNotMatch(src, /const defaults = \{\n\s*quality:/, '不得再手写 defaults 清单');
 });
+
+test('settings.js: WebDAV 保存时非本机 http 地址必须提示明文风险（不阻断）', () => {
+  const src = read('js', 'views', 'settings.js');
+  assert.match(src, /startsWith\('http:\/\/'\)/, '以 http:// 前缀判定明文传输');
+  assert.match(src, /localhost/, '本机地址（localhost/127.x/[::1]）应豁免提示');
+  assert.match(src, /showToast\([^\n]*明文[^\n]*'warn'/,
+    '非本机 http:// 保存时应给 warn 级 toast 提示，而不是静默保存');
+});
+
+test('settings.js: filenameTmpl 默认值必须与 naming.js DEFAULT_TEMPLATE 等值（渲染层无法 import，用等值钉）', () => {
+  const { DEFAULT_TEMPLATE } = require('../src/utils/naming');
+  const src = read('js', 'views', 'settings.js');
+  const m = src.match(/filenameTmpl:\s*\{[^}]*default:\s*'([^']*)'/);
+  assert.ok(m, 'GENERAL_PREFS 应含 filenameTmpl 默认值');
+  assert.strictEqual(m[1], DEFAULT_TEMPLATE,
+    '设置页手抄的模板默认值已与主进程命名模块漂移');
+});

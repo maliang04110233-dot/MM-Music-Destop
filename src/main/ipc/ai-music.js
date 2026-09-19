@@ -9,6 +9,7 @@ const { handle } = require('./register');
 const { app } = require('electron');
 const path = require('path');
 const aiMusic = require('../../api/ai-music');
+const { defaultDownloadDir, AI_SUBDIR_NAME } = require('../../shared/downloadDefaults');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
 
@@ -136,15 +137,15 @@ function register() {
           return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
         };
         const allowedBaseDirs = [
-          path.resolve(app.getPath('music'), 'MusicDownloader'),
+          path.resolve(defaultDownloadDir(app.getPath('music'))),
           path.resolve(app.getPath('userData')),
         ];
         let saveDir = params.saveDir
           ? path.resolve(params.saveDir)
-          : path.join(app.getPath('music'), 'MusicDownloader', 'AI生成');
+          : path.join(defaultDownloadDir(app.getPath('music')), AI_SUBDIR_NAME);
         const isAllowed = allowedBaseDirs.some(base => isInside(base, saveDir));
         if (!isAllowed) {
-          saveDir = path.join(app.getPath('music'), 'MusicDownloader', 'AI生成');
+          saveDir = path.join(defaultDownloadDir(app.getPath('music')), AI_SUBDIR_NAME);
         }
         await fsa.ensureDir(saveDir);
 

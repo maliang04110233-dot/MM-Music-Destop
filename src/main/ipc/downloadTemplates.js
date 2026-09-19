@@ -10,6 +10,7 @@
 const { handle } = require('./register');
 const path = require('path');
 const prefs = require('../../utils/prefs');
+const { defaultDownloadDir } = require('../../shared/downloadDefaults');
 
 const TEMPLATE_KEY = 'downloadTemplates';
 const ACTIVE_KEY = 'activeDownloadTemplate';
@@ -99,7 +100,10 @@ function sanitizeDownloadPath(templatePath) {
   // 拒绝含协议处理器 / 明显 traversal 的输入（兜底，path.resolve 后还会再校验）
   if (/^(file|https?|data|javascript|ftp|smb|ms-|mailto):/i.test(raw)) return null;
   try {
-    const saveDir = prefs.get('saveDir') || path.join(require('electron').app.getPath('home'), 'Music');
+    // 兜底必须与真实落盘/展示默认目录同源，否则未设 saveDir 时
+    // 默认目录下的模板路径会被误判越界（曾经的 home/Music 是第三套默认）
+    const saveDir = prefs.get('saveDir')
+      || defaultDownloadDir(require('electron').app.getPath('music'));
     const resolved = path.resolve(raw);
     const base = path.resolve(saveDir);
     // 允许 saveDir 本身或其子目录

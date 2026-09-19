@@ -32,7 +32,8 @@ const prefs = require('../utils/prefs');
 const historyDefault = require('../utils/history');
 const fsaDefault = require('../utils/fsAsync');
 const downloaderDefault = require('../utils/downloader');
-const { renderFileName } = require('../utils/naming');
+const { renderFileName, DEFAULT_TEMPLATE } = require('../utils/naming');
+const { MUSIC_DIR_NAME } = require('../shared/downloadDefaults');
 const speedMeter = require('./speedMeter');
 const diskSpace = require('./diskSpace');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
@@ -71,6 +72,8 @@ function sanitizeFilename(name) {
  * @param {Object} [deps.fsa] 异步文件工具（默认 utils/fsAsync）
  * @param {Object} [deps.downloader] 下载器（默认 utils/downloader），需含 downloadFileWithRetry / embedId3Tags
  * @param {(dir:string) => boolean} [deps.isSaveDirAllowed] C1: 渲染层传入 saveDir 的沙箱校验（默认不限制，单测用）
+ * @param {() => string} [deps.getDefaultDownloadDir] 未设 prefs.saveDir 时的默认下载目录
+ *   （必须与 get-default-dir 展示给 UI 的值同源；缺省回落 userData，仅单测路径）
  * @returns {Object} 引擎实例
  */
 function createDownloadQueueEngine({
@@ -80,6 +83,7 @@ function createDownloadQueueEngine({
   getLyrics,
   onQueueChanged,
   isSaveDirAllowed,
+  getDefaultDownloadDir,
   notifier,
   history = historyDefault,
   fsa = fsaDefault,
@@ -274,7 +278,7 @@ function createDownloadQueueEngine({
 
         const ext = (urlInfo.ext || 'mp3').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'mp3';
         // 命名模板：从 preferences 读取，支持 {title} {artist} {album} {source} {id}
-        const namingTemplate = prefs.get('namingTemplate') || '{artist} - {title}';
+        const namingTemplate = prefs.get('namingTemplate') || DEFAULT_TEMPLATE;
         // saveDir 兜底：用户从未选过下载目录时渲染层传 null，path.join(null) 直接
         // 崩溃（必现 "The path argument must be of type string. Received null"）。
         // C1: 渲染层可整包传入 song.saveDir —— 未经用户批准的目录（XSS 场景）
@@ -284,7 +288,9 @@ function createDownloadQueueEngine({
           logger.warn('[processOneSong] 拒绝未批准 saveDir，回落默认目录:', songSaveDir);
           songSaveDir = null;
         }
-        const saveDir = songSaveDir || prefs.get('saveDir') || path.join(userDataDirSafe(), 'MusicDownloader');
+        const saveDir = songSaveDir || prefs.get('saveDir')
+          || (typeof getDefaultDownloadDir === 'function' ? getDefaultDownloadDir()
+            : path.join(userDataDirSafe(), MUSIC_DIR_NAME));
         const savePath = path.join(saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
 
         await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
