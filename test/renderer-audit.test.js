@@ -40,3 +40,42 @@ test('settings.js: 下载模板 id 进 innerHTML 必须过 escQ/escAttr（外部
   assert.match(src, /escQ\(tpl\.id\)/, 'onclick 实参应走 escQ');
   assert.match(src, /escAttr\(tpl\.id\)/, 'data-id 应走 escAttr');
 });
+
+// ── 中危批次：竞态范式 / referer 单源 / reset 派生 ──────────────
+
+test('search.js: doSearchByType 必须有请求序号守卫（旧结果晚到不得覆盖新列表）', () => {
+  const src = read('js', 'views', 'search.js');
+  assert.match(src, /let _typeSearchReqId = 0;/);
+  assert.match(src, /if \(reqId !== _typeSearchReqId\) return/, 'await 后必须校验序号再写状态');
+});
+
+test('local.js: scanLocalDir 必须加重入锁（连点/fs.watch 推送并发只允许一次扫描）', () => {
+  const src = read('js', 'views', 'local.js');
+  assert.match(src, /let _scanRunning = false;/);
+  assert.match(src, /if \(_scanRunning\) return;/);
+});
+
+test('取流 referer 单源：utils.js 提供 playReferer，5 处调用点不得再各写三元链', () => {
+  const utils = read('js', 'utils.js');
+  assert.match(utils, /function playReferer\(/, 'utils.js 需有唯一 referer 判定入口');
+  assert.match(utils, /window\.playReferer = playReferer;/);
+  const files = [
+    ['js', 'app.js'],
+    ['js', 'player.js'],
+    ['js', 'views', 'home.js'],
+    ['js', 'views', 'playlist.js'],
+    ['js', 'views', 'search.js'],
+  ];
+  for (const f of files) {
+    const src = read(...f);
+    assert.match(src, /playReferer\(/, `${f.join('/')} 必须改走 playReferer`);
+    assert.doesNotMatch(src, /=== 'bilibili' \? 'https:\/\/www\.bilibili\.com\//,
+      `${f.join('/')} 不应再复制 referer 三元链`);
+  }
+});
+
+test('settings.js: resetAllSettings 必须由 GENERAL_PREFS 表派生默认值（手抄必漏）', () => {
+  const src = read('js', 'views', 'settings.js');
+  assert.match(src, /Object\.values\(GENERAL_PREFS\)/, '恢复默认需遍历派生自表');
+  assert.doesNotMatch(src, /const defaults = \{\n\s*quality:/, '不得再手写 defaults 清单');
+});

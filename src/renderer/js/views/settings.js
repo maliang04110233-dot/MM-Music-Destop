@@ -858,14 +858,9 @@ async function clearPlayCache() {
 async function resetAllSettings() {
   if (!confirm('确认恢复所有设置为默认值？\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
 
-  const defaults = {
-    quality: 'standard',
-    concurrency: 3,
-    namingTemplate: '{artist} - {title}',
-    autoLyric: true,
-    autoCover: true,
-    theme: 'default',
-  };
+  // 默认值由 GENERAL_PREFS 表派生 —— 手抄清单必然漏项（审计发现的 6/13 缺漏）
+  const defaults = {};
+  for (const meta of Object.values(GENERAL_PREFS)) defaults[meta.key] = meta.default;
 
   try {
     for (const [key, value] of Object.entries(defaults)) {

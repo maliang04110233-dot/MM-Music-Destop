@@ -406,9 +406,7 @@ async function playSongByIdx(idx, song) {
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
       updatePlayerCard(song); // 换源徽标立即显示（不等下一次切歌）
     }
-    const referer = (result.matchedSong?.source || song.source) === 'bilibili' ? 'https://www.bilibili.com/'
-                  : (result.matchedSong?.source || song.source) === 'qq' ? 'https://y.qq.com/'
-                  : (result.matchedSong?.source || song.source) === 'netease' ? 'https://music.163.com/' : '';
+    const referer = playReferer(result.matchedSong?.source || song.source, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _playRequestId) return;
     if (!proxied || !proxied.fileUrl) {

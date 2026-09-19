@@ -316,6 +316,8 @@ function createDownloadQueueEngine({
         const speedLimitKB = prefs.get('speedLimit') || 0;
         const speedLimit = speedLimitKB > 0 ? speedLimitKB * 1024 : 0;
         await downloadFileWithRetry(urlInfo.url, savePath, (progress, bytes) => {
+          // 取消后底层回调可能迟到一拍：不得再写进度/推送事件（UI 闪烁来源）
+          if (song._cancelRequested) return;
           song.progress = progress;
           const payload = { id: song.taskId, progress };
           if (bytes) {

@@ -798,9 +798,7 @@ async function playPlaylistModalSong(idx) {
     }
     song._playedQuality = quality;
     const playSource = result.matchedSong?.source || song.source;
-    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
-                  : playSource === 'qq' ? 'https://y.qq.com/'
-                  : playSource === 'netease' ? 'https://music.163.com/' : '';
+    const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _plModalPlayRequestId) return;
     if (!proxied || !proxied.fileUrl) {

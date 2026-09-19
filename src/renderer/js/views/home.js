@@ -673,9 +673,7 @@ async function playRecommendSong(song) {
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
     const playSource = result.matchedSong?.source || song.source;
-    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
-                  : playSource === 'qq' ? 'https://y.qq.com/'
-                  : playSource === 'netease' ? 'https://music.163.com/' : '';
+    const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (!proxied || !proxied.fileUrl) {
       showToast('⚠️ 音源下载失败：' + (proxied?.error || '未知错误'), 'error', 5000);

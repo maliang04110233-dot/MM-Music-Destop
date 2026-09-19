@@ -79,7 +79,20 @@ async function batchFetchCovers() {
 function cancelBatchFetch() { _batchCancelled = true; }
 
 // ── 扫描 ──────────────────────────────────────────────
+// 重入锁：按钮连点 / fs.watch 推送并发时只允许一次扫描在途
+//（扫描体长且多早期 return，包一层比逐出口复位可靠）
+let _scanRunning = false;
 async function scanLocalDir() {
+  if (_scanRunning) return;
+  _scanRunning = true;
+  try {
+    await _doScanLocalDir();
+  } finally {
+    _scanRunning = false;
+  }
+}
+
+async function _doScanLocalDir() {
   let localDirPath = getState('localDirPath');
   if (!localDirPath) {
     const saved = await api.getPref('localDirPath');

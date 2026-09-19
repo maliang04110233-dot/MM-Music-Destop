@@ -687,3 +687,28 @@ test('持久化：任务 error 后 queue.json 立即可读', async () => {
     assert.strictEqual(raw[0].status, 'error');
   } finally { restore(); }
 });
+
+test('取消下载：迟到的 onProgress 不再写进度、不再推送事件（2026-09 审计 M-竞态）', async () => {
+  let onProgressCb;
+  let finish;
+  const { engine, sent, restore } = buildEngine({
+    downloadFileWithRetry: (url, savePath, onProgress) => {
+      onProgressCb = onProgress;
+      return new Promise((resolve) => { finish = resolve; });
+    },
+  });
+  try {
+    engine.getQueue().push(dlItem('1', 'netease'));
+    await engine.processQueue();
+    await waitFor(() => !!onProgressCb);
+    engine.requestCancel('task-netease-1');
+    // 取消已发出，但底层回调仍可能迟到一拍
+    onProgressCb(50, { receivedBytes: 1, totalBytes: 2 });
+    assert.ok(!sent.some(s => s.ch === 'download-progress' && s.payload.progress === 50),
+      '已取消任务不得再推送 download-progress');
+    finish();
+    await waitFor(() => engine.getQueue().every(s => s.status !== 'downloading'));
+  } finally {
+    restore();
+  }
+});

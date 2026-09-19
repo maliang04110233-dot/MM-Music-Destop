@@ -29,6 +29,20 @@ function escAttr(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g, '&#39;');
 }
 
+/**
+ * 取流播放所需 Referer 的唯一判定入口（审计：此前 5 个文件各复制一份三元链）。
+ * 优先主进程取流结果自带的 referer（如 B 站），其余按播放源查表；
+ * kugou/kuwo/migu/soda/5sing 的 CDN 实测无 Referer 也可播，返回空串。
+ */
+const PLAY_REFERERS = {
+  bilibili: 'https://www.bilibili.com/',
+  qq: 'https://y.qq.com/',
+  netease: 'https://music.163.com/',
+};
+function playReferer(source, result) {
+  return (result && result.referer) || PLAY_REFERERS[source] || '';
+}
+
 // ── 时间格式化 ────────────────────────────────────────
 function fmtTime(s) {
   if (!s || isNaN(s)) return '0:00';
@@ -241,12 +255,14 @@ export {
   formatPlayCount,
   fmtHistoryTime,
   showRedownloadToast,
+  playReferer,
 };
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.esc = esc;
 window.escQ = escQ;
 window.escAttr = escAttr;
+window.playReferer = playReferer;
 window.fmtTime = fmtTime;
 window.fmtDuration = fmtDuration;
 window.formatBytes = formatBytes;

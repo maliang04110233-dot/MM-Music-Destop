@@ -433,7 +433,9 @@ function _searchCacheSet(key, data) {
   _searchCache.set(key, { data, ts: Date.now() });
 }
 
+let _typeSearchReqId = 0;
 async function doSearchByType(type, page, keyword, source) {
+  const reqId = ++_typeSearchReqId;
   const cacheKey = _searchCacheKey(type, page, keyword, source);
   const cached = _searchCacheGet(cacheKey);
   if (cached) {
@@ -466,6 +468,8 @@ async function doSearchByType(type, page, keyword, source) {
     if (!result?.error) {
       _searchCacheSet(cacheKey, { items, total: result?.total || 0 });
     }
+    // 迟到的旧请求结果只进缓存，不再覆盖界面（新搜索已在途时序号已变）
+    if (reqId !== _typeSearchReqId) return [];
     setState(stateKey[type], items);
     if (result && result.error) showToast('搜索出错：' + result.error, 'warn', 3500);
     renderMap[type](items);
@@ -1125,9 +1129,7 @@ async function playSong(idx) {
       s._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
     const playSource = result.matchedSong?.source || s.source;
-    const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
-                  : playSource === 'qq' ? 'https://y.qq.com/'
-                  : playSource === 'netease' ? 'https://music.163.com/' : '';
+    const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _searchPlayRequestId) return;
     if (!proxied || !proxied.fileUrl) {
