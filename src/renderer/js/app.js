@@ -49,6 +49,7 @@ import { openSongRowMenu } from './songMenu.js';
 import './favorites.js';
 import './player-controls.js';
 import './sleepTimer.js';
+import './playQueueSort.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
@@ -1117,9 +1118,9 @@ function renderPlayQueueUI() {
     list.innerHTML = queue.map((s, i) => {
       const isCur = i === playIdx;
       const cover = s.cover
-        ? '<img class="pq-thumb" src="' + escAttr(s.cover) + '" alt="" loading="lazy">'
+        ? '<img class="pq-thumb" src="' + escAttr(s.cover) + '" alt="" loading="lazy" draggable="false">'
         : '<span class="pq-thumb-ph">' + NOTE_SVG + '</span>';
-      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" onclick="window._playQueueIdx(' + i + ')">'
+      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" draggable="true" data-pqidx="' + i + '" onclick="window._playQueueIdx(' + i + ')">'
         + '<span class="pq-idx">' + (i + 1) + '</span>'
         + cover
         + '<span class="pq-item-main">'

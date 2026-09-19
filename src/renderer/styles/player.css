@@ -1180,6 +1180,9 @@ audio { display: none; }
   transition: background var(--dur-1) var(--ease);
 }
 .pq-item:hover { background: var(--elev-1); }
+/* 拖拽排序：被拖行半透明，落点行顶部高亮线 */
+.pq-item.pq-dragging { opacity: .4; }
+.pq-item.pq-drag-over { box-shadow: inset 0 2px 0 var(--accent-ui); background: var(--elev-1); }
 .pq-item.playing { background: var(--accent-soft); }
 .pq-item.playing::before {
   content: '';
