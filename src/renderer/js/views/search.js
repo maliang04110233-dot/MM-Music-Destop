@@ -7,6 +7,7 @@ import { heartBtnHtml } from '../favorites.js';
 import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
+import { markTerm } from '../highlight.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -860,6 +861,7 @@ function renderSongList(list) {
     return;
   }
   const selected = getState('selectedSongs') || new Set();
+  const _kw = getState('currentKeyword') || ''; // 关键词高亮：只按已提交的搜索词
   el.innerHTML = pairs.map(([s, i]) => {
     const checked = selected.has(i) ? 'checked' : '';
     return `
@@ -871,8 +873,8 @@ function renderSongList(list) {
         : ''}
       <div class="song-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
       <div class="song-info">
-        <div class="song-title">${esc(s.title)}</div>
-        <div class="song-meta">${esc(s.artist)}${s.album ? ' · ' + (s.albumMid
+        <div class="song-title">${markTerm(s.title, _kw)}</div>
+        <div class="song-meta">${markTerm(s.artist, _kw)}${s.album ? ' · ' + (s.albumMid
           ? `<span class="album-link" onclick="openAlbumView('${escQ(s.albumMid)}','${escQ(s.source)}','${escQ(s.album)}')">${esc(s.album)}</span>`
           : esc(s.album)) : ''}</div>
       </div>

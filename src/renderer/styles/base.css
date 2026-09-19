@@ -456,3 +456,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
     scroll-behavior: auto !important;
   }
 }
+
+/* 搜索结果关键词高亮（highlight.js markTerm 产出 <mark>） */
+mark {
+  background: rgba(0, 255, 200, 0.18);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
