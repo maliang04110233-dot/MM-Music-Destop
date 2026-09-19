@@ -48,7 +48,8 @@ test('local.js 管线：开关先收藏后关键词串接，按钮文案/active 
   assert.match(LOCAL_JS, /if \(_localFavOnly\) songs = favOnlyFilter\(songs, getState\('favoriteKeys'\)\);/);
   assert.match(LOCAL_JS, /btn\.textContent = _localFavOnly \? '♥ 仅收藏' : '♥ 全部';/);
   assert.match(LOCAL_JS, /btn\.classList\.toggle\('active', _localFavOnly\)/);
-  assert.match(LOCAL_JS, /finally\(\(\) => \{ if \(_localFavOnly\) filterLocalSongs\(\); \}\)/);
+  // 90 起：即时重过滤收敛到 favorites.js 钩子回调（行内红心/行菜单共用）
+  assert.match(LOCAL_JS, /window\.onLocalFavToggle = \(\) => \{ if \(_localFavOnly\) filterLocalSongs\(\); \}/);
   assert.match(LOCAL_JS, /window\.toggleLocalFavOnly = toggleLocalFavOnly;/);
 });
 

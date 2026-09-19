@@ -73,9 +73,10 @@ test('toggleLocalFavorite：先登记再走 toggleFavoriteByKey→api(local,file
 test('接线钉桩：favorites 桥 + local.js fav/favOn 注入 + 行菜单 ♥ 收藏项', () => {
   assert.match(FAV_JS, /window\.toggleLocalFavorite = toggleLocalFavorite;/);
   assert.match(FAV_JS, /registerFavSong\(s\);\r?\n\s*return toggleFavoriteByKey\(favKey\('local', s\.filePath\)\);/);
-  assert.match(LOCAL_JS, /import \{ isLocalFavorite, toggleLocalFavorite \} from '\.\.\/favorites\.js';/);
-  // 89 起 fav 动作包了一层 Promise.resolve(...).finally(仅收藏态重过滤)
-  assert.match(LOCAL_JS, /Promise\.resolve\(toggleLocalFavorite\(song\)\)/);
+  // 90 起 import 追加 localFavSong/heartBtnHtml，用宽松尾匹配
+  assert.match(LOCAL_JS, /import \{ isLocalFavorite, toggleLocalFavorite[\s\S]{0,80}?\} from '\.\.\/favorites\.js';/);
+  // 90 起重过滤走 favorites.js 统一钩子，菜单动作回归裸调用
+  assert.match(LOCAL_JS, /fav: \(song\) => toggleLocalFavorite\(song\)/);
   assert.match(LOCAL_JS, /favOn: isLocalFavorite\(s\)/);
   assert.match(MENU_JS, /actions\.favOn \? '💔' : '♥'/);
 });

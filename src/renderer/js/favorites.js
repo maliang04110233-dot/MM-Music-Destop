@@ -92,6 +92,10 @@ export async function toggleFavoriteByKey(key) {
     if (idx >= 0) pls[idx] = r.playlist; else pls.unshift(r.playlist);
     setState('userPlaylists', pls);
     refreshFavoriteHearts();
+    // 本地歌收藏变化钩子：仅收藏视图需要即时重过滤（行菜单与行内红心共用一条路）
+    if (String(song.source || '') === 'local' && typeof window.onLocalFavToggle === 'function') {
+      window.onLocalFavToggle();
+    }
     const name = song.title || song.artist || '';
     showToast((r.favorited ? '已收藏' : '已取消收藏') + (name ? '：' + name : ''),
       r.favorited ? 'success' : 'info', 1800);

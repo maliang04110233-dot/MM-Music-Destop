@@ -24,7 +24,7 @@ import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.
 import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
 import { buildLocalRowMenuItems } from '../localRowMenu.js';
-import { isLocalFavorite, toggleLocalFavorite } from '../favorites.js';
+import { isLocalFavorite, toggleLocalFavorite, localFavSong, heartBtnHtml } from '../favorites.js';
 import { favOnlyFilter } from '../localFavFilter.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
@@ -197,6 +197,9 @@ function toggleLocalFavOnly() {
   filterLocalSongs();
 }
 
+// 收藏钩子（favorites.js 在本地歌收藏切换成功后回调）：仅收藏视图即时重过滤
+window.onLocalFavToggle = () => { if (_localFavOnly) filterLocalSongs(); };
+
 /** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
 function cycleLocalSort() {
   _localSortMode = nextLocalSortMode(_localSortMode);
@@ -330,6 +333,7 @@ function _renderLocalRow(s, i) {
     <span class="local-row-duration" style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${fmtDuration(s.durationMs)}</span>
     <span class="local-row-size" style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${formatBytes(s.fileSize)}</span>
     <div class="local-row-actions" style="display:flex;gap:4px;">
+      ${(() => { const favs = localFavSong(s); return favs ? heartBtnHtml(favs, 'action-btn') : ''; })()}
       <button class="action-btn" title="播放" onclick="event.stopPropagation();playLocalSong(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px;">▶</button>
       <button class="action-btn" title="编辑" onclick="event.stopPropagation();openEdit(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px;">✏️</button>
       <button class="action-btn" title="拉取在线封面" onclick="event.stopPropagation();refetchCover(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px;">🖼️</button>
@@ -682,11 +686,7 @@ function showLocalRowMenu(e, idx) {
   showContextMenu(e.clientX, e.clientY, buildLocalRowMenuItems(s, {
     play: () => playLocalSong(idx),
     edit: () => openEdit(idx),
-    fav: (song) => {
-      // 仅收藏视图下，取消收藏应立刻看到行消失
-      Promise.resolve(toggleLocalFavorite(song))
-        .finally(() => { if (_localFavOnly) filterLocalSongs(); });
-    },
+    fav: (song) => toggleLocalFavorite(song),
     favOn: isLocalFavorite(s),
     probe: () => probeLocalQuality(s),
     reveal: () => revealLocalFile(s),
