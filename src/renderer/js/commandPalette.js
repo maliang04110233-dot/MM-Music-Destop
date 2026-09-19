@@ -8,6 +8,7 @@
  */
 
 import { logger } from './logger.js';
+import { recordRecent, pickRecents } from './paletteRecents.js';
 
 // ── 纯函数 ───────────────────────────────────────────
 function fuzzyScore(q, text) {
@@ -142,6 +143,18 @@ let _open = false;
 let _items = [];
 let _active = 0;
 
+// 最近使用持久化：localStorage 异常（隐私模式/透明窗禁存储）一律静默
+const RECENTS_KEY = 'cmdkRecents';
+function _loadRecents() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(x => typeof x === 'string') : [];
+  } catch (_e) { return []; }
+}
+function _saveRecents(list) {
+  try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); } catch (_e) { /* 存不了就不记 */ }
+}
+
 function _ensureOverlay() {
   let el = document.getElementById('cmdkOverlay');
   if (el) return el;
@@ -211,11 +224,20 @@ function _move(delta) {
 
 function _refresh(query) {
   _items = rankCommands(query, COMMANDS);
+  if (!String(query || '').trim()) {
+    // 空查询（刚呼出）：最近使用置顶，其余保持原序跟在后面
+    const rec = pickRecents(_loadRecents(), COMMANDS);
+    if (rec.length) {
+      const taken = new Set(rec.map(c => c.id));
+      _items = rec.concat(_items.filter(c => !taken.has(c.id))).slice(0, 30);
+    }
+  }
   _active = 0;
   _renderList();
 }
 
 function _exec(cmd) {
+  _saveRecents(recordRecent(_loadRecents(), cmd && cmd.id));
   closeCommandPalette();
   setTimeout(() => {
     try { cmd.run(); } catch (e) { logger.warn('[cmdk] 命令执行失败:', cmd.id, e && e.message); }
