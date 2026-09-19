@@ -757,3 +757,15 @@ kbd {
 /* ── 批量链接导入（batchImport.js 动态弹层复用 edit-* 体系）─── */
 .batch-import-text { resize: vertical; min-height: 140px; line-height: 1.6; font-family: var(--font); }
 .batch-import-status { font-size: 12px; color: var(--neon-dim); min-height: 16px; }
+
+/* ── 定时下载（scheduledDownload.js 动态弹层复用 edit-* 体系）─── */
+.sched-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sched-label { font-size: 13px; color: var(--neon-dim); flex-shrink: 0; }
+.sched-when { width: 230px; }
+.sched-list-title { font-size: 12px; color: var(--neon-dim); margin-top: 12px; }
+.sched-list { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+.sched-job { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--elev-1); font-size: 12px; }
+.sched-job-time { font-weight: 600; color: var(--neon-text); flex-shrink: 0; }
+.sched-job-lines { color: var(--neon-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-job-del { border: none; background: transparent; color: var(--neon-dim); font-size: 12px; cursor: pointer; flex-shrink: 0; }
+.sched-job-del:hover { color: var(--neon-text); }

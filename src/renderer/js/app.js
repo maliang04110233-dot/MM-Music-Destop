@@ -51,6 +51,7 @@ import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
 import './afterQueueDone.js';
+import './scheduledDownload.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
@@ -69,6 +70,7 @@ const mockApi = {
   getSingerSongs: async () => [],
   getSingerAlbums: async () => ({ albums: [], total: 0 }),
   getAlbumSongs: async () => [],
+  getSongByLink: async () => ({ song: null, link: null }),
   // 无 musicAPI 时的开发兜底：平台清单为空 → 渲染层走内置兜底表（utils.js）
   getPlatforms: async () => [],
   getDownloadUrl: async () => ({ url: '' }),

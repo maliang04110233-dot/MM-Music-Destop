@@ -34,6 +34,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'clipboardWatch',
   // 下载队列全部完成后的动作（none/quit/sleep/shutdown，渲染层 afterQueueDone.js 读写）
   'afterQueueDone',
+  // 定时下载任务列表（渲染层 scheduledDownload.js 读写：[{id, at, lines}]）
+  'scheduledDownloads',
   // 新手引导已看过标记（渲染层 welcome.js 读写）
   'welcomeSeen',
   // 播放状态持久化

@@ -167,3 +167,6 @@ async function runBatchImport() {
 window.openBatchImport = openBatchImport;
 window.closeBatchImport = closeBatchImport;
 window.runBatchImport = runBatchImport;
+
+// 定时下载（scheduledDownload.js）复用同一识别链路
+export { _extractUrl as extractShareUrl, _resolveLine as resolveShareLine };

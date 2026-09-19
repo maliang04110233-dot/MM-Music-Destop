@@ -198,6 +198,7 @@
             <button class="tab tab-neon" id="searchSelectBtn" onclick="enterSearchBatchMode()" data-i18n="local.select">☑ 选择</button>
             <button class="tab" id="hideDlToggle" title="隐藏下载状态为「已下载」的结果行" onclick="toggleHideDownloaded()">🙈 隐藏已下载</button>
             <button class="tab" id="batchImportBtn" title="粘贴多行分享链接，解析后一次全部加入下载队列" onclick="openBatchImport()">📥 批量导入</button>
+            <button class="tab" id="scheduledBtn" title="挂起分享链接，到设定时间自动解析入队（夜间错峰下载；错过时点开机即补跑）" onclick="openScheduledPanel()">⏰ 定时<span id="scheduledBadge"></span></button>
             <!-- 搜索历史下拉 -->
             <div class="search-history" id="searchHistory" style="display:none;"></div>
           </div>
