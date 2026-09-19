@@ -52,7 +52,7 @@ function setSleepTimer(minutes) {
     const remain = _sleepEnd - Date.now();
     if (remain <= 0) {
       audio.pause();
-      window.togglePlay?.();
+      // 此刻 audio 已处于暂停态，若再走通用播放/暂停切换函数会把播放又续上
       window.showToast?.('⏰ 定时到，播放已停止', 'info', 3000);
       clearSleepTimer();
       return;

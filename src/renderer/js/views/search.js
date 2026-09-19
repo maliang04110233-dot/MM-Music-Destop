@@ -1069,7 +1069,8 @@ function batchPlay() {
 
   setState('playQueue', playList);
   setState('playIdx', 0);
-  playSong(0);
+  // 传入勾选列表：不带队列参数时 playSong 会把 playQueue 覆盖成整页结果（M9）
+  playSong(0, playList);
   showToast(`▶ 将播放 ${playList.length} 首歌曲`, 'info', 2000);
 }
 
@@ -1105,8 +1106,8 @@ async function addDownload(idx, qualityOverride) {
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _searchPlayRequestId = 0;
 
-async function playSong(idx) {
-  const songs = getState('songs');
+async function playSong(idx, queueOverride = null) {
+  const songs = queueOverride || getState('songs');
   const s = songs[idx];
   if (!s) { showToast('未找到歌曲', 'warn'); return; }
   const quality = resolveQuality(s.source);
@@ -1136,9 +1137,9 @@ async function playSong(idx) {
       showToast('⚠️ 音源获取失败', 'error', 5000);
       return;
     }
-    // 设置整个搜索结果为播放队列（不回写 songs：取流期间用户可能已切源重搜，
-    // 回写会把过期列表污染新结果）
-    setState('playQueue', songs);
+    // 设置播放队列：batchPlay 传入勾选列表时用它，否则整个搜索结果入队
+    // （不回写 songs：取流期间用户可能已切源重搜，回写会把过期列表污染新结果）
+    setState('playQueue', queueOverride || songs);
     setState('playIdx', idx);
     // 与 player.js playSongByIdx 一致：currentPlaying 驱动托盘/迷你播放器/播放器卡片，
     // 也是 audio error 守卫与 25s 加载超时守卫的前置条件，缺失会导致取流失败后静默卡死

@@ -210,6 +210,26 @@ async function restorePlayProgress(song) {
   } catch (_e) { return 0; }
 }
 
+// ── 歌词请求序号（M8）：快速切歌时旧歌词请求不得覆盖新歌 ──
+let _lyricRequestId = 0;
+
+// ── 恢复进度 seek 监听（M7）──────────────────────────
+// once 监听跨歌泄漏：歌 A metadata 迟迟不来时切到歌 B，A 的监听会在 B 加载时
+// 触发，把 B seek 到 A 的进度。模块级持有引用，挂新前先删旧。
+let _pendingResumeHandler = null;
+function attachResumeSeekListener(audio, savedTime) {
+  if (_pendingResumeHandler) {
+    audio.removeEventListener('loadedmetadata', _pendingResumeHandler);
+  }
+  _pendingResumeHandler = () => {
+    if (audio.duration > savedTime) {
+      audio.currentTime = savedTime;
+      showToast(`📍 从 ${Math.floor(savedTime/60)}:${String(Math.floor(savedTime%60)).padStart(2,'0')} 继续播放`, 'info', 2000);
+    }
+  };
+  audio.addEventListener('loadedmetadata', _pendingResumeHandler);
+}
+
 export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
   if (!song) return;
 
@@ -260,12 +280,7 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
     // 恢复播放进度
     const savedTime = await restorePlayProgress(song);
     if (savedTime > 0) {
-      audio.addEventListener('loadedmetadata', () => {
-        if (audio.duration > savedTime) {
-          audio.currentTime = savedTime;
-          showToast(`📍 从 ${Math.floor(savedTime/60)}:${String(Math.floor(savedTime%60)).padStart(2,'0')} 继续播放`, 'info', 2000);
-        }
-      }, { once: true });
+      attachResumeSeekListener(audio, savedTime);
     }
     audio.play().catch(() => {
       showToast('⚠️ 自动播放被拦截，请点击播放按钮', 'warn', 3000);
@@ -278,8 +293,11 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
       lyricsArea.style.display = 'none';
       lyricsArea.classList.remove('static-mode');
     }
+    // M8：歌词请求序号守卫——读 LRC 期间切歌，过期结果不得覆盖新歌歌词
+    const reqId = ++_lyricRequestId;
     try {
       const r = await api.readLocalLrc(song.filePath);
+      if (reqId !== _lyricRequestId) return;
       if (r && r.lrc && r.lrc.trim()) {
         window.parseLrc(r.lrc);
         setState('_currentLyricRaw', r.lrc);
@@ -324,12 +342,7 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
     // 恢复播放进度
     const savedTime2 = await restorePlayProgress(song);
     if (savedTime2 > 0) {
-      audio.addEventListener('loadedmetadata', () => {
-        if (audio.duration > savedTime2) {
-          audio.currentTime = savedTime2;
-          showToast(`📍 从 ${Math.floor(savedTime2/60)}:${String(Math.floor(savedTime2%60)).padStart(2,'0')} 继续播放`, 'info', 2000);
-        }
-      }, { once: true });
+      attachResumeSeekListener(audio, savedTime2);
     }
     audio.play().catch(() => {
       showToast('⚠️ 自动播放被拦截，请点击播放按钮', 'warn', 3000);
@@ -337,9 +350,11 @@ export async function loadAndPlay(song, prefetchedUrl, isNetworkSong = false) {
   }
 
   // 尝试获取歌词（本机覆写优先于平台歌词）
+  const reqId = ++_lyricRequestId;
   try {
     const ov = await getLyricOverride(song);
     const r = ov ? { lrc: ov } : await api.getLyrics(song.id, song.source, song.title, song.artist);
+    if (reqId !== _lyricRequestId) return; // 已切歌，丢弃过期歌词
     if (r && r.lrc) {
       parseLrc(r.lrc);
       setState('_currentLyricRaw', r.lrc);

@@ -151,3 +151,44 @@ test('local.js: 转码选中必须读本视图的 _selectedLocal（selectedSongs
   assert.match(src, /function _selectedSongsToConvert\(\) \{[\s\S]{0,500}_selectedLocal/,
     '转码选中应来自本视图的 _selectedLocal');
 });
+
+// ── 批③：播放链竞态（2026-09 第二轮审计 M7/M8/M9 + 定时停止反恢复）──
+
+test('player.js: 恢复进度监听必须先移除旧监听再挂新（once 监听跨歌泄漏，歌A metadata 慢会把歌B seek 到A的位置）', () => {
+  const src = read('js', 'player.js');
+  assert.match(src, /function attachResumeSeekListener\(/,
+    'loadAndPlay 两个分支各自裸 addEventListener loadedmetadata，需要统一的先删后挂助手');
+  const uses = src.match(/attachResumeSeekListener\(/g) || [];
+  assert.ok(uses.length >= 3,
+    '助手定义 + 本地分支 + 网络分支至少三处出现，确保两分支都换了');
+  assert.match(src, /removeEventListener\('loadedmetadata', _pendingResumeHandler\)/,
+    '助手内必须先移除上一首歌遗留的监听再挂新的（M7）');
+});
+
+test('player.js: 歌词加载必须带请求序号守卫（快速切歌时慢响应的旧歌词覆盖新歌）', () => {
+  const src = read('js', 'player.js');
+  assert.match(src, /let _lyricRequestId = 0/, 'M8：歌词请求序号计数器');
+  // 本地分支与网络分支的歌词块都应在 await 之后比对 reqId
+  const guards = src.match(/reqId !== _lyricRequestId/g) || [];
+  assert.ok(guards.length >= 2, '本地 readLocalLrc 与网络 getLyrics 两条歌词路径都要有守卫');
+});
+
+test('search.js: playSong 必须支持队列覆盖参数（batchPlay 传入勾选列表，不能被整页覆盖）', () => {
+  const src = read('js', 'views', 'search.js');
+  assert.match(src, /async function playSong\(idx, queueOverride = null\)/,
+    'M9：playSong 增加队列参数');
+  assert.match(src, /const songs = queueOverride \|\| getState\('songs'\)/,
+    'song 查找优先用覆盖队列');
+  assert.match(src, /setState\('playQueue', queueOverride \|\| songs\)/,
+    '队列写入同样尊重覆盖，否则 batchPlay 的勾选列表被整页覆盖');
+  assert.match(src, /playSong\(0, playList\)/, 'batchPlay 应把勾选列表传给 playSong');
+});
+
+test('player-controls.js: 定时到期只能暂停，不得调用 togglePlay（暂停态下调 togglePlay 会恢复播放，定时反而"停止失败"）', () => {
+  const src = read('js', 'player-controls.js');
+  const timerBlock = src.match(/if \(remain <= 0\) \{[\s\S]*?clearSleepTimer\(\);/);
+  assert.ok(timerBlock, '未找到定时到期处理块');
+  assert.doesNotMatch(timerBlock[0], /togglePlay/,
+    'audio.pause() 后再 togglePlay 会把刚暂停的播放又续上');
+  assert.match(timerBlock[0], /audio\.pause\(\)/, '到期必须主动 pause');
+});
