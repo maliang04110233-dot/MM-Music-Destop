@@ -11,6 +11,16 @@ import { showContextMenu } from './contextMenu.js';
 import { isFavorite, toggleFavoriteByKey, registerFavSong } from './favorites.js';
 import { favKey } from './state.js';
 import { qualityOverrideOptions, resolveQuality } from './quality.js';
+import { songPageUrl, songShareText, copyText } from './songShare.js';
+
+/** 复制菜单项共用的「成功/失败」toast 回执（showToast 为渲染层全局） */
+function _copyBack(text, okMsg) {
+  return copyText(text).then((ok) => {
+    if (typeof showToast !== 'function') return;
+    if (ok) showToast(okMsg, 'success', 1800);
+    else showToast('复制失败，请手动选择文本', 'error');
+  });
+}
 
 /**
  * 「以此音质下载」菜单项（纯组装，便于单测）：
@@ -70,6 +80,10 @@ export function openSongRowMenu(e, song, opts = {}) {
       if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(song);
     } },
   );
+  const share = songShareText(song);
+  const pageUrl = songPageUrl(song);
+  if (share) items.push({ sep: true }, { icon: '📄', label: '复制分享文案', onClick: () => _copyBack(share, '分享文案已复制') });
+  if (pageUrl) items.push({ icon: '🔗', label: '复制歌曲链接', onClick: () => _copyBack(pageUrl, '歌曲链接已复制') });
   if (opts.extra && opts.extra.length) items.push({ sep: true }, ...opts.extra);
   showContextMenu(e.clientX, e.clientY, items);
 }
