@@ -122,3 +122,39 @@ test('sortPlaylists 最近更新降序、缺时间戳垫底', async () => {
   ], 'recent');
   assert.deepEqual(r.map((p) => p.id), ['b', 'a', 'c']);
 });
+
+test('filterPlaylists：名称/描述多词 AND 匹配，大小写不敏感', async () => {
+  const { filterPlaylists } = await mod();
+  const pls = [
+    { id: 'a', name: 'Road Trip 精选', desc: '开车听的' },
+    { id: 'b', name: '晨跑', desc: 'road running' },
+    { id: 'c', name: '睡前', desc: '轻音乐' },
+  ];
+  assert.deepEqual(filterPlaylists(pls, 'road').map((p) => p.id), ['a', 'b']);
+  assert.deepEqual(filterPlaylists(pls, 'ROAD 精选').map((p) => p.id), ['a']);
+  assert.deepEqual(filterPlaylists(pls, 'road 不存在'), []);
+});
+
+test('filterPlaylists：空词透传原引用；过滤态剔除 null；非数组返回空', async () => {
+  const { filterPlaylists } = await mod();
+  const pls = [{ id: 'a', name: 'x' }, null];
+  assert.equal(filterPlaylists(pls, ''), pls);
+  assert.equal(filterPlaylists(pls, '   '), pls);
+  assert.deepEqual(filterPlaylists(pls, 'x'), [{ id: 'a', name: 'x' }]);
+  assert.deepEqual(filterPlaylists(null, 'x'), []);
+  assert.deepEqual(filterPlaylists('nope', 'x'), []);
+});
+
+test('filterPlaylists+sortPlaylists 组合：系统单命中才参与置顶', async () => {
+  const { filterPlaylists, sortPlaylists } = await mod();
+  const pls = [
+    { id: 'f', name: '收藏', system: true, desc: '通勤必听' },
+    { id: 'a', name: '通勤路上' },
+    { id: 'b', name: '跑步' },
+  ];
+  const shown = sortPlaylists(filterPlaylists(pls, '轻音乐'), '');
+  assert.deepEqual(shown.map((p) => p.id), []);
+  const both = sortPlaylists(filterPlaylists(pls, '通勤'), 'name');
+  // f 经 desc 命中且系统单置顶，a 经 name 命中
+  assert.deepEqual(both.map((p) => p.id), ['f', 'a']);
+});

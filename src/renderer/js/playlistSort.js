@@ -99,3 +99,20 @@ export function sortPlaylists(playlists, mode) {
   else if (mode === 'recent') out.sort((a, b) => (+b.updatedAt || 0) - (+a.updatedAt || 0));
   return sys.concat(out);
 }
+
+/**
+ * 卡片过滤：按 名称+描述 多词 AND 子串匹配（大小写不敏感）。
+ * 空词直接透传原引用（调用侧免判）；脏条目（null）在过滤态剔除。
+ * @param {Array} playlists
+ * @param {string} kw
+ */
+export function filterPlaylists(playlists, kw) {
+  if (!Array.isArray(playlists)) return [];
+  const k = String(kw || '').trim().toLowerCase();
+  if (!k) return playlists;
+  const words = k.split(/\s+/);
+  return playlists.filter(Boolean).filter((p) => {
+    const hay = `${p.name || ''} ${p.desc || ''}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}

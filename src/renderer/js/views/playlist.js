@@ -14,7 +14,7 @@ import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
-import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES } from '../playlistSort.js';
+import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES, filterPlaylists } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
 
@@ -24,6 +24,7 @@ let _currentDetailSongs = [];
 let _plSongKw = ''; // 详情弹层会话级过滤词（切歌单/关闭即清）
 let _plSortMode = ''; // 详情弹层会话级视图排序（''=默认序，排序中禁拖把手）
 let _plCardSortMode = ''; // 歌单页卡片排序（会话级，收藏系统单恒置顶）
+let _plCardKw = ''; // 歌单页卡片过滤词（会话级，先过滤后排序）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _playlistPlayRequestId = 0;
 
@@ -44,9 +45,16 @@ function renderPlaylistList(playlists) {
   const container = document.getElementById('userPlaylistGrid');
   if (!container) return;
 
-  if (!playlists || playlists.length === 0) {
-    container.innerHTML = `
-      <div class="empty-hint" style="grid-column:1/-1;text-align:center;padding:40px 0;">
+  const shown = sortPlaylists(filterPlaylists(playlists, _plCardKw), _plCardSortMode);
+  if (!shown.length) {
+    const kw = _plCardKw.trim();
+    container.innerHTML = kw
+      ? `<div class="empty-hint" style="grid-column:1/-1;text-align:center;padding:40px 0;">
+        <div style="font-size:40px;margin-bottom:12px">🔍</div>
+        <div>没有匹配「${esc(kw)}」的歌单</div>
+        <div style="font-size:12px;margin-top:6px;color:var(--neon-dim);">按名称或描述搜索；清空搜索框看全部</div>
+      </div>`
+      : `<div class="empty-hint" style="grid-column:1/-1;text-align:center;padding:40px 0;">
         <div style="font-size:40px;margin-bottom:12px">🎼</div>
         <div>暂无歌单</div>
         <div style="font-size:12px;margin-top:6px;color:var(--neon-dim);">点击上方"新建歌单"创建你的第一个歌单</div>
@@ -54,7 +62,7 @@ function renderPlaylistList(playlists) {
     return;
   }
 
-  container.innerHTML = sortPlaylists(playlists, _plCardSortMode).map(pl => `
+  container.innerHTML = shown.map(pl => `
     <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escQ(pl.id)}')">
       <div class="playlist-card-cover">
         ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : `<div class="playlist-card-placeholder">${pl.system ? HEART_ON : '📋'}</div>`}
@@ -651,6 +659,13 @@ function cyclePlCardSort() {
   renderPlaylistList(getState('userPlaylists') || []);
 }
 
+/** 卡片搜索：按名称/描述即时过滤（会话级，与排序叠加：先过滤后排序） */
+function filterPlaylistCards() {
+  const el = document.getElementById('playlistCardFilter');
+  _plCardKw = el ? el.value : '';
+  renderPlaylistList(getState('userPlaylists') || []);
+}
+
 // ── 歌单内快捷加歌（搜索→逐条添加，弹层不关可连加）────
 let _plAddEl = null;
 let _plAddSongs = [];
@@ -785,6 +800,7 @@ window.useFirstSongCover = useFirstSongCover;
 window.onPlaylistSongFilterInput = onPlaylistSongFilterInput;
 window.cyclePlaylistSort = cyclePlaylistSort;
 window.cyclePlCardSort = cyclePlCardSort;
+window.filterPlaylistCards = filterPlaylistCards;
 window.openPlaylistAddSongs = openPlaylistAddSongs;
 window.closePlaylistAddSongs = closePlaylistAddSongs;
 window.doPlAddSearch = doPlAddSearch;
