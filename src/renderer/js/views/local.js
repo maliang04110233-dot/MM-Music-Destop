@@ -24,6 +24,7 @@ import { nextLocalSortMode, localSortLabel, sortLocalSongs } from '../localSort.
 import { getPlayStats } from '../player/stats.js';
 import { buildExportSongs } from '../localExport.js';
 import { buildLocalRowMenuItems } from '../localRowMenu.js';
+import { isLocalFavorite, toggleLocalFavorite } from '../favorites.js';
 import { copyText } from '../songShare.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 
@@ -668,6 +669,8 @@ function showLocalRowMenu(e, idx) {
   showContextMenu(e.clientX, e.clientY, buildLocalRowMenuItems(s, {
     play: () => playLocalSong(idx),
     edit: () => openEdit(idx),
+    fav: (song) => toggleLocalFavorite(song),
+    favOn: isLocalFavorite(s),
     probe: () => probeLocalQuality(s),
     reveal: () => revealLocalFile(s),
     copyPath: (fp) => copyLocalPath(fp),

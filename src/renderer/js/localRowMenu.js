@@ -10,6 +10,7 @@ export function buildLocalRowMenuItems(song, actions) {
   const items = [
     { icon: '▶', label: '播放', onClick: () => actions.play(song) },
     { icon: '✏️', label: '编辑信息', onClick: () => actions.edit(song) },
+    { icon: actions.favOn ? '💔' : '♥', label: actions.favOn ? '取消收藏' : '收藏', onClick: () => actions.fav(song) },
     { sep: true },
     { icon: actions.probeDone ? '✓' : '🔬', label: '检测真实音质', onClick: () => actions.probe(song) },
     { icon: '📂', label: '打开所在文件夹', onClick: () => actions.reveal(song) },

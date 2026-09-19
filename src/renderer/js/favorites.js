@@ -32,6 +32,28 @@ export function isFavorite(song) {
 }
 
 /**
+ * 本地歌曲 → 收藏歌单可存的形态：source='local' + id=filePath。
+ * filePath 全局唯一，天然不与其他平台撞键；其余字段（含 filePath 本身）
+ * 原样保留，收藏详情里点播放走 player 的 file:// 本地分支。
+ */
+export function localFavSong(song) {
+  if (!song || !song.filePath) return null;
+  return { ...song, source: 'local', id: song.filePath };
+}
+
+export function isLocalFavorite(song) {
+  const s = localFavSong(song);
+  return !!s && isFavorite(s);
+}
+
+export function toggleLocalFavorite(song) {
+  const s = localFavSong(song);
+  if (!s) { showToast('收藏失败：歌曲缺少文件路径', 'warn'); return; }
+  registerFavSong(s);
+  return toggleFavoriteByKey(favKey('local', s.filePath));
+}
+
+/**
  * 红心按钮 HTML，返回完整 button 标签
  * @param {Object} song 需含 source / id
  * @param {string} [baseClass] 行内按钮基类（搜索页 action-btn，首页 top-song-action）
@@ -93,3 +115,4 @@ export function refreshFavoriteHearts() {
 window.toggleFavoriteByKey = toggleFavoriteByKey;
 window.favHeartClick = favHeartClick;
 window.refreshFavoriteHearts = refreshFavoriteHearts;
+window.toggleLocalFavorite = toggleLocalFavorite;
