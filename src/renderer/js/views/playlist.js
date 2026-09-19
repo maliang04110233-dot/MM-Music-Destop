@@ -17,6 +17,8 @@ import { openSongRowMenu } from '../songMenu.js';
 import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES, filterPlaylists } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
+import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
+import { sanitizeFileBase } from '../artistGroups.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -780,6 +782,38 @@ async function plAddPick(i) {
   }
 }
 
+// ── 导出当前打开歌单为 m3u（playlistExport 纯函数的接线层）──────
+// 存储序全量导出（过滤/排序只是视图）；下载歌回填本地路径，在线歌回填平台页链接
+let _plExportBusy = false;
+
+async function exportCurrentPlaylistM3u() {
+  const songs = _currentDetailSongs || [];
+  if (!songs.length) { showToast('当前歌单没有歌曲可导出', 'warn', 2500); return; }
+  if (_plExportBusy) return;
+  _plExportBusy = true;
+  try {
+    const titleEl = document.getElementById('playlistDetailTitle');
+    const name = (titleEl && titleEl.textContent.trim()) || '歌单';
+    let pathMap = {};
+    try {
+      const h = await api.queryHistory({ status: 'done', limit: 100000 });
+      pathMap = buildPathMap((h && h.items) || []);
+    } catch (_e) { /* 历史不可用时退化为全页链接导出 */ }
+    const r = await api.exportPlaylist({
+      songs: enrichExportSongs(songs, pathMap),
+      format: 'm3u',
+      name: 'MusicDL-' + sanitizeFileBase(name),
+    });
+    if (r && r.canceled) return;
+    if (r && r.success) showToast(`⤴ 已导出 ${songs.length} 首：${r.path}`, 'success', 3500);
+    else showToast((r && r.error) || '导出失败', 'error');
+  } catch (e) {
+    showToast('导出失败: ' + (e.message || e), 'error');
+  } finally {
+    _plExportBusy = false;
+  }
+}
+
 // ── 初始化 ────────────────────────────────────────────
 function initPlaylistView() {
   loadUserPlaylists();
@@ -793,6 +827,7 @@ window.playPlaylistSong = playPlaylistSong;
 window.addPlaylistSongToQueue = addPlaylistSongToQueue;
 window.downloadPlaylistSong = downloadPlaylistSong;
 window.downloadAllPlaylist = downloadAllPlaylist;
+window.exportCurrentPlaylistM3u = exportCurrentPlaylistM3u;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;

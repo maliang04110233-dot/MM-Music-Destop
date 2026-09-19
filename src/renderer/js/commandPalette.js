@@ -81,6 +81,7 @@ const COMMANDS = [
   { id: 'pl-addsong', icon: '➕', group: '播放', label: '搜索并添加歌曲到当前打开的歌单', keywords: ['playlist', '歌单', '加歌', '添加', 'add song'], run: () => _call('openPlaylistAddSongs') },
   { id: 'pl-psort', icon: '↕', group: '播放', label: '歌单详情排序：默认 / 标题 / 歌手 / 添加时间', keywords: ['playlist', 'sort', '歌单', '排序'], run: () => _call('cyclePlaylistSort') },
   { id: 'pl-cfilter', icon: '🔍', group: '播放', label: '搜索我的歌单（名称/描述过滤卡片）', keywords: ['playlist filter', '歌单', '搜索'], run: () => { _goto('playlist'); const el = document.getElementById('playlistCardFilter'); if (el) setTimeout(() => el.focus(), 80); } },
+  { id: 'pl-export', icon: '⤴', group: '播放', label: '导出当前打开的歌单为 m3u', keywords: ['export', 'm3u', '歌单', '导出'], run: () => _call('exportCurrentPlaylistM3u') },
   { id: 'pl-csort', icon: '↕', group: '播放', label: '歌单卡片排序：默认 / 名称 / 曲数 / 最近更新', keywords: ['playlist', 'card', 'sort', '歌单排序'], run: () => _call('cyclePlCardSort') },
   { id: 'pl-fade', icon: '🌊', group: '播放', label: '播放淡入档位：关 / 0.5s / 1s / 2s', keywords: ['fade', '淡入', '音量', '渐变'], run: () => _call('cycleFadeIn') },
 
