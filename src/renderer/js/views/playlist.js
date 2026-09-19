@@ -571,6 +571,8 @@ async function addToPlaylistAndNotify(playlistId, song) {
         if (idx >= 0) {
           playlists[idx] = result.playlist;
           setState('userPlaylists', playlists);
+          // 该歌单详情弹层开着：外部入口（右键加歌等）也即时可见
+          if (_currentPlaylistId === playlistId) renderPlaylistDetailSongs(result.playlist.songs || []);
         }
       }
     }
@@ -583,6 +585,120 @@ async function addToPlaylistAndNotify(playlistId, song) {
 function onPlaylistSongFilterInput(v) {
   _plSongKw = String(v || '');
   if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
+// ── 歌单内快捷加歌（搜索→逐条添加，弹层不关可连加）────
+let _plAddEl = null;
+let _plAddSongs = [];
+let _plAddReqId = 0;
+
+function _ensurePlAddModal() {
+  if (_plAddEl && document.body.contains(_plAddEl)) return _plAddEl;
+  const div = document.createElement('div');
+  div.id = 'plAddModal';
+  div.className = 'playlist-modal-overlay hidden';
+  // 静态模板 innerHTML：不含任何用户数据，数据行走 _renderPlAddList 逐条 esc
+  div.innerHTML = `
+    <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;">
+      <div class="playlist-modal-header">
+        <span class="playlist-modal-title">➕ 添加歌曲到歌单</span>
+        <button class="playlist-modal-close" onclick="closePlaylistAddSongs()">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;padding:12px 16px 4px;">
+        <input type="text" class="setting-input" id="plAddInput" placeholder="输入歌名/歌手，回车搜索" style="flex:1;" onkeydown="if(event.key==='Enter')doPlAddSearch()">
+        <button class="btn-primary" style="flex-shrink:0;padding:6px 14px;" onclick="doPlAddSearch()">🔍 搜索</button>
+      </div>
+      <div id="plAddResults" class="playlist-modal-body" style="flex:1;min-height:0;overflow-y:auto;padding:8px 16px 16px;"></div>
+    </div>`;
+  div.addEventListener('click', (e) => { if (e.target === div) closePlaylistAddSongs(); });
+  document.body.appendChild(div);
+  _plAddEl = div;
+  return div;
+}
+
+function openPlaylistAddSongs() {
+  if (!_currentPlaylistId) { showToast('请先打开一个歌单', 'warn'); return; }
+  const m = _ensurePlAddModal();
+  m.classList.remove('hidden');
+  const input = document.getElementById('plAddInput');
+  input.value = getState('currentKeyword') || '';
+  input.focus();
+  input.select();
+  document.getElementById('plAddResults').innerHTML =
+    '<div class="empty-hint" style="text-align:center;padding:20px;">输入关键词搜索后可逐条添加</div>';
+}
+
+function closePlaylistAddSongs() {
+  if (_plAddEl) _plAddEl.classList.add('hidden');
+}
+
+async function doPlAddSearch() {
+  const kw = (document.getElementById('plAddInput').value || '').trim();
+  const box = document.getElementById('plAddResults');
+  if (!kw) { showToast('请输入搜索关键词', 'warn'); return; }
+  const reqId = ++_plAddReqId;
+  box.innerHTML = '<div class="empty-hint" style="text-align:center;padding:20px;">搜索中…</div>';
+  try {
+    const r = await api.searchMusic(kw, 'all', 1);
+    if (reqId !== _plAddReqId) return; // 慢响应旧请求丢弃
+    _plAddSongs = (r && r.songs) || [];
+    if (!_plAddSongs.length) {
+      box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">${r && r.error ? '搜索出错：' + esc(r.error) : '没有搜索结果'}</div>`;
+      return;
+    }
+    _renderPlAddList();
+  } catch (e) {
+    if (reqId === _plAddReqId) {
+      box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">搜索失败：${esc(e.message || e)}</div>`;
+    }
+  }
+}
+
+function _inCurrentPlaylist(song) {
+  return _currentDetailSongs.some(s =>
+    String(s.id) === String(song.id) && String(s.source || '') === String(song.source || ''));
+}
+
+function _renderPlAddList() {
+  const box = document.getElementById('plAddResults');
+  if (!box) return;
+  box.innerHTML = _plAddSongs.map((s, i) => {
+    const added = _inCurrentPlaylist(s);
+    return `
+    <div class="song-row">
+      <div class="song-info">
+        <div class="song-title" title="${esc(s.title)}">${esc(s.title) || '未知'}</div>
+        <div class="song-meta">${esc(s.artist) || '未知'}${s.source ? ' · ' + esc(s.source) : ''}</div>
+      </div>
+      <span class="song-duration">${s.duration ? fmtDuration(s.duration) : '--:--'}</span>
+      <div class="song-actions">
+        <button class="action-btn" ${added ? 'disabled' : ''} onclick="plAddPick(${i})" title="${added ? '已在歌单中' : '添加到本歌单'}">${added ? '✓' : '➕'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function plAddPick(i) {
+  const song = _plAddSongs[i];
+  if (!song || !_currentPlaylistId) return;
+  try {
+    const r = await api.addToUserPlaylist(_currentPlaylistId, song);
+    if (!r || !r.success) { showToast((r && r.error) || '添加失败', 'error'); return; }
+    if (r.skipped) showToast('⚠️ 歌曲已在歌单中', 'warn');
+    else {
+      showToast('✅ 已添加：' + (song.title || ''), 'success');
+      const playlists = getState('userPlaylists') || [];
+      const idx = playlists.findIndex(p => p.id === _currentPlaylistId);
+      if (idx >= 0 && r.playlist) {
+        playlists[idx] = r.playlist;
+        setState('userPlaylists', playlists);
+        renderPlaylistDetailSongs(r.playlist.songs || []);
+      }
+    }
+    _renderPlAddList(); // 该行刷成 ✓，可继续加下一首
+  } catch (e) {
+    showToast('添加失败: ' + (e.message || e), 'error');
+  }
 }
 
 // ── 初始化 ────────────────────────────────────────────
@@ -603,6 +719,10 @@ window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
 window.useFirstSongCover = useFirstSongCover;
 window.onPlaylistSongFilterInput = onPlaylistSongFilterInput;
+window.openPlaylistAddSongs = openPlaylistAddSongs;
+window.closePlaylistAddSongs = closePlaylistAddSongs;
+window.doPlAddSearch = doPlAddSearch;
+window.plAddPick = plAddPick;
 window.closePlaylistEditor = closePlaylistEditor;
 window.savePlaylist = savePlaylist;
 window.editPlaylist = editPlaylist;
