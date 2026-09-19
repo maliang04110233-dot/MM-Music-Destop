@@ -78,11 +78,11 @@ test('缓存：脏条目拒收，超出上限按插入序淘汰', () => {
 
 test('失败冷却：同一首歌 60s 内不重复预热', () => {
   const fail = { key: 'netease:1', at: 1000 };
-  assert.equal(prefetchRetryAllowed(null, 'netease:1'), true, '没失败过当然放行');
-  assert.equal(prefetchRetryAllowed(fail, 'netease:1'), false);
-  assert.equal(prefetchRetryAllowed(fail, 'qq:9'), true, '换下一首要热的歌不受影响');
+  assert.equal(prefetchRetryAllowed(null, 'netease:1', 1500), true, '没失败过当然放行');
+  assert.equal(prefetchRetryAllowed(fail, 'netease:1', 1000 + PREFETCH_RETRY_MS - 1), false, '冷却期内拦住');
+  assert.equal(prefetchRetryAllowed(fail, 'qq:9', 1500), true, '换下一首要热的歌不受影响');
   assert.equal(prefetchRetryAllowed(fail, 'netease:1', 1000 + PREFETCH_RETRY_MS), true, '冷却到期再试一次');
-  assert.equal(prefetchRetryAllowed(fail, null), true, '无键不预热（由 keyOf 兜底）');
+  assert.equal(prefetchRetryAllowed(fail, null, 1500), true, '无键不预热（由 keyOf 兜底）');
   assert.equal(PREFETCH_RETRY_MS, 60000);
 });
 
