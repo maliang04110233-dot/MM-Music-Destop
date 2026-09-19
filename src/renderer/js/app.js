@@ -55,6 +55,7 @@ import { removeQueueItem, dedupeQueue } from './playQueueEdit.js';
 import { queueToSongs, defaultQueuePlaylistName } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
+import './autoCoverOnDone.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
@@ -307,6 +308,7 @@ async function init() {
       dlObserveQueue(queue); // 下载状态徽标：吸收 done + 通知列表刷新
       if (typeof window.afterQueueObserve === 'function') window.afterQueueObserve(queue); // 完成后动作检测
       if (typeof window.autoLyricObserve === 'function') window.autoLyricObserve(queue); // 自动补歌词存 .lrc（autoLyric 开关）
+      if (typeof window.autoCoverObserve === 'function') window.autoCoverObserve(queue); // 自动嵌封面（autoCover 开关，探测不覆写）
     });
 
     // 托盘切换暂停 → 同步下载页按钮（views/download.js 提供 UI 钩子）
