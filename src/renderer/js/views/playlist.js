@@ -14,6 +14,7 @@ import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
+import { moveInList } from '../playlistSort.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -107,8 +108,10 @@ function renderPlaylistDetailSongs(songs) {
     return;
   }
 
+  const reorderable = songs.length > 1;
   list.innerHTML = songs.map((song, idx) => `
     <div class="song-row" data-pidx="${idx}" ondblclick="playPlaylistSong(${idx})">
+      ${reorderable ? '<span class="pl-drag-handle" draggable="true" title="按住拖动排序">⠿</span>' : ''}
       <span class="song-num" style="color:var(--neon-dim);font-size:12px;width:22px;text-align:right;flex-shrink:0;">${idx + 1}</span>
       <div class="song-info">
         <div class="song-title" title="${esc(song.title)}">${esc(song.title) || '未知'}</div>
@@ -146,6 +149,81 @@ function playlistRowContext(e) {
   });
 }
 document.addEventListener('contextmenu', playlistRowContext);
+
+// ── 拖拽排序（把手起拖 → 落到目标行占据该位置）──────────
+// 复用现有 save-user-playlist 通道做全量 songs 覆盖，不新增 IPC。
+let _plDragFrom = -1;
+
+function _plRowUnder(e) {
+  const list = document.getElementById('playlistDetailSongs');
+  const row = e.target && e.target.closest ? e.target.closest('.song-row[data-pidx]') : null;
+  if (!list || !row || !list.contains(row)) return null;
+  const n = Number(row.getAttribute('data-pidx'));
+  return Number.isFinite(n) ? { idx: n, row } : null;
+}
+
+function _plClearDragMarks() {
+  document.querySelectorAll('.song-row.pl-dragging, .song-row.pl-drag-over')
+    .forEach(el => el.classList.remove('pl-dragging', 'pl-drag-over'));
+}
+
+document.addEventListener('dragstart', (e) => {
+  if (!(e.target && e.target.closest && e.target.closest('.pl-drag-handle'))) return;
+  const hit = _plRowUnder(e);
+  if (!hit) return;
+  _plDragFrom = hit.idx;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(hit.idx)); // Firefox：不设数据不给拖
+  }
+  hit.row.classList.add('pl-dragging');
+});
+
+document.addEventListener('dragover', (e) => {
+  if (_plDragFrom < 0) return;
+  const hit = _plRowUnder(e);
+  if (!hit || hit.idx === _plDragFrom) return;
+  e.preventDefault();
+  document.querySelectorAll('.song-row.pl-drag-over')
+    .forEach(el => el.classList.remove('pl-drag-over'));
+  hit.row.classList.add('pl-drag-over');
+});
+
+document.addEventListener('drop', (e) => {
+  const from = _plDragFrom;
+  _plDragFrom = -1;
+  _plClearDragMarks();
+  if (from < 0) return;
+  const hit = _plRowUnder(e);
+  if (!hit || hit.idx === from) return;
+  e.preventDefault();
+  persistPlaylistOrder(from, hit.idx);
+});
+
+document.addEventListener('dragend', () => {
+  _plDragFrom = -1;
+  _plClearDragMarks();
+});
+
+async function persistPlaylistOrder(from, to) {
+  if (!_currentPlaylistId) return;
+  const next = moveInList(_currentDetailSongs, from, to);
+  if (!next) return;
+  const playlists = getState('userPlaylists') || [];
+  const pl = playlists.find(p => p.id === _currentPlaylistId);
+  if (!pl) return;
+  renderPlaylistDetailSongs(next); // 先落视觉，失败再回滚
+  try {
+    const r = await api.saveUserPlaylist({ id: pl.id, name: pl.name, songs: next });
+    if (!r || !r.success) throw new Error((r && r.error) || '保存失败');
+    pl.songs = next;
+    setState('userPlaylists', playlists);
+    renderPlaylistList(playlists);
+  } catch (err) {
+    showToast('排序保存失败: ' + (err.message || err), 'error');
+    renderPlaylistDetailSongs(pl.songs || []);
+  }
+}
 
 // ── 播放歌单中的歌曲 ──────────────────────────────────
 async function playPlaylistSong(idx) {
