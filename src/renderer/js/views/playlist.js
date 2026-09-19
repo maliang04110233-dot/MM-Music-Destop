@@ -18,6 +18,7 @@ import { openSongRowMenu } from '../songMenu.js';
 import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES, filterPlaylists } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
+import { findCrossPlaylistDupes, dedupeScanText } from '../plDedupeScan.js';
 import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
 import { mergeSongLists } from '../playlistMerge.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
@@ -1119,6 +1120,60 @@ async function copyPlaylistListText() {
   showToast(ok ? `📋 已复制 ${lines.length} 首歌名清单` : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
 }
 
+// ── 🧮 跨歌单重复检测（增量117）：纯函数扫描 + 报告弹层 + 复制，零新通道 ──
+let _dedupeGroups = [];
+
+function showDedupeModal(groups) {
+  _dedupeGroups = groups;
+  const old = document.getElementById('dedupeScanModal');
+  if (old) old.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'dedupeScanModal';
+  overlay.className = 'playlist-modal-overlay';
+  overlay.innerHTML = `
+    <div class="playlist-modal" style="max-width:540px;">
+      <div class="playlist-modal-header">
+        <span class="playlist-modal-title">🧮 跨歌单重复 · ${groups.length} 首</span>
+        <button class="playlist-modal-close" onclick="closeDedupeScanModal()">✕</button>
+      </div>
+      <div class="playlist-modal-body" style="max-height:60vh;overflow-y:auto;">
+        ${groups.map(g => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div style="min-width:0;">
+              <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.title)}${g.artist ? ` <span style="opacity:0.6;font-weight:400;font-size:12px;">${esc(g.artist)}</span>` : ''}</div>
+              <div style="font-size:12px;color:var(--neon-dim);">${g.where.map(w => esc(w)).join('、')}</div>
+            </div>
+            <span style="flex:none;font-size:12px;color:var(--neon-dim);">×${g.where.length}</span>
+          </div>`).join('')}
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="copyDedupeScanReport()">📋 复制报告</button>
+        </div>
+      </div>
+    </div>`;
+  overlay.onclick = (e) => { if (e.target === overlay) closeDedupeScanModal(); };
+  document.body.appendChild(overlay);
+}
+
+function scanCrossPlaylistDupes() {
+  const pls = (getState('userPlaylists') || []).filter(p => p && Array.isArray(p.songs));
+  if (pls.length < 2) { showToast('至少要有两个歌单才谈得上「跨单重复」', 'info'); return; }
+  const groups = findCrossPlaylistDupes(pls);
+  if (!groups.length) { showToast(`🧮 ${pls.length} 个歌单互不重复，很干净`, 'success', 2500); return; }
+  showDedupeModal(groups);
+}
+
+function closeDedupeScanModal() {
+  const m = document.getElementById('dedupeScanModal');
+  if (m) m.remove();
+}
+
+async function copyDedupeScanReport() {
+  const body = dedupeScanText(_dedupeGroups);
+  if (!body) { showToast('没有可复制的内容', 'info'); return; }
+  const ok = await copyText(`🧮 MusicDL 跨歌单重复报告（${_dedupeGroups.length} 首）\n${body}`);
+  showToast(ok ? '📋 重复报告已复制' : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
+}
+
 // ── 初始化 ────────────────────────────────────────────
 // 收藏状态变化 → 收藏夹详情即时同步（行内 ♥ 取消收藏后该行立刻消失）。
 // router 每次进歌单页都会调 initPlaylistView，故用一次性绑定防重复订阅。
@@ -1199,3 +1254,6 @@ window.plSelDownload = plSelDownload;
 window.plSelPlay = plSelPlay;
 window.cyclePlDlFilter = cyclePlDlFilter;
 window.duplicateCurrentPlaylist = duplicateCurrentPlaylist;
+window.scanCrossPlaylistDupes = scanCrossPlaylistDupes;
+window.closeDedupeScanModal = closeDedupeScanModal;
+window.copyDedupeScanReport = copyDedupeScanReport;

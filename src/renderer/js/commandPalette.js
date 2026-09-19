@@ -97,6 +97,7 @@ const COMMANDS = [
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
   { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },
   { id: 'pl-dup', icon: '📋', group: '播放', label: '当前歌单另存副本（整单复制建新歌单，撞名自动让位）', keywords: ['duplicate playlist', 'copy', '副本', '另存', '备份', '歌单'], run: () => _call('duplicateCurrentPlaylist') },
+  { id: 'pl-dedupescan', icon: '🧮', group: '播放', label: '跨歌单重复检测（找散落在多个歌单里的同一首歌）', keywords: ['cross playlist duplicate', 'dedupe', '重复', '查重', '歌单'], run: () => _call('scanCrossPlaylistDupes') },
   { id: 'pl-copylist', icon: '📋', group: '播放', label: '复制当前歌单曲名清单（一行一首：歌名 - 歌手）', keywords: ['copy', 'playlist', '曲单', '清单', '复制', '歌单'], run: () => _call('copyPlaylistListText') },
   { id: 'pl-locate', icon: '🎯', group: '播放', label: '在歌单详情中定位正在播放的歌', keywords: ['locate', '定位', '正在播放', '歌单'], run: () => _call('locatePlayingInDetail') },
   { id: 'pq-locate', icon: '🎯', group: '播放', label: '在播放队列面板中定位正在播放的歌（未开自动展开）', keywords: ['queue', 'locate', '定位', '队列', '正在播放'], run: () => _call('locatePlayingInQueue') },
