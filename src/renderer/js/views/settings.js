@@ -480,6 +480,7 @@ const GENERAL_PREFS = {
   quality:       { key: 'quality',       default: 'standard',   el: 'settingQuality' },
   concurrency:   { key: 'concurrency',   default: 3,             el: 'settingConcurrency' },
   perSourceConcurrency: { key: 'perSourceConcurrency', default: 2, el: 'settingPerSourceConcurrency' },
+  maxAttempts:   { key: 'maxAttempts',   default: 2,             el: 'settingMaxAttempts' },
   speedLimit:    { key: 'speedLimit',    default: 0,             el: 'settingSpeedLimit' },
   filenameTmpl:  { key: 'namingTemplate',  default: '{artist} - {title}', el: 'settingFilenameTmpl' },
   autoLyric:     { key: 'autoLyric',     default: true,          el: 'settingAutoLyric' },

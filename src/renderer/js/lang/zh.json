@@ -145,6 +145,8 @@
   "settings.general.concurrencyHint": "同时下载的任务数量（1~10）",
   "settings.general.perSourceConcurrency": "单平台最大并发",
   "settings.general.perSourceConcurrencyHint": "同一音乐平台同时下载的任务数（防风控/封 IP，不会超过上面的全局并发数）",
+  "settings.general.maxAttempts": "单曲失败尝试次数",
+  "settings.general.maxAttemptsHint": "含首次尝试；仅 CDN 链接过期类错误（403/404/410）会自动再试（1~5）",
   "settings.general.speedLimit": "下载限速 (KB/s)",
   "settings.general.speedLimitHint": "每任务下载速度上限，0 表示不限速",
   "settings.general.filenameTmpl": "文件名模板",

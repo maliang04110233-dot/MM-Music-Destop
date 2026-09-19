@@ -768,6 +768,12 @@
             </div>
 
             <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.maxAttempts">单曲失败尝试次数</label>
+              <input class="setting-input setting-input--num" id="settingMaxAttempts" type="number" min="1" max="5" value="2">
+              <span class="setting-hint" data-i18n="settings.general.maxAttemptsHint">含首次尝试；仅 CDN 链接过期类错误（403/404/410）会自动再试（1~5）</span>
+            </div>
+
+            <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.speedLimit">下载限速 (KB/s)</label>
               <input class="setting-input setting-input--num" id="settingSpeedLimit" type="number" min="0" max="10240" value="0" placeholder="0=不限速">
               <span class="setting-hint" data-i18n="settings.general.speedLimitHint">每任务下载速度上限，0 表示不限速</span>

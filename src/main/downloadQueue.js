@@ -42,7 +42,7 @@ const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
 const MAX_DONE_RETAINED = 200;
 /** 重启时 pending 超过该时长未启动则标记失败，避免永久阻塞「加入新歌单」 */
 const STALE_PENDING_MS = 24 * 60 * 60 * 1000;
-/** 单曲最大重试次数 */
+/** 单曲最大尝试次数默认值（含首次）——用户可用 prefs.maxAttempts（1..5）覆盖 */
 const MAX_RETRY = 2;
 /** 重试前的退避等待（毫秒） */
 const RETRY_BACKOFF_MS = 500;
@@ -131,6 +131,19 @@ function createDownloadQueueEngine({
       cap = 2;
     }
     return Math.min(cap, getConcurrency());
+  }
+
+  /**
+   * 单曲最大尝试次数（含首次；prefs.maxAttempts，1..5，越界回落 MAX_RETRY）。
+   * 每首歌协程启动时快照一次——下载中途改设置不回溯影响在途任务。
+   */
+  function getMaxAttempts() {
+    try {
+      const n = Number(prefs.get('maxAttempts'));
+      return Number.isInteger(n) && n >= 1 && n <= 5 ? n : MAX_RETRY;
+    } catch (_e) {
+      return MAX_RETRY;
+    }
   }
 
   /** 某请求源当前在途任务数（从队列状态派生，不另立计数器避免漂移） */
@@ -264,8 +277,9 @@ function createDownloadQueueEngine({
     let lastError = null;
     let isFatal = false;
     const cancelToken = String(song.taskId || song.id);
+    const maxAttempts = getMaxAttempts(); // 逐曲快照，中途改设置不影响在途任务
 
-    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       // 取消 / 任务已被移出队列（如重试等待期被 splice）→ 终止协程，不再取流落盘
       if (song._cancelRequested || !downloadQueue.includes(song)) {
         lastError = Object.assign(new Error('下载已取消'), { cancelled: true });
@@ -424,10 +438,10 @@ function createDownloadQueueEngine({
         lastError = e;
         const msg = e.message || String(e);
         const isRetriable = /HTTP\s*(403|404|410)/i.test(msg);
-        logger.warn(`下载失败 (尝试 ${attempt}/${MAX_RETRY}):`, msg);
+        logger.warn(`下载失败 (尝试 ${attempt}/${maxAttempts}):`, msg);
 
         // 只对 403/404/410 重试（CDN URL 签名过期，重拿 URL 再下），其他错误直接放弃
-        if (attempt < MAX_RETRY && isRetriable) {
+        if (attempt < maxAttempts && isRetriable) {
           song.status = 'pending';
           song.progress = 0;
           notifyQueueChanged();
@@ -604,6 +618,7 @@ function createDownloadQueueEngine({
     // 常量（测试与文档引用）
     MAX_DONE_RETAINED,
     MAX_RETRY,
+    getMaxAttempts,
   };
 }
 
