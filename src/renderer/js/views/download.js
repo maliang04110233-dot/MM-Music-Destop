@@ -188,6 +188,7 @@ function renderQueue(queue) {
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(getState('saveDir') || '')}')">📂</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="转换格式" onclick="event.stopPropagation();showConvertModal('${escQ(s.savePath || '')}', '${escQ(s.title || '')}')">🔄</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'error') ? `
+        <button class="queue-cancel" style="color:var(--neon-yellow)" title="诊断失败原因" onclick="event.stopPropagation();window.diagnoseFailure('${escQ(s.taskId)}')">🆘</button>
         <button class="queue-cancel" style="color:var(--neon-orange)" title="重试下载" onclick="event.stopPropagation();retryQueueItem('${escQ(s.taskId)}')">🔄</button>
         <button class="queue-cancel" title="移除" onclick="event.stopPropagation();removeQueueItem('${escQ(s.taskId)}')">✕</button>
       ` : ''}
@@ -236,6 +237,7 @@ function queueRowContext(e) {
     }
   } else if (s.status === 'error') {
     items.push(
+      { icon: '🆘', label: '诊断失败原因', onClick: () => window.diagnoseFailure(taskId) },
       { icon: '🔄', label: '重试下载', onClick: () => retryQueueItem(taskId) },
       { icon: '✕', label: '移除', danger: true, onClick: () => removeQueueItem(taskId) },
     );
