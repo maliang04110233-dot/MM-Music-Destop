@@ -888,6 +888,8 @@ function renderSongList(list) {
   `}).join('');
   _markRowActive(_songRows()); // 重绘后恢复行焦点（徽标防抖重渲染不丢高亮）
   _markPlayingRows();
+  // 跨平台同名分组横幅（songGroups.js；非聚合模式内部自行短路）
+  if (typeof window.updateSongGroupsBar === 'function') window.updateSongGroupsBar(list);
 }
 
 // ── 正在播放行高亮（.song-row.playing 现成样式）──────────
