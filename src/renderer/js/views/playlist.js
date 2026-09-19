@@ -14,7 +14,7 @@ import { HEART_ON } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
-import { moveInList } from '../playlistSort.js';
+import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
 
@@ -22,6 +22,7 @@ import { filterPlaylistSongs } from '../playlistFilter.js';
 let _currentPlaylistId = null;
 let _currentDetailSongs = [];
 let _plSongKw = ''; // 详情弹层会话级过滤词（切歌单/关闭即清）
+let _plSortMode = ''; // 详情弹层会话级视图排序（''=默认序，排序中禁拖把手）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
 let _playlistPlayRequestId = 0;
 
@@ -79,6 +80,8 @@ async function openPlaylistDetail(playlistId) {
   try {
     _currentPlaylistId = playlistId;
     _plSongKw = '';
+    _plSortMode = '';
+    _syncPlSortBtn();
     const filterInput = document.getElementById('playlistSongFilter');
     if (filterInput) filterInput.value = '';
     const playlists = getState('userPlaylists') || [];
@@ -114,8 +117,8 @@ function renderPlaylistDetailSongs(songs) {
     return;
   }
 
-  const reorderable = songs.length > 1;
-  const pairs = filterPlaylistSongs(songs, _plSongKw);
+  const pairs = sortPlaylistPairs(filterPlaylistSongs(songs, _plSongKw), _plSortMode);
+  const reorderable = songs.length > 1 && !_plSortMode; // 排序时展示序≠存储序，禁用拖把手防误持久化
   if (!pairs.length) {
     list.innerHTML = `<div class="empty-hint" style="text-align:center;padding:30px 0;">没有匹配「${esc(_plSongKw.trim())}」的歌曲</div>`;
     return;
@@ -622,6 +625,20 @@ function onPlaylistSongFilterInput(v) {
   if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
 }
 
+// ── 详情视图排序（只排展示 pairs，不动存储顺序；排序中拖把手隐藏）──
+function _syncPlSortBtn() {
+  const btn = document.getElementById('playlistSortBtn');
+  if (!btn) return;
+  const m = PL_SORT_MODES.find((x) => x.key === _plSortMode);
+  btn.textContent = m ? m.label : '↕ 默认序';
+}
+
+function cyclePlaylistSort() {
+  _plSortMode = nextPlSortMode(_plSortMode);
+  _syncPlSortBtn();
+  if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
 // ── 歌单内快捷加歌（搜索→逐条添加，弹层不关可连加）────
 let _plAddEl = null;
 let _plAddSongs = [];
@@ -754,6 +771,7 @@ window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
 window.useFirstSongCover = useFirstSongCover;
 window.onPlaylistSongFilterInput = onPlaylistSongFilterInput;
+window.cyclePlaylistSort = cyclePlaylistSort;
 window.openPlaylistAddSongs = openPlaylistAddSongs;
 window.closePlaylistAddSongs = closePlaylistAddSongs;
 window.doPlAddSearch = doPlAddSearch;

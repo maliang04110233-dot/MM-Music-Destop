@@ -35,3 +35,50 @@ test('moveInList 无效输入返回 null（同位/越界/短列表/非数组）'
   assert.equal(moveInList(null, 0, 1), null);
   assert.equal(moveInList('ab', 0, 1), null);
 });
+
+// ── 增量67：视图级排序 ────────────────────────────────
+
+const P = (i, song) => ({ song, i });
+
+test('nextPlSortMode 四档循环，坏值回落到默认序的下一档', async () => {
+  const { nextPlSortMode } = await mod();
+  assert.equal(nextPlSortMode(''), 'title');
+  assert.equal(nextPlSortMode('title'), 'artist');
+  assert.equal(nextPlSortMode('artist'), 'added');
+  assert.equal(nextPlSortMode('added'), '');
+  assert.equal(nextPlSortMode('bogus'), 'title');
+});
+
+test('sortPlaylistPairs 默认序原样返回且不动入参', async () => {
+  const { sortPlaylistPairs } = await mod();
+  const src = [P(2, { title: 'c' }), P(0, { title: 'a' })];
+  const out = sortPlaylistPairs(src, '');
+  assert.deepEqual(out.map((p) => p.i), [2, 0]);
+  assert.notEqual(out, src);
+  assert.equal(sortPlaylistPairs(null, 'title').length, 0);
+});
+
+test('sortPlaylistPairs 标题中文拼音序、缺失垫底、同键稳定', async () => {
+  const { sortPlaylistPairs } = await mod();
+  const out = sortPlaylistPairs([
+    P(3, { title: '红色' }), P(1, { title: '白色' }),
+    P(4, { title: '蓝色' }), P(5, {}), P(0, { title: '' }),
+  ], 'title');
+  assert.deepEqual(out.map((p) => p.i), [1, 3, 4, 0, 5]); // 白<红<蓝；''/缺失垫底且保序
+});
+
+test('sortPlaylistPairs 歌手排序', async () => {
+  const { sortPlaylistPairs } = await mod();
+  const out = sortPlaylistPairs([
+    P(0, { artist: '张三' }), P(1, { artist: '李四' }), P(2, { artist: '王五' }),
+  ], 'artist');
+  assert.deepEqual(out.map((p) => p.i), [1, 2, 0]); // 李<王<张（ICU zh 拼音序）
+});
+
+test('sortPlaylistPairs 添加时间升序、缺 addedAt 垫底', async () => {
+  const { sortPlaylistPairs } = await mod();
+  const out = sortPlaylistPairs([
+    P(0, { title: 'x' }), P(1, { addedAt: 200 }), P(2, { addedAt: 100 }),
+  ], 'added');
+  assert.deepEqual(out.map((p) => p.i), [2, 1, 0]);
+});
