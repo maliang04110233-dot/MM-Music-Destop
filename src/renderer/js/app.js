@@ -18,7 +18,7 @@ import './router.js';
 // 播放器和快捷键
 import { updateProgress, onAudioEnded, parseLrc, showNoLyrics, loadAndPlay, playQueueIdx } from './player.js';
 import { initMediaSession } from './player/mediaSession.js';
-import { heartBtnHtml } from './favorites.js';
+import { heartBtnHtml, queueFavSong } from './favorites.js';
 import './shortcuts.js';
 
 // 播放状态外发同步 + 队列恢复（自 init() 内闭包提出，等价迁移）
@@ -1156,6 +1156,7 @@ function renderPlayQueueUI() {
   } else {
     list.innerHTML = queue.map((s, i) => {
       const isCur = i === playIdx;
+      const favS = queueFavSong(s);
       const cover = s.cover
         ? '<img class="pq-thumb" src="' + escAttr(s.cover) + '" alt="" loading="lazy" draggable="false">'
         : '<span class="pq-thumb-ph">' + NOTE_SVG + '</span>';
@@ -1167,6 +1168,7 @@ function renderPlayQueueUI() {
         + '<span class="pq-item-artist">' + esc(s.artist || '') + '</span>'
         + '</span>'
         + '<span class="pq-dur">' + fmtDuration(s.duration) + '</span>'
+        + (favS ? heartBtnHtml(favS, 'pq-fav') : '')
         + '</div>';
     }).join('');
   }

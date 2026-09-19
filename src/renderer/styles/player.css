@@ -1242,6 +1242,16 @@ audio { display: none; }
   color: var(--fg-3);
   font-variant-numeric: tabular-nums;
 }
+/* 队列行内 ♥（增量92）：自带按钮复位，颜色走全局 .heart-btn 规则 */
+.pq-item .heart-btn.pq-fav {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: .8;
+}
 
 /* ── 空状态 ───────────────────────────────────────────── */
 .pq-empty {

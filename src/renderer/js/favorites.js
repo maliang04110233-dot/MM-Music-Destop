@@ -54,6 +54,17 @@ export function toggleLocalFavorite(song) {
 }
 
 /**
+ * 播放队列行 → 收藏对象（增量92）：本地行与本地曲库同走 filePath:local 键
+ * （行对象 id 未必是 filePath，直接heart会和本地库红心分裂成两条）；
+ * 无 id 的行（异常数据）不出红心。
+ */
+export function queueFavSong(s) {
+  if (!s) return null;
+  if (String(s.source || '') === 'local') return localFavSong(s);
+  return s.id != null ? s : null;
+}
+
+/**
  * 红心按钮 HTML，返回完整 button 标签
  * @param {Object} song 需含 source / id
  * @param {string} [baseClass] 行内按钮基类（搜索页 action-btn，首页 top-song-action）
