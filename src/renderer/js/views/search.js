@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
 import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
+import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -156,12 +157,21 @@ let _kbdIdx = -1;
 let _rowIdx = -1;
 let _visibleIdxMap = [];        // 当前可见行 → 原始 songs 索引（「隐藏已下载」过滤后不回移）
 let _hideDownloaded = false;    // 搜索页过滤开关
+let _searchSortMode = 'default'; // 搜索结果排序（会话级，与过滤同层）
 
 /** 「隐藏已下载」切换：会话级开关，仅影响渲染，不动数据 */
 function toggleHideDownloaded() {
   _hideDownloaded = !_hideDownloaded;
   const btn = document.getElementById('hideDlToggle');
   if (btn) btn.classList.toggle('active', _hideDownloaded);
+  if (_dlLastList) renderSongList(_dlLastList);
+}
+
+/** 排序循环：默认 → 时长↓ → 时长↑ → 按来源 → 默认 */
+function cycleSearchSort() {
+  _searchSortMode = nextSortMode(_searchSortMode);
+  const btn = document.getElementById('searchSortBtn');
+  if (btn) btn.textContent = sortLabel(_searchSortMode);
   if (_dlLastList) renderSongList(_dlLastList);
 }
 let _lastRenderedSongList = null;
@@ -839,6 +849,7 @@ function renderSongList(list) {
     hiddenCount = pairs.length - kept.length;
     pairs = kept;
   }
+  pairs = sortPairs(pairs, _searchSortMode); // 先过滤后排序，stable 排序保留组内原序
   _visibleIdxMap = pairs.map(p => p[1]);
   if (!pairs.length && hiddenCount) {
     el.innerHTML = `<div class="empty-state">
@@ -1172,6 +1183,7 @@ window.addDownload = addDownload;
 window.searchInputKey = searchInputKey;
 window.searchListKey = searchListKey;
 window.toggleHideDownloaded = toggleHideDownloaded;
+window.cycleSearchSort = cycleSearchSort;
 window.playSearchAll = playSearchAll;
 window.showSearchHistory = showSearchHistory;
 window.hideSearchHistory = hideSearchHistory;
