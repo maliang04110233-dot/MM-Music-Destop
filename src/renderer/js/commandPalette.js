@@ -78,6 +78,7 @@ const COMMANDS = [
   { id: 'pl-abloop', icon: '🔁', group: '播放', label: 'A-B 循环：设 A 点 / 设 B 点 / 清除', keywords: ['ab loop', '循环', '片段', '副歌'], run: () => _call('abLoopClick') },
   { id: 'pl-lyedit', icon: '✏️', group: '播放', label: '编辑当前歌曲歌词（本地 .lrc / 在线覆写）', keywords: ['lyric', '歌词', '编辑', 'edit'], run: () => _call('openLyricEditor') },
   { id: 'pl-addsong', icon: '➕', group: '播放', label: '搜索并添加歌曲到当前打开的歌单', keywords: ['playlist', '歌单', '加歌', '添加', 'add song'], run: () => _call('openPlaylistAddSongs') },
+  { id: 'pl-fade', icon: '🌊', group: '播放', label: '播放淡入档位：关 / 0.5s / 1s / 2s', keywords: ['fade', '淡入', '音量', '渐变'], run: () => _call('cycleFadeIn') },
 
   { id: 'dl-batch', icon: '📥', group: '下载', label: '批量导入链接', keywords: ['batch', '粘贴'], run: () => _call('openBatchImport') },
   { id: 'dl-namebatch', icon: '🎤', group: '下载', label: '按歌名批量导入（歌手 - 歌名清单）', keywords: ['name batch', '歌名', '文本清单'], run: () => _call('openNameBatch') },
