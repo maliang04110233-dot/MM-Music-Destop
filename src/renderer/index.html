@@ -159,6 +159,11 @@
         <div class="recent-list" id="recentlyPlayedList"></div>
       </div>
 
+      <!-- 首页榜单即时过滤：只影响渲染，不清数据（会话级） -->
+      <div style="display:flex;justify-content:flex-end;margin:6px 0;">
+        <input class="search-input" id="homeFilterInput" placeholder="🔍 过滤本页榜单（歌名/歌手/歌单名）..." style="width:250px;">
+      </div>
+
       <!-- 平台聚合导航：锚点跳转；三平台内容同时存在，不再 tab 互斥 -->
       <div class="home-anchors" id="homeAnchors"></div>
 

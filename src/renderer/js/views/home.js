@@ -19,6 +19,10 @@ import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { openSongRowMenu } from '../songMenu.js';
+import { filterHomeSection } from '../homeFilter.js';
+
+// 首页榜单过滤词（会话级；小写化在 filterHomeSection 内统一处理）
+let _homeFilterStr = '';
 
 // ── 分区注册表 ────────────────────────────────────────────
 // 新增一个区块 = 这里加一行；DOM、锚点、懒加载、状态统计自动跟上
@@ -436,9 +440,18 @@ function renderSection(meta, data) {
     return;
   }
 
-  el.innerHTML = meta.kind === 'grid'
-    ? data.slice(0, GRID_LIMIT).map(playlistCardHtml).join('')
-    : listHtml(meta, data);
+  if (meta.kind === 'grid') {
+    const { items } = filterHomeSection('grid', data, _homeFilterStr);
+    el.innerHTML = items.length
+      ? items.slice(0, GRID_LIMIT).map(playlistCardHtml).join('')
+      : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌单</div>`;
+    return;
+  }
+
+  const { pairs } = filterHomeSection('list', data, _homeFilterStr);
+  el.innerHTML = pairs.length
+    ? listHtml(meta, pairs, data.length)
+    : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌曲</div>`;
 }
 
 function renderSectionError(meta, msg) {
@@ -474,10 +487,10 @@ function playlistCardHtml(p) {
     </div>`;
 }
 
-function listHtml(meta, songs) {
-  const shown = songs.slice(0, LIST_FOLD);
-  const more = songs.length > LIST_FOLD
-    ? `<button class="list-more-btn" onclick="openHomeChartModal('${escQ(meta.sec)}')">${esc(_tr('home.viewFullChart', `查看完整榜单（共 ${songs.length} 首）`, { n: songs.length }))} ▸</button>`
+function listHtml(meta, pairs, total) {
+  const shown = pairs.slice(0, LIST_FOLD);
+  const more = total > LIST_FOLD
+    ? `<button class="list-more-btn" onclick="openHomeChartModal('${escQ(meta.sec)}')">${esc(_tr('home.viewFullChart', `查看完整榜单（共 ${total} 首）`, { n: total }))} ▸</button>`
     : '';
   return songRowsHtml(meta, shown) + more;
 }
@@ -493,8 +506,10 @@ function listHtml(meta, songs) {
  * 现在：封面 36px + 标题/歌手 + （可选）来源徽标 + 时长 + 常显操作按钮。
  * 「时长」是新加的 —— 榜单有 duration 字段却从未展示。
  */
-function songRowsHtml(meta, songs) {
-  return songs.map((s, i) => `
+function songRowsHtml(meta, rows) {
+  // rows 是 [{s, i}]：i 必须是**原始数组下标**——行内播放/下载/右键全部经
+  // _getSection(sec)[i] 回查，过滤后重排下标会点 A 播 B。
+  return rows.map(({ s, i }) => `
     <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" onclick="playRecommendById('${escQ(meta.sec)}',${i})">
       <span class="top-song-rank ${i < 3 ? 'top3' : ''}">${i + 1}</span>
       ${coverThumbHtml(s.cover)}
@@ -515,6 +530,27 @@ function songRowsHtml(meta, songs) {
     </div>
   `).join('');
 }
+
+// ── 首页榜单过滤（会话级）──────────────────────────────
+// 输入即重渲染所有已加载分区：数据始终在 homeState.plat[plat].sections[sec]
+// 原样保留，过滤只发生在渲染层，清空输入即还原。
+function _rerenderLoadedSections() {
+  for (const p of HOME_PLATFORMS) {
+    const st = homeState.plat[p.plat];
+    if (!st) continue;
+    for (const meta of p.sections) {
+      const data = st.sections[meta.sec];
+      if (Array.isArray(data) && data.length) renderSection(meta, data);
+    }
+  }
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'homeFilterInput') {
+    _homeFilterStr = String(e.target.value || '').trim();
+    _rerenderLoadedSections();
+  }
+});
 
 // ── 榜单行右键菜单（业务项在 ../songMenu.js 共享）──────
 // data-sec 只在榜单行上；榜单弹层行同样经 songRowsHtml 渲染，菜单顺带覆盖
@@ -618,7 +654,7 @@ function openHomeChartModal(sec) {
         <span class="home-chart-count">${esc(_tr('home.trackCount', `${songs.length} 首`, { n: songs.length }))}</span>
         <button class="playlist-modal-close" aria-label="${escAttr(_tr('home.close', '关闭'))}" onclick="closeHomeChartModal()">✕</button>
       </div>
-      <div class="playlist-modal-body" id="homeChartBody">${songRowsHtml(meta, songs)}</div>
+      <div class="playlist-modal-body" id="homeChartBody">${songRowsHtml(meta, songs.map((s, i) => ({ s, i })))}</div>
     </div>`;
 
   // 点遮罩关闭（点内容区不关）—— 与既有 playlist-modal 行为一致
