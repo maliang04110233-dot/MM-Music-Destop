@@ -15,6 +15,7 @@ import { resolveQuality } from '../quality.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { moveInList } from '../playlistSort.js';
+import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
@@ -379,6 +380,8 @@ function openPlaylistEditor(playlistId) {
   const titleEl = document.getElementById('playlistEditorTitle');
   const nameInput = document.getElementById('playlistEditorName');
   const descInput = document.getElementById('playlistEditorDesc');
+  const coverInput = document.getElementById('playlistEditorCover');
+  const pickBtn = document.getElementById('playlistCoverPick');
   if (!modal || !nameInput) return;
 
   if (playlistId) {
@@ -388,17 +391,32 @@ function openPlaylistEditor(playlistId) {
       titleEl.textContent = '✏️ 编辑歌单';
       nameInput.value = pl.name;
       descInput.value = pl.desc || '';
+      if (coverInput) coverInput.value = pl.cover || '';
+      // 「用首曲封面」只在歌内可能有封面的已有歌单里可用
+      if (pickBtn) pickBtn.style.display = (pl.songs || []).length ? '' : 'none';
       modal.dataset.editId = playlistId;
     }
   } else {
     titleEl.textContent = '📋 新建歌单';
     nameInput.value = '';
     descInput.value = '';
+    if (coverInput) coverInput.value = '';
+    if (pickBtn) pickBtn.style.display = 'none';
     delete modal.dataset.editId;
   }
 
   modal.classList.remove('hidden');
   nameInput.focus();
+}
+
+/** 一键把歌单里第一张歌曲封面填进封面输入框 */
+function useFirstSongCover() {
+  const modal = document.getElementById('playlistEditorModal');
+  const coverInput = document.getElementById('playlistEditorCover');
+  const pl = (getState('userPlaylists') || []).find(p => p.id === modal.dataset.editId);
+  const c = pickFirstSongCover(pl && pl.songs);
+  if (!c) { showToast('歌内没有可用的封面链接', 'warn'); return; }
+  coverInput.value = c;
 }
 
 function closePlaylistEditor() {
@@ -409,12 +427,21 @@ async function savePlaylist() {
   const modal = document.getElementById('playlistEditorModal');
   const nameInput = document.getElementById('playlistEditorName');
   const descInput = document.getElementById('playlistEditorDesc');
+  const coverInput = document.getElementById('playlistEditorCover');
   if (!modal || !nameInput) return;
 
   const name = nameInput.value.trim();
   if (!name) {
     showToast('请输入歌单名称', 'warn');
     nameInput.focus();
+    return;
+  }
+
+  // 封面留空=清除（''），非法协议直接拦下（normalizeCoverUrl 非 http(s) → null）
+  const cover = coverInput ? normalizeCoverUrl(coverInput.value) : '';
+  if (cover === null) {
+    showToast('封面链接需以 http:// 或 https:// 开头', 'warn');
+    if (coverInput) coverInput.focus();
     return;
   }
 
@@ -426,6 +453,7 @@ async function savePlaylist() {
     ...(editId ? { id: editId } : {}),
     name,
     desc: descInput.value.trim(),
+    cover,
     songs: pl ? pl.songs : [],
   };
 
@@ -557,6 +585,7 @@ window.downloadAllPlaylist = downloadAllPlaylist;
 window.playAllPlaylist = playAllPlaylist;
 window.removeSongFromPlaylist = removeSongFromPlaylist;
 window.openPlaylistEditor = openPlaylistEditor;
+window.useFirstSongCover = useFirstSongCover;
 window.closePlaylistEditor = closePlaylistEditor;
 window.savePlaylist = savePlaylist;
 window.editPlaylist = editPlaylist;

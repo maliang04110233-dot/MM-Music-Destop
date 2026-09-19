@@ -67,6 +67,7 @@ function register() {
       id: 'pl_' + now + '_' + Math.random().toString(36).slice(2, 8),
       name: playlist.name,
       desc: playlist.desc || '',
+      cover: playlist.cover || '',
       songs: playlist.songs || [],
       createdAt: now,
       updatedAt: now,
