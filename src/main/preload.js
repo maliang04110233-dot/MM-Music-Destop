@@ -18,6 +18,19 @@ const SAFE_CHANNELS_SEND    = new Set(contract.send);
 const SAFE_CHANNELS_RECEIVE = new Set(contract.receive);
 const SAFE_CHANNELS_INVOKE  = new Set(contract.invoke);
 
+// ── 传输层信封解包 ────────────────────────────────────────────
+// 主进程 register.js 把所有 invoke 结果包成 {envKey:1, ok, data|error}；
+// 这里还原为迁移前的直连语义：ok → data（含历史遗留的 resolved {error}值），
+// !ok → 抛错，让 ipcRenderer.invoke 的 Promise 拒绝，渲染层 try/catch 不变。
+const ENV_KEY = contract.envKey || '__ipcEnv';
+function unwrap(res) {
+  if (res && typeof res === 'object' && res[ENV_KEY] === 1) {
+    if (res.ok) return res.data;
+    throw new Error(res.error || 'IPC 调用失败');
+  }
+  return res;
+}
+
 // ── 核心 musicAPI（渲染层 → 主进程的 IPC 桥）────────────
 // 方向判定来自契约的 invoke 清单；不在其中且是 send 通道的走 ipcRenderer.send
 // （send-only 通道走 invoke 会无人应答、Promise 永远 pending）。
@@ -25,17 +38,17 @@ function makeApiMethod(ipcChannel) {
   if (!SAFE_CHANNELS_INVOKE.has(ipcChannel) && SAFE_CHANNELS_SEND.has(ipcChannel)) {
     return (...args) => ipcRenderer.send(ipcChannel, ...args);
   }
-  return (...args) => ipcRenderer.invoke(ipcChannel, ...args);
+  return (...args) => ipcRenderer.invoke(ipcChannel, ...args).then(unwrap);
 }
 
 const _musicApiBase = {
   invoke(channel, ...args) {
     if (SAFE_CHANNELS_INVOKE.has(channel)) {
-      return ipcRenderer.invoke(channel, ...args);
+      return ipcRenderer.invoke(channel, ...args).then(unwrap);
     }
     logger.warn('[preload] 未授权的 IPC 通道:', channel);
   },
-  get version() { return ipcRenderer.invoke('get-version'); },
+  get version() { return ipcRenderer.invoke('get-version').then(unwrap); },
 };
 
 // 从 METHODS 批量生成调用方法（渲染层 camelCase → 契约通道）
@@ -59,7 +72,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   },
   invoke(channel, ...args) {
     if (SAFE_CHANNELS_INVOKE.has(channel)) {
-      return ipcRenderer.invoke(channel, ...args);
+      return ipcRenderer.invoke(channel, ...args).then(unwrap);
     }
     logger.warn('[preload] 未授权的 IPC 通道:', channel);
   },
@@ -86,6 +99,6 @@ contextBridge.exposeInMainWorld('miniAPI', {
   windowClose() { ipcRenderer.send('window-close'); },
   windowMinimize() { ipcRenderer.send('window-minimize'); },
   windowMaximize() { ipcRenderer.send('window-maximize'); },
-  get version() { return ipcRenderer.invoke('get-version'); },
-  getVersion() { return ipcRenderer.invoke('get-version'); },
+  get version() { return ipcRenderer.invoke('get-version').then(unwrap); },
+  getVersion() { return ipcRenderer.invoke('get-version').then(unwrap); },
 });

@@ -69,10 +69,20 @@ ipcLibrary.register();
 libraryIndex.init(userDataDir);
 prefs.init(userDataDir);
 
+// register.js 的传输层信封（见 test/ipc-envelope.test.js）：
+// 本测试直调 ipcMain 包装器，模拟 preload 的解包还原
+const { ENVELOPE_KEY } = require('../src/shared/ipcContract');
 const invoke = (channel) => {
   const fn = handlers.get(channel);
   assert.ok(fn, `IPC handler 未注册: ${channel}`);
-  return fn;
+  return async (...args) => {
+    const env = await fn(...args);
+    if (env && typeof env === 'object' && env[ENVELOPE_KEY] === 1) {
+      if (!env.ok) throw new Error(env.error);
+      return env.data;
+    }
+    return env;
+  };
 };
 
 // ── 同步 fs 守卫 ─────────────────────────────────────────────

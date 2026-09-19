@@ -8,7 +8,7 @@
  */
 
 const { ipcMain } = require('electron');
-const { CHANNELS, normalizeArgs } = require('../../shared/ipcContract');
+const { CHANNELS, normalizeArgs, ENVELOPE_KEY } = require('../../shared/ipcContract');
 const logger = require('../../utils/logger');
 
 const _registered = new Set();
@@ -22,15 +22,28 @@ function _entry(channel, dir) {
   return e;
 }
 
+/**
+ * 传输层信封：成功 {env,ok:true,data}，抛错 {env,ok:false,error}（消息文本）。
+ * preload 解包还原后渲染层拿到的值/拒绝语义与迁移前一致（见 test/ipc-envelope）。
+ * 参数校验失败历史上是 resolved 的 {error,fatal:true}，作为 data 原样入包，不改语义。
+ */
+function _envelope(result) {
+  return { [ENVELOPE_KEY]: 1, ok: true, data: result };
+}
+
 function handle(channel, fn) {
   _entry(channel, 'invoke');
-  ipcMain.handle(channel, (event, ...raw) => {
+  ipcMain.handle(channel, async (event, ...raw) => {
     const r = normalizeArgs(channel, raw);
     if (!r.ok) {
       logger.warn(`[ipc] ${r.error}`);
-      return { error: r.error, fatal: true };
+      return _envelope({ error: r.error, fatal: true });
     }
-    return fn(event, ...r.args);
+    try {
+      return _envelope(await fn(event, ...r.args));
+    } catch (e) {
+      return { [ENVELOPE_KEY]: 1, ok: false, error: (e && e.message) || String(e) };
+    }
   });
   _registered.add(channel);
   _invokeFns.set(channel, fn);

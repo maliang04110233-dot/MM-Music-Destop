@@ -35,6 +35,12 @@ const t = {
 const MAIN = ['main'];
 const BOTH = ['main', 'secondary'];
 
+// 传输层信封标记键：register.js 把 handler 返回值包成
+// { [ENVELOPE_KEY]: 1, ok, data | error }，preload 解包还原后再交给渲染层。
+// 渲染层永远见不到信封；sandbox preload 不能 require 应用文件，
+// 故实际键值经 buildContractArg 的 envKey 字段注入，这里是唯一声明处。
+const ENVELOPE_KEY = '__ipcEnv';
+
 const CHANNELS = {
   // ── 搜索 / 歌词 / 推荐（invoke） ──────────────────
   'search-music':   { invoke: MAIN, args: [['keyword', t.str(200)], ['source', t.str(32)], ['page', t.int(1, 1000)]] },
@@ -435,7 +441,7 @@ function buildContractArg(win) {
   const invoke = [...channelsFor(win, 'invoke')];
   const send = [...channelsFor(win, 'send')];
   const receive = [...channelsFor(win, 'receive')];
-  const payload = { v: 1, win, invoke, send, receive, methods: {}, events: {} };
+  const payload = { v: 1, win, invoke, send, receive, envKey: ENVELOPE_KEY, methods: {}, events: {} };
   if (win === 'main') {
     payload.methods = METHODS;
     payload.events = EVENTS;
@@ -443,4 +449,4 @@ function buildContractArg(win) {
   return `--ipc-contract=${JSON.stringify(payload)}`;
 }
 
-module.exports = { t, CHANNELS, METHODS, EVENTS, normalizeArgs, coerceVal, channelsFor, buildContractArg };
+module.exports = { t, CHANNELS, METHODS, EVENTS, normalizeArgs, coerceVal, channelsFor, buildContractArg, ENVELOPE_KEY };
