@@ -83,6 +83,7 @@ const COMMANDS = [
   { id: 'pl-psort', icon: '↕', group: '播放', label: '歌单详情排序：默认 / 标题 / 歌手 / 添加时间', keywords: ['playlist', 'sort', '歌单', '排序'], run: () => _call('cyclePlaylistSort') },
   { id: 'pl-cfilter', icon: '🔍', group: '播放', label: '搜索我的歌单（名称/描述过滤卡片）', keywords: ['playlist filter', '歌单', '搜索'], run: () => { _goto('playlist'); const el = document.getElementById('playlistCardFilter'); if (el) setTimeout(() => el.focus(), 80); } },
   { id: 'pl-export', icon: '⤴', group: '播放', label: '导出当前打开的歌单为 m3u', keywords: ['export', 'm3u', '歌单', '导出'], run: () => _call('exportCurrentPlaylistM3u') },
+  { id: 'pl-msave', icon: '📥', group: '播放', label: '把平台歌单/专辑弹层勾选歌存为我的歌单（在线引用不下载）', keywords: ['save', '平台歌单', '弹层', '存为歌单', '专辑'], run: () => _call('savePlModalAsPlaylist') },
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
   { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },
   { id: 'pl-locate', icon: '🎯', group: '播放', label: '在歌单详情中定位正在播放的歌', keywords: ['locate', '定位', '正在播放', '歌单'], run: () => _call('locatePlayingInDetail') },

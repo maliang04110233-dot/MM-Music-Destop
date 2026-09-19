@@ -58,6 +58,7 @@ import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
 import './m3uToPlaylist.js';
 import { sanitizeSavedQueue } from './dropPlay.js';
+import { pickCheckedSongs, toPlaylistRows, buildSavedPlaylist } from './plModalSave.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
 import './historyTrend.js';
@@ -752,6 +753,8 @@ function renderPlaylistModal(songs) {
         <button class="btn-sm" id="plSubscribeBtn" title="新歌发布时提醒我" onclick="subscribeCurrentPlaylist()">📡 订阅</button>
         <button class="btn-sm" onclick="addPlaylistToQueueClick(false)">加入队列</button>
         <button class="btn-sm" onclick="addPlaylistToQueueClick(true)">仅未下载</button>
+        <button class="btn-sm" title="把勾选的歌新建为「我的歌单」（在线引用，不下载）" onclick="savePlModalAsPlaylist()">📥 存为歌单</button>
+        <button class="btn-sm" title="把勾选的歌加入某个已有歌单（引擎端自动去重）" onclick="addPlModalToPlaylist()">➕ 加进歌单</button>
       </div>
     </div>
   `;
@@ -986,6 +989,41 @@ async function addPlaylistToQueueClick(skipExisting) {
   }
 }
 
+// ── 弹层勾选 → 我的歌单（增量98，plModalSave 纯函数的接线层）──────
+async function savePlModalAsPlaylist() {
+  const modal = document.getElementById('playlistModal');
+  if (!modal || modal.classList.contains('hidden')) {
+    showToast('先打开平台歌单/专辑弹层再保存', 'info');
+    return;
+  }
+  const picked = pickCheckedSongs(state.getPlaylistSongs(), state.getPlaylistChecked());
+  if (!picked.length) { showToast('请先勾选要保存的歌曲', 'warn'); return; }
+  const m = state.getPlaylistMeta() || {};
+  const rows = toPlaylistRows(picked);
+  const payload = buildSavedPlaylist(
+    { name: m.name, src: typeof srcLabel === 'function' ? srcLabel(m.platform) : (m.platform || '平台') },
+    rows
+  );
+  try {
+    const r = await api.saveUserPlaylist(payload);
+    if (r && r.success) {
+      if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
+      showToast(`📥 已保存歌单「${payload.name}」：${rows.length} 首`, 'success', 3000);
+    } else {
+      showToast((r && r.error) || '保存失败', 'error');
+    }
+  } catch (e) {
+    logger.error('[savePlModalAsPlaylist] 失败:', e);
+    showToast('保存失败: ' + (e.message || e), 'error');
+  }
+}
+
+function addPlModalToPlaylist() {
+  const picked = pickCheckedSongs(state.getPlaylistSongs(), state.getPlaylistChecked());
+  if (!picked.length) { showToast('请先勾选要加入的歌曲', 'warn'); return; }
+  if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(toPlaylistRows(picked));
+}
+
 async function downloadSongFromList(s) {
   showToast(`⏳ 正在获取 ${s.title} 的下载链接...`, 'info', 2000);
   try {
@@ -1110,6 +1148,8 @@ window.addSingleToQueue = addSingleToQueue;
 window.playPlaylistModalSong = playPlaylistModalSong;
 window.playPlaylistModalAll = playPlaylistModalAll;
 window.addPlaylistToQueueClick = addPlaylistToQueueClick;
+window.savePlModalAsPlaylist = savePlModalAsPlaylist;
+window.addPlModalToPlaylist = addPlModalToPlaylist;
 window.downloadSongFromList = downloadSongFromList;
 window.openAlbumView = openAlbumView;
 window.saveNamingTemplate = saveNamingTemplate;
