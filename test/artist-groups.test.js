@@ -1,0 +1,49 @@
+/**
+ * 本地曲库歌手分组纯函数测试（增量68）
+ * artistGroups.js DOM 接线段有 typeof document 守卫，node 下仅导出纯函数。
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+const mod = () => import(`../src/renderer/js/artistGroups.js?ck=${Math.random()}`);
+
+test('groupArtists 聚合计数与体积，空/脏输入安全', async () => {
+  const { groupArtists } = await mod();
+  const r = groupArtists([
+    { artist: '张三', fileSize: 1000 },
+    { artist: '张三', fileSize: '2000' },
+    { artist: ' 李四 ', fileSize: 500 },
+    { artist: '', fileSize: NaN },
+    null,
+    undefined,
+  ]);
+  assert.deepEqual(r, [
+    { artist: '张三', count: 2, size: 3000 },
+    { artist: '李四', count: 1, size: 500 },
+    { artist: '未知歌手', count: 1, size: 0 },
+  ]);
+  assert.deepEqual(groupArtists(null), []);
+  assert.deepEqual(groupArtists([]), []);
+});
+
+test('groupArtists 数量降序，同数按歌手 zh 拼音序', async () => {
+  const { groupArtists } = await mod();
+  const mk = (a, n) => Array.from({ length: n }, () => ({ artist: a }));
+  const r = groupArtists([...mk('王五', 1), ...mk('李四', 3), ...mk('张三', 1)]);
+  assert.deepEqual(r.map((g) => g.artist), ['李四', '王五', '张三']); // 1首组：王(wang)<张(zhang)
+});
+
+test('groupBarPct 非零保底 8%，零/坏值返回 0', async () => {
+  const { groupBarPct } = await mod();
+  assert.equal(groupBarPct(10, 10), 100);
+  assert.equal(groupBarPct(1, 100), 8);
+  assert.equal(groupBarPct(5, 10), 50);
+  assert.equal(groupBarPct(0, 10), 0);
+  assert.equal(groupBarPct(3, 0), 0);
+  assert.equal(groupBarPct(3, null), 0);
+});
+
+test('UNKNOWN_ARTIST 常量导出', async () => {
+  const { UNKNOWN_ARTIST } = await mod();
+  assert.equal(UNKNOWN_ARTIST, '未知歌手');
+});
