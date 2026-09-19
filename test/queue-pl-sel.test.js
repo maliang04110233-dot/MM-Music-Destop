@@ -38,16 +38,16 @@ test('pickPlSavableRows：保序滤死行、盖 addedAt、不改入参、脏输�
   const out = pickPlSavableRows([a, null, d, b], 777);
   assert.deepEqual(out.map(s => s.title), ['A', 'B'], '死行剔除且保序');
   assert.ok(out.every(s => s.addedAt === 777));
-  assert.equal(out[1].url, 'runtime-only', '行对象透传（与增量76 queueToSongs 同形）');
+  assert.equal(out[1].url, 'runtime-only', '行对象透传（保留原始歌曲字段）');
   assert.equal(a.addedAt, undefined, '入参不得被改动（纯）');
   assert.deepEqual(pickPlSavableRows(null, 1), []);
   assert.deepEqual(pickPlSavableRows('x', 1), []);
 });
 
-test('接线钉：app 判形调用 + 按钮计数 + window 挂桥 + HTML/面板落位 + 76 旧链不动', () => {
+test('接线钉：app 判形调用 + 按钮计数 + window 挂桥 + HTML/面板落位 + 76 链走死行守卫', () => {
   assert.match(QP_JS, /export function pickPlSavableRows\(rows, now = Date\.now\(\)\) \{/);
   assert.ok(!/\bdocument\b/.test(QP_JS) && !/\bwindow\b/.test(QP_JS), 'queuePlaylist 顶层不得碰 DOM');
-  assert.match(APP_JS, /import \{ queueToSongs, defaultQueuePlaylistName, pickPlSavableRows \} from '\.\/queuePlaylist\.js';/);
+  assert.match(APP_JS, /import \{ defaultQueuePlaylistName, pickPlSavableRows \} from '\.\/queuePlaylist\.js';/);
   assert.ok(APP_JS.includes('🎼 歌单 ${_pqSel.size}'), '按钮计数跟着选态走');
   assert.match(APP_JS, /window\.pqSelAddPlaylist = \(\) => \{/);
   assert.ok(APP_JS.includes('filter(s => _pqSel.has(s))'), '按队列原序投影，不跟勾选乱序');
@@ -56,5 +56,5 @@ test('接线钉：app 判形调用 + 按钮计数 + window 挂桥 + HTML/面板�
   assert.ok(APP_JS.includes("window.quickAddToPlaylist(rows)"), '复用既有批量链，零新通道');
   assert.match(HTML, /<button class="pq-clear-btn hidden" id="pqSelPlBtn" onclick="pqSelAddPlaylist\(\)"/);
   assert.match(PALETTE_JS, /id: 'pq-selpl'[\s\S]{0,220}?_call\('pqSelAddPlaylist'\)/);
-  assert.ok(APP_JS.includes('const songs = queueToSongs(getState(\'playQueue\') || []);'), '76 整单存为链不动');
+  assert.ok(APP_JS.includes("const songs = pickPlSavableRows(getState('playQueue') || []);"), '增量118：整单存为同样滤死行');
 });

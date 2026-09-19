@@ -52,7 +52,7 @@ import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
 import { removeQueueItem, removeQueueItemsByIdentity, dedupeQueue } from './playQueueEdit.js';
-import { queueToSongs, defaultQueuePlaylistName, pickPlSavableRows } from './queuePlaylist.js';
+import { defaultQueuePlaylistName, pickPlSavableRows } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
@@ -1350,10 +1350,11 @@ window.pqSelAddPlaylist = () => {
 };
 
 // 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：
-// 名称自动生成「播放队列 · MM-DD HH:mm」，建好后可在歌单编辑器改名/换封面
+// 名称自动生成「播放队列 · MM-DD HH:mm」，建好后可在歌单编辑器改名/换封面。
+// 增量118：走 pickPlSavableRows —— 整单存为同样不收死行（drop 临时行 / 缺 filePath 的本地行）
 window.saveQueueAsPlaylist = async () => {
-  const songs = queueToSongs(getState('playQueue') || []);
-  if (!songs.length) { showToast('播放队列为空，先把歌曲加入队列', 'warn', 2500); return; }
+  const songs = pickPlSavableRows(getState('playQueue') || []);
+  if (!songs.length) { showToast('播放队列没有可保存的歌（空队列，或都是拖入即播/缺路径的临时行）', 'warn', 2800); return; }
   try {
     const r = await api.saveUserPlaylist({
       name: defaultQueuePlaylistName(new Date()),

@@ -39,11 +39,41 @@ export function findCrossPlaylistDupes(playlists) {
     }
   }
   const out = [];
-  for (const g of map.values()) {
-    if (g.plNames.size >= 2) out.push({ title: g.title, artist: g.artist, where: Array.from(g.plNames) });
+  for (const [k, g] of map.entries()) {
+    if (g.plNames.size >= 2) out.push({ key: k, title: g.title, artist: g.artist, where: Array.from(g.plNames) });
   }
   out.sort((a, b) => b.where.length - a.where.length || a.title.localeCompare(b.title, 'zh'));
   return out;
+}
+
+/**
+ * 收拢计划（增量118）：key 这首歌保留在扫描序首见的歌单，从其余单删净
+ * （单内多份也一次删掉）。playlists × key → { keepPlName, updates, removed }
+ * 或 null（键无效/只一个单有/数据已变）。updates 是可直接投喂
+ * save-user-playlist 的整单更新载荷，本函数不碰任何单原件。
+ */
+export function planConsolidate(playlists, key) {
+  if (!key) return null;
+  const list = Array.isArray(playlists) ? playlists : [];
+  let keepPlName = null;
+  const updates = [];
+  let removed = 0;
+  for (const pl of list) {
+    if (!pl || !Array.isArray(pl.songs)) continue;
+    const hit = pl.songs.some(s => songDedupeKey(s) === key);
+    if (!hit) continue;
+    if (!keepPlName) {
+      keepPlName = String(pl.name || '').trim() || '未命名歌单';
+      continue;
+    }
+    removed += pl.songs.filter(s => songDedupeKey(s) === key).length;
+    updates.push({
+      id: pl.id, name: pl.name, desc: pl.desc || '', cover: pl.cover || '',
+      songs: pl.songs.filter(s => songDedupeKey(s) !== key),
+    });
+  }
+  if (!keepPlName || !updates.length) return null;
+  return { keepPlName, updates, removed };
 }
 
 /** 组 → 复制报告正文（每组一行「歌 - 歌手 ×N: 单A、单B」） */

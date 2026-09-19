@@ -18,7 +18,7 @@ import { openSongRowMenu } from '../songMenu.js';
 import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES, filterPlaylists } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
 import { filterPlaylistSongs } from '../playlistFilter.js';
-import { findCrossPlaylistDupes, dedupeScanText } from '../plDedupeScan.js';
+import { findCrossPlaylistDupes, dedupeScanText, planConsolidate } from '../plDedupeScan.js';
 import { enrichExportSongs, buildPathMap } from '../playlistExport.js';
 import { mergeSongLists } from '../playlistMerge.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
@@ -1137,13 +1137,14 @@ function showDedupeModal(groups) {
         <button class="playlist-modal-close" onclick="closeDedupeScanModal()">✕</button>
       </div>
       <div class="playlist-modal-body" style="max-height:60vh;overflow-y:auto;">
-        ${groups.map(g => `
+        ${groups.map((g, i) => `
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,0.06);">
             <div style="min-width:0;">
               <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.title)}${g.artist ? ` <span style="opacity:0.6;font-weight:400;font-size:12px;">${esc(g.artist)}</span>` : ''}</div>
               <div style="font-size:12px;color:var(--neon-dim);">${g.where.map(w => esc(w)).join('、')}</div>
             </div>
             <span style="flex:none;font-size:12px;color:var(--neon-dim);">×${g.where.length}</span>
+            <button class="tab" style="flex:none;" title="保留在首见歌单，从其余歌单移出这一首（不删文件）" onclick="consolidateDup(${i})">🧲 收拢</button>
           </div>`).join('')}
         <div style="margin-top:12px;">
           <button class="btn-primary" onclick="copyDedupeScanReport()">📋 复制报告</button>
@@ -1172,6 +1173,30 @@ async function copyDedupeScanReport() {
   if (!body) { showToast('没有可复制的内容', 'info'); return; }
   const ok = await copyText(`🧮 MusicDL 跨歌单重复报告（${_dedupeGroups.length} 首）\n${body}`);
   showToast(ok ? '📋 重复报告已复制' : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
+}
+
+/** 🧲 收拢一组重复（增量118）：留首见单、其余整单更新，写完重扫刷新弹层 */
+async function consolidateDup(i) {
+  const g = _dedupeGroups[i];
+  if (!g || !g.key) { showToast('该行缺身份键，收拢不了，重新扫描试试', 'warn'); return; }
+  const plan = planConsolidate(getState('userPlaylists') || [], g.key);
+  if (!plan) { showToast('这些歌单里该歌已变化，重新扫描看看', 'info'); closeDedupeScanModal(); return; }
+  if (!confirm(`「${g.title}」保留在「${plan.keepPlName}」，从其他 ${plan.updates.length} 个歌单移出 ${plan.removed} 份？（不删文件）`)) return;
+  try {
+    let done = 0;
+    for (const u of plan.updates) {
+      const r = await api.saveUserPlaylist(u);
+      if (r && r.success) done++;
+    }
+    if (!done) { showToast('收拢失败：一个歌单都没写成', 'error'); return; }
+    if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
+    showToast(`🧲 「${g.title}」已收拢到「${plan.keepPlName}」（移出 ${plan.removed} 份）`, 'success', 3000);
+    const rest = findCrossPlaylistDupes((getState('userPlaylists') || []).filter(p => p && Array.isArray(p.songs)));
+    if (rest.length) showDedupeModal(rest); else closeDedupeScanModal();
+  } catch (e) {
+    logger.error('[consolidateDup] 失败:', e);
+    showToast('收拢失败: ' + (e.message || e), 'error');
+  }
 }
 
 // ── 初始化 ────────────────────────────────────────────
@@ -1257,3 +1282,4 @@ window.duplicateCurrentPlaylist = duplicateCurrentPlaylist;
 window.scanCrossPlaylistDupes = scanCrossPlaylistDupes;
 window.closeDedupeScanModal = closeDedupeScanModal;
 window.copyDedupeScanReport = copyDedupeScanReport;
+window.consolidateDup = consolidateDup;

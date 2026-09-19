@@ -1,29 +1,27 @@
 /**
- * queuePlaylist 单元测试：队列转歌曲（保序/滤空/盖 addedAt/不改原对象）+ 默认名格式
+ * queuePlaylist 单元测试：默认名格式 + 增量118 死代码退役静态钉
+ * （判可持久/盖 addedAt 的行为测试在 queue-pl-sel.test.js，函数同一份）
  */
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const APP_JS = fs.readFileSync(path.join(__dirname, '../src/renderer/js/app.js'), 'utf8');
+const QP_JS = fs.readFileSync(path.join(__dirname, '../src/renderer/js/queuePlaylist.js'), 'utf8');
 
 async function fresh() {
   return import(`../src/renderer/js/queuePlaylist.js?ck=${Math.random()}`);
 }
 
-test('queueToSongs：保序、滤掉空项、逐首盖 addedAt', async () => {
-  const { queueToSongs } = await fresh();
-  const q = [{ title: 'A', source: 'net' }, null, { title: 'B', source: 'kg' }, undefined];
-  const got = queueToSongs(q, 12345);
-  assert.deepEqual(got.map((s) => s.title), ['A', 'B']);
-  assert.ok(got.every((s) => s.addedAt === 12345));
-  assert.equal(got[0].source, 'net');
-});
-
-test('queueToSongs：浅拷贝不污染队列原对象；非数组入参返回空表', async () => {
-  const { queueToSongs } = await fresh();
-  const s = { title: 'A' };
-  queueToSongs([s], 999);
-  assert.equal(s.addedAt, undefined);
-  assert.deepEqual(queueToSongs(null), []);
-  assert.deepEqual(queueToSongs('x'), []);
+test('增量118：queueToSongs 退役，76 整单存为改走 pickPlSavableRows 死行守卫', async () => {
+  const mod = await fresh();
+  assert.equal(mod.queueToSongs, undefined, '退役函数不再导出');
+  assert.equal(typeof mod.pickPlSavableRows, 'function');
+  assert.ok(!/\bqueueToSongs\s*\(/.test(APP_JS), 'app 里不留调用点');
+  assert.ok(!/export function queueToSongs/.test(QP_JS), 'queuePlaylist 源码不再定义');
+  assert.ok(APP_JS.includes("const songs = pickPlSavableRows(getState('playQueue') || []);"), '整单存为链收口到判形函数');
+  assert.ok(APP_JS.includes('播放队列没有可保存的歌'), '空表提示说清「没有可保存的歌」而非「队列为空」');
 });
 
 test('defaultQueuePlaylistName：月/日/时/分补零，可注入 Date', async () => {
