@@ -53,6 +53,7 @@ import './playQueueSort.js';
 import './afterQueueDone.js';
 import './scheduledDownload.js';
 import './commandPalette.js';
+import './historyTrend.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
