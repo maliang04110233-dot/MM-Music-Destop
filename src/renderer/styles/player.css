@@ -1302,3 +1302,13 @@ audio { display: none; }
 }
 .pq-ctx-item:hover { background: var(--elev-1); color: var(--accent-ui); }
 .pq-ctx-item.danger:hover { color: var(--c-danger); }
+/* ── 频谱可视化（增量82）────────────────────────────── */
+.viz-canvas {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 6px;
+  border-radius: 6px;
+  background: rgba(0, 255, 200, 0.04);
+  pointer-events: none;
+}

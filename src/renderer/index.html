@@ -561,6 +561,8 @@
           <div class="player-progress-thumb" id="playerProgressThumb"></div>
           <div class="player-progress-hover-time" id="progressHoverTime"></div>
         </div>
+
+        <canvas id="vizCanvas" class="viz-canvas" style="display:none;" height="34" aria-hidden="true" title="实时频谱（📊 按钮开关）"></canvas>
       </div>
 
       <div class="pc-meta">
@@ -599,6 +601,7 @@
               <span id="volumeValue">80%</span>
             </div>
           </div>
+          <button class="ctrl-btn" id="btnVisualizer" title="频谱可视化：在进度条下方显示实时频谱（复用均衡器音频图，零声音影响）" aria-label="频谱可视化开关" aria-pressed="false" onclick="toggleVisualizer()">📊</button>
         </div>
       </div>
 

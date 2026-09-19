@@ -48,6 +48,8 @@ function exportsOf(src) {
 }
 
 const EQ_PUBLIC = ['applyEqPreset', 'resetEq', 'restoreEqPresetSetting', 'saveEqSettings', 'setEqBand', 'toggleEqBypass'];
+// 增量82：eq.js 另有两个仅供频谱可视化模块 import 的图访问器（不走 onclick/window）
+const EQ_ALL = [...EQ_PUBLIC, 'ensureAudioGraph', 'getAnalyser'].sort();
 
 // ── A. 音频图已接通（正向钉，增量77）────────────────────────
 test('eq.js: eqFilters 存在填充点（EQ 已接入音频图，回退即红）', () => {
@@ -118,14 +120,14 @@ test('eq.js: 启动恢复接线在首次 playing（用户手势后），不在�
 });
 
 // ── C. 公开面（拆分的核心约束） ────────────────────────
-test('eq.js: 公开面恰为 6 个函数', () => {
+test('eq.js: 公开面恰为 8 个函数（6 个 UI 面 + 2 个增量82 图访问器）', () => {
   assert.deepEqual(
-    exportsOf(EQ_CODE), EQ_PUBLIC,
-    'eq.js 的 export 面变化了，player.js 的 re-export 与 window 挂载需同步'
+    exportsOf(EQ_CODE), EQ_ALL,
+    'eq.js 的 export 面变化了，player.js 的 re-export、window 挂载与 visualizer 的 import 需同步'
   );
 });
 
-test('player.js: 从 ./player/eq.js import 的恰好是 eq.js 的全部公开函数', () => {
+test('player.js: 从 ./player/eq.js import 的恰是 6 个 UI 函数（图访问器不经 player 中转）', () => {
   // 注意：不能用 [\s\S]*? 桥接——前面的 stats.js import 会先被匹配到。
   // 用 [^}]* 限定在单个 import 语句的括号内，并锚定 eq.js 的 from。
   const m = PLAYER_CODE.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/player\/eq\.js'/);

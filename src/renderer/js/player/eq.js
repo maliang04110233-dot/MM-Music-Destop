@@ -24,6 +24,7 @@ const EQ_BANDS = [
 ];
 const eqFilters = []; // BiquadFilterNode[]，ensureEqGraph() 填充
 let audioCtx = null;
+let analyserNode = null; // 频谱可视化只读抽头（增量82），随 ensureEqGraph 建立
 const _gains = [0, 0, 0, 0, 0]; // 唯一真身：用户想要的每段 dB（-12..12）
 let eqBypassed = false; // EQ bypass state
 
@@ -77,16 +78,25 @@ function ensureEqGraph() {
       node = f;
       eqFilters.push(f);
     }
-    node.connect(audioCtx.destination);
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.8;
+    node.connect(analyserNode);
+    analyserNode.connect(audioCtx.destination);
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     _mirrorToGraph();
     return true;
   } catch (e) {
     audioCtx = null;
+    analyserNode = null;
     eqFilters.length = 0;
     return false;
   }
 }
+
+// ── 频谱可视化公开面（增量82）：确保建图 + analyser 只读访问 ──
+export function ensureAudioGraph() { return ensureEqGraph(); }
+export function getAnalyser() { return analyserNode; }
 
 // ── 应用 EQ 预设 ──────────────────────────────────────
 export function applyEqPreset(name) {
