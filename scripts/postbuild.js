@@ -23,6 +23,7 @@ const dirs = [
   { from: path.join(src, 'utils'), to: path.join(dist, 'utils') },
   { from: path.join(src, 'shared'), to: path.join(dist, 'shared') },
   { from: path.join(src, 'main', 'ipc'), to: path.join(dist, 'main', 'ipc') },
+  { from: path.join(src, 'main', 'mcp'), to: path.join(dist, 'main', 'mcp') },
 ];
 
 // Copy all .js files from src/main/ except index.js and preload.js (already built by Vite)
