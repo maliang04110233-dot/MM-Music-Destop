@@ -7,8 +7,11 @@ import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
+import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions } from '../historyFilters.js';
 let historyPage = 0;
 let historyFilter = '';
+let _historyStatus = '';
+let _historySource = '';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _historyDom = {
@@ -25,8 +28,10 @@ function _cacheHistoryDom() {
 
 async function loadHistory() {
   try {
-    const opts = { limit: PAGE_SIZE, offset: historyPage * PAGE_SIZE };
-    if (historyFilter) opts.keyword = historyFilter;
+    const opts = buildHistoryQuery(
+      { keyword: historyFilter, status: _historyStatus, source: _historySource },
+      historyPage, PAGE_SIZE,
+    );
     
     const [result, stats] = await Promise.all([
       api.queryHistory(opts),
@@ -51,10 +56,11 @@ function renderHistory(items, stats) {
   if (!_historyDom.list) return;
 
   if (!items || !items.length) {
+    const filtered = !!(historyFilter || _historyStatus || _historySource);
     _historyDom.list.innerHTML = `<div class="empty-state">
-      <div class="empty-icon">📜</div>
-      <div class="empty-text">暂无下载历史</div>
-      <div class="empty-hint">下载完成的音乐会在这里显示</div>
+      <div class="empty-icon">${filtered ? '🔍' : '📜'}</div>
+      <div class="empty-text">${filtered ? '没有符合筛选条件的历史记录' : '暂无下载历史'}</div>
+      <div class="empty-hint">${filtered ? '换个关键词，或把状态/来源切回「全部」' : '下载完成的音乐会在这里显示'}</div>
     </div>`;
     return;
   }
@@ -156,6 +162,43 @@ function filterHistory() {
   loadHistory();
 }
 
+// 状态/来源筛选变更：回第 0 页重查（组合逻辑在 historyFilters.buildHistoryQuery）
+function setHistoryStatusFilter(v) {
+  _historyStatus = String(v || '');
+  const tabsEl = document.getElementById('historyStatusTabs');
+  if (tabsEl) {
+    for (const b of tabsEl.querySelectorAll('button')) {
+      b.classList.toggle('active', (b.dataset.hst || '') === _historyStatus);
+    }
+  }
+  historyPage = 0;
+  loadHistory();
+}
+
+function setHistorySourceFilter(v) {
+  _historySource = String(v || '');
+  historyPage = 0;
+  loadHistory();
+}
+
+function _initHistoryFilterBar() {
+  const tabsEl = document.getElementById('historyStatusTabs');
+  if (tabsEl && !tabsEl.childElementCount) {
+    tabsEl.innerHTML = HISTORY_STATUS_TABS.map(t =>
+      `<button class="filter-tab ${t.v === '' ? 'active' : ''}" data-hst="${esc(t.v)}" onclick="setHistoryStatusFilter('${esc(t.v)}')">${esc(t.label)}</button>`,
+    ).join('');
+  }
+  const sel = document.getElementById('historySourceSel');
+  if (sel && !sel.childElementCount) {
+    const platforms = typeof getPlatforms === 'function' ? getPlatforms() : [];
+    sel.innerHTML = sourceOptions(platforms).map(o =>
+      `<option value="${esc(o.v)}">${esc(o.label)}</option>`,
+    ).join('');
+    sel.addEventListener('change', (e) => setHistorySourceFilter(e.target.value));
+  }
+}
+_initHistoryFilterBar();
+
 function historyPrevPage() {
   if (historyPage > 0) { historyPage--; loadHistory(); }
 }
@@ -245,6 +288,8 @@ document.addEventListener('contextmenu', historyRowContext);
 export {
   loadHistory,
   filterHistory,
+  setHistoryStatusFilter,
+  setHistorySourceFilter,
   historyPrevPage,
   historyNextPage,
   clearAllHistory,
@@ -256,6 +301,8 @@ export {
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
 window.loadHistory = loadHistory;
 window.filterHistory = filterHistory;
+window.setHistoryStatusFilter = setHistoryStatusFilter;
+window.setHistorySourceFilter = setHistorySourceFilter;
 window.historyPrevPage = historyPrevPage;
 window.historyNextPage = historyNextPage;
 window.clearAllHistory = clearAllHistory;

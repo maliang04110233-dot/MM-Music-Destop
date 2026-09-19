@@ -350,6 +350,8 @@
                 <input class="search-input" id="historyFilter" placeholder="搜索历史..."
                   oninput="filterHistory()" onkeydown="if(event.key==='Enter')filterHistory()">
               </div>
+              <div id="historyStatusTabs" style="display:flex;gap:4px;" title="按下载结果筛选"></div>
+              <select class="search-input" id="historySourceSel" style="width:auto;max-width:140px;" title="按下载来源筛选"></select>
               <span class="panel-badge" id="historyInfo" data-i18n="history.loading">加载中...</span>
               <div style="flex:1"></div>
               <button class="tab" onclick="exportHistoryM3u()" title="把本页已完成下载导出为 m3u 播放列表">⤴ 导出m3u</button>
