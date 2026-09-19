@@ -85,6 +85,35 @@ function renderHistory(items, stats) {
   `).join('');
 }
 
+async function exportHistoryM3u() {
+  const done = _historyItems.filter(s => s.status === 'done' && s.savePath);
+  if (!done.length) {
+    showToast('本页没有可导出的已完成下载', 'warn');
+    return;
+  }
+  try {
+    const result = await api.exportPlaylist({
+      songs: done.map(s => ({
+        title: s.title,
+        artist: s.artist,
+        filePath: s.savePath,
+        duration: s.duration || 0,
+      })),
+      format: 'm3u',
+      name: 'MusicDL History',
+    });
+    if (result.canceled) return;
+    if (result.error) {
+      showToast('导出失败: ' + result.error, 'error');
+      return;
+    }
+    const pageNote = _historyItems.length >= PAGE_SIZE ? '（仅当前页）' : '';
+    showToast(`✅ 已导出 ${done.length} 首歌曲${pageNote}`, 'success');
+  } catch (e) {
+    showToast('导出失败: ' + e.message, 'error');
+  }
+}
+
 async function retryFromHistory(id, source, title, artist, album, quality) {
   const saveDir = getState('saveDir');
   try {
@@ -221,6 +250,7 @@ export {
   clearAllHistory,
   retryFromHistory,
   playHistoryItem,
+  exportHistoryM3u,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -231,6 +261,7 @@ window.historyNextPage = historyNextPage;
 window.clearAllHistory = clearAllHistory;
 window.retryFromHistory = retryFromHistory;
 window.playHistoryItem = playHistoryItem;
+window.exportHistoryM3u = exportHistoryM3u;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHistoryDom();
