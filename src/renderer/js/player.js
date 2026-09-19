@@ -7,6 +7,7 @@
 
 import { logger } from './logger.js';
 import { resolveQuality, playedQualityLabel } from './quality.js';
+import { createPrefetchStore, prefetchKeyOf, nextPrefetchIdx, shouldPrefetchNow } from './playPrefetch.js';
 import {
   addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
   restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
@@ -440,6 +441,16 @@ async function playSongByIdx(idx, song) {
     showToast('⚠️ 拖放歌曲已失效，请重新拖入文件', 'warn', 2600);
     return;
   }
+  const pkey = prefetchKeyOf(song);
+  const hit = pkey ? _prefetch.take(pkey) : null;
+  if (hit) {
+    ++_playRequestId; // 命中预取：作废仍在飞的旧取流
+    song._playedQuality = hit.quality;
+    if (hit.altSource) song._altSource = hit.altSource;
+    setState('currentPlaying', song);
+    await loadAndPlay(song, hit.fileUrl, true);
+    return;
+  }
   const quality = resolveQuality(song.source);
   const reqId = ++_playRequestId;
   try {
@@ -468,6 +479,51 @@ async function playSongByIdx(idx, song) {
     if (reqId === _playRequestId) logger.error('切歌失败:', e);
   }
 }
+
+// ── 下一首预取（增量124）──────────────────────────────
+// 切歌空白来自「取流 + 代理」两次串行网络往返。当前歌只剩 20s 时在后台把下一首的直链取好，
+// 下一首播时直接开播（判定口径全在 playPrefetch.js，此处只做网络调用与缓存）。
+const _prefetch = createPrefetchStore();
+let _prefetchBusy = null;
+
+function _startPrefetch() {
+  const playQueue = getState('playQueue');
+  if (!Array.isArray(playQueue) || !playQueue.length) return;
+  const idx = nextPrefetchIdx(playQueue.length, getState('playIdx'), {
+    isShuffled: getState('isShuffled'),
+    loopMode: getState('loopMode'),
+  });
+  if (idx === null) return;
+  const song = playQueue[idx];
+  const key = prefetchKeyOf(song);
+  if (!key || _prefetch.has(key) || _prefetchBusy === key) return;
+  _prefetchBusy = key;
+  const quality = resolveQuality(song.source);
+  api.getDownloadUrlSmart(song, quality).then(async (result) => {
+    if (!result || !result.url) return;
+    const referer = playReferer(result.matchedSong?.source || song.source, result);
+    const proxied = await api.proxyPlay(result.url, referer);
+    if (!proxied || !proxied.fileUrl) return;
+    _prefetch.put(key, {
+      fileUrl: proxied.fileUrl,
+      quality,
+      altSource: result.matchedSong
+        ? { source: result.matchedSong.source, id: String(result.matchedSong.id) }
+        : null,
+    });
+  }).catch((e) => {
+    // 预热失败不该惊动用户：下一首退回常规取流链路，最多是回到「切歌有空白」的旧行为
+    logger.error('下一首预热失败:', e);
+  }).finally(() => {
+    _prefetchBusy = null;
+  });
+}
+
+audio.addEventListener('timeupdate', () => {
+  if (audio.paused) return;
+  if (!shouldPrefetchNow({ currentTime: audio.currentTime, duration: audio.duration })) return;
+  _startPrefetch();
+});
 
 // ── 播放控制 ─────────────────────────────────────────
 export function togglePlay() {
