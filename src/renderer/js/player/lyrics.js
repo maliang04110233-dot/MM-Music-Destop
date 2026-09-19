@@ -8,6 +8,7 @@
 import { showContextMenu } from '../contextMenu.js';
 import { copyText } from '../songShare.js';
 import { lrcToPlain } from '../lyricEdit.js';
+import { createFollowState, shouldAutoFollow, scrollPause, hoverSet, followReset, FOLLOW_SCROLL_RESUME_MS } from '../lyricFollow.js';
 
 // ── 歌词设置（同步缓存，避免 timeupdate 热路径异步） ────
 let _lyricFontSize = 18;
@@ -232,6 +233,8 @@ export function toggleLyricsArea() {
 let _cachedLyricEls = null;
 let _cachedLyricCount = 0;
 let _prevLyricIdx = -1;
+// 增量100：滚动跟随暂停态（悬停/滚轮暂停，到期或跳播恢复）
+let _follow = createFollowState();
 
 export function updateLyric(t) {
   const parsedLyrics = getState('parsedLyrics');
@@ -267,7 +270,7 @@ export function updateLyric(t) {
     // 居中滚动：本 Chromium 下 CSS scroll-behavior:smooth 会让 scrollIntoView 立即滚
     // 却又静默丢帧（表现为 scrollTop 恒 0、当前行永远停在列表底部之外），故手动计算居中位置
     const la = document.getElementById('lyricsArea');
-    if (la) {
+    if (la && shouldAutoFollow(_follow, Date.now())) {
       const target = el.offsetTop - (la.clientHeight - el.offsetHeight) / 2;
       la.scrollTop = Math.max(0, Math.min(target, la.scrollHeight - la.clientHeight));
     }
@@ -299,6 +302,9 @@ document.addEventListener('click', (e) => {
   // 行时间按带偏移的口径换算回播放时间：显示匹配用 playT+offset≥T
   const target = Math.max(0, t - _lyricOffset / 1000);
   audio.currentTime = Math.min(target, Math.max(0, audio.duration - 0.5));
+  // 增量100：跳播=「回到当前」语义，立即恢复跟随并强制下次 update 重新居中
+  _follow = followReset();
+  _prevLyricIdx = -1;
 });
 
 document.addEventListener('contextmenu', (e) => {
@@ -318,4 +324,21 @@ document.addEventListener('contextmenu', (e) => {
   if (!items.length) return;
   e.preventDefault();
   showContextMenu(e.clientX, e.clientY, items);
+});
+
+// ── 滚动跟随暂停（增量100）：悬停即停，滚轮给阅读宽限期 ──────
+document.addEventListener('wheel', (e) => {
+  const la = document.getElementById('lyricsArea');
+  if (la && e.target && la.contains(e.target)) {
+    _follow = scrollPause(_follow, Date.now(), FOLLOW_SCROLL_RESUME_MS);
+  }
+}, { passive: true });
+document.addEventListener('mouseover', (e) => {
+  const la = document.getElementById('lyricsArea');
+  if (la && e.target && la.contains(e.target)) _follow = hoverSet(_follow, true);
+});
+document.addEventListener('mouseout', (e) => {
+  const la = document.getElementById('lyricsArea');
+  if (!la || !e.target || !la.contains(e.target)) return;
+  if (!(e.relatedTarget && la.contains(e.relatedTarget))) _follow = hoverSet(_follow, false);
 });
