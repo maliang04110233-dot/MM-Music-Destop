@@ -1,7 +1,7 @@
 /**
  * 用户偏好 IPC
  *
- * 注册：get-pref / set-pref / flush-prefs
+ * 注册：get-pref / set-pref
  *
  * 持久化到 userData/prefs.json（用 utils/prefs.js）
  */
@@ -64,7 +64,6 @@ function register() {
     prefs.set(key, value);
     return true;
   });
-  handle('flush-prefs', () => { prefs.flush(); return true; });
   // 修复 B8：搜索历史通过 IPC 持久化到主进程 prefs.json（而非渲染端 localStorage）
   handle('get-search-history', () => prefs.get('searchHistory') || []);
   handle('set-search-history', (_, history) => {

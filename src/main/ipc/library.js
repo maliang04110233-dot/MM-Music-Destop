@@ -77,12 +77,12 @@ function register() {
         if (typeof setLibraryWatchDir === 'function') setLibraryWatchDir(dirPath);
       } catch (_e) { /* watcher 未就绪不影响扫描 */ }
 
-      // 尝试增量扫描
+      // 尝试增量扫描（不再推扫描进度：渲染层无人订阅该事件，通道已随空发一并清理；
+      // 扫描期间本地页有 _scanRunning 防重入）
       const result = await incrementalScan(
         dirPath,
         scanDirectory,
         readAudioMetadata,
-        (progress) => safeSend('library-scan-progress', progress)
       );
 
       return { songs: result.songs, count: result.songs.length, incremental: true };
@@ -91,9 +91,7 @@ function register() {
 
       // 回退到全量扫描
       try {
-        const filePaths = await scanDirectory(dirPath, (progress) => {
-          safeSend('library-scan-progress', progress);
-        });
+        const filePaths = await scanDirectory(dirPath);
         const songs = [];
         const BATCH = 20;
         for (let i = 0; i < filePaths.length; i += BATCH) {

@@ -1,7 +1,7 @@
 /**
  * 下载历史 IPC
  *
- * 注册：query-history / history-stats / clear-history / flush-history
+ * 注册：query-history / history-stats / clear-history
  */
 
 const { handle } = require('./register');
@@ -11,7 +11,6 @@ function register() {
   handle('query-history', (_, opts) => history.query(opts || {}));
   handle('history-stats', () => history.stats());
   handle('clear-history', () => { history.clear(); return true; });
-  handle('flush-history', () => { history.flush(); return true; });
 }
 
 module.exports = { register };

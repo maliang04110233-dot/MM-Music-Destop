@@ -120,7 +120,6 @@ const CHANNELS = {
   // ── 设置 / 偏好（invoke） ─────────────────────────
   'get-pref':            { invoke: MAIN, args: [['key', t.str(64)]] },
   'set-pref':            { invoke: MAIN, args: [['key', t.str(64)], ['value', t.any()]] },
-  'flush-prefs':         { invoke: MAIN },
   'get-search-history':  { invoke: MAIN },
   'set-search-history':  { invoke: MAIN, args: [['history', t.arr(1000)]] },
   'get-version':         { invoke: MAIN },
@@ -133,7 +132,6 @@ const CHANNELS = {
   'query-history': { invoke: MAIN, args: [['opts', t.obj()]] },
   'history-stats': { invoke: MAIN },
   'clear-history': { invoke: MAIN },
-  'flush-history': { invoke: MAIN },
 
   // ── AI（invoke） ──────────────────────────────────
   'ai-generate-music':   { invoke: MAIN, args: [['params', t.obj()]] },
@@ -192,7 +190,6 @@ const CHANNELS = {
   'download-error':        { receive: MAIN },
   'play-queue-restored':   { receive: MAIN },
   'local-lrc-fetched':     { receive: MAIN },
-  'library-scan-progress': { receive: MAIN },
   'local-library-changed': { receive: MAIN },
   'convert-audio-progress':{ receive: MAIN },
   'sync-mini-player':      { receive: MAIN },
@@ -216,7 +213,6 @@ const METHODS = {
   windowClose: 'window-close',
   windowMinimize: 'window-minimize',
   windowMaximize: 'window-maximize',
-  windowToggleFullscreen: 'window-maximize',
   systemPower: 'system-power',
   // 搜索
   searchMusic: 'search-music',
@@ -329,7 +325,6 @@ const METHODS = {
   syncMiniPlayer: 'mini-player-update',
   openDesktopLyric: 'open-desktop-lyric',
   syncDesktopLyric: 'desktop-lyric-update',
-  closeDesktopLyric: 'desktop-lyric-close',
   trayUpdatePlayState: 'tray-update-play-state',
   setGlobalShortcuts: 'set-global-shortcuts',
   getSourceHealth: 'get-source-health',

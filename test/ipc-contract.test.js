@@ -96,12 +96,27 @@ test('契约结构合法（方向、窗口、参数规格）', () => {
 });
 
 test('通道数量钉死（意外增删即失败，逼迫改动者过目契约）', () => {
-  assert.strictEqual(MAIN_INVOKE.size, 100); // +mcp-status/-set-config
+  assert.strictEqual(MAIN_INVOKE.size, 98); // 2026-09 余项：-flush-prefs -flush-history（无人调用的僵尸通道）
   assert.strictEqual(MAIN_SEND.size, 16);
-  assert.strictEqual(MAIN_RECEIVE.size, 27); // +queue-paused-changed +local-library-changed
+  assert.strictEqual(MAIN_RECEIVE.size, 26); // 余项：-library-scan-progress（main 发了没人收）
   assert.strictEqual(SEC_SEND.size, 7);
   assert.strictEqual(SEC_RECEIVE.size, 2);
-  assert.strictEqual(Object.keys(METHODS).length, 104); // +nlSearchMusic
+  assert.strictEqual(Object.keys(METHODS).length, 102); // 余项：-windowToggleFullscreen -closeDesktopLyric（死键）
+});
+
+test('僵尸通道已清除：flush 走 main 直调，扫描进度无人订阅不再空发', () => {
+  for (const ch of ['flush-prefs', 'flush-history', 'library-scan-progress']) {
+    assert.ok(!CHANNELS[ch], `僵尸通道 ${ch} 应已删除`);
+  }
+  for (const m of ['windowToggleFullscreen', 'closeDesktopLyric']) {
+    assert.ok(!METHODS[m], `死 METHODS 键 ${m} 应已删除`);
+  }
+  const fsp = require('node:fs');
+  const read = (p) => fsp.readFileSync(require('node:path').join(__dirname, '..', 'src', 'main', p), 'utf8');
+  assert.doesNotMatch(read('ipc/prefs.js'), /handle\('flush-prefs'/);
+  assert.doesNotMatch(read('ipc/history.js'), /handle\('flush-history'/);
+  assert.doesNotMatch(read('ipc/library.js'), /library-scan-progress/,
+    '无人订阅的进度推送应连发送点一起删，而不是只删契约');
 });
 
 // ── 2. 实现 ↔ 契约 ──────────────────────────────────────────

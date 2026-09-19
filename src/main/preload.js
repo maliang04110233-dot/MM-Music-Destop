@@ -86,7 +86,6 @@ contextBridge.exposeInMainWorld('miniAPI', {
   windowClose() { ipcRenderer.send('window-close'); },
   windowMinimize() { ipcRenderer.send('window-minimize'); },
   windowMaximize() { ipcRenderer.send('window-maximize'); },
-  windowToggleFullscreen() { ipcRenderer.send('window-maximize'); },
   get version() { return ipcRenderer.invoke('get-version'); },
   getVersion() { return ipcRenderer.invoke('get-version'); },
 });
