@@ -23,6 +23,7 @@ const logger = require('../utils/logger');
 const fsa = require('../utils/fsAsync');
 
 const PLAY_CACHE = new Map();     // url -> { filePath, expireAt }
+const _inflightPlays = new Map(); // url -> Promise：同 URL 并发去重，防双流写同一缓存文件
 const PLAY_CACHE_TTL = 30 * 60 * 1000;
 const PLAY_CACHE_MAX = 50;
 const PLAY_CACHE_GC_INTERVAL = 10 * 60 * 1000;
@@ -209,14 +210,25 @@ async function proxyPlay(url, referer, userDataPath) {
   }
   if (cached) { await safeUnlink(cached.filePath); PLAY_CACHE.delete(url); }
 
-  const filePath = path.join(dir, makeKey(url));
-  const result = await proxyDownloadOnce(url, referer, filePath);
-  if (result.error) return { error: result.error };
-  PLAY_CACHE.set(url, { filePath, expireAt: Date.now() + PLAY_CACHE_TTL });
+  const inflight = _inflightPlays.get(url);
+  if (inflight) return inflight;
 
-  if (PLAY_CACHE.size > PLAY_CACHE_MAX) await cleanupExpired();
+  const download = (async () => {
+    const filePath = path.join(dir, makeKey(url));
+    const result = await proxyDownloadOnce(url, referer, filePath);
+    if (result.error) return { error: result.error };
+    PLAY_CACHE.set(url, { filePath, expireAt: Date.now() + PLAY_CACHE_TTL });
 
-  return { fileUrl: 'file://' + filePath.replace(/\\/g, '/') };
+    if (PLAY_CACHE.size > PLAY_CACHE_MAX) await cleanupExpired();
+
+    return { fileUrl: 'file://' + filePath.replace(/\\/g, '/') };
+  })();
+  _inflightPlays.set(url, download);
+  try {
+    return await download;
+  } finally {
+    _inflightPlays.delete(url);
+  }
 }
 
 /**

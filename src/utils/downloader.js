@@ -32,7 +32,8 @@ function createThrottleStream(bytesPerSec) {
   let lastRefill = Date.now();
   let pending = null;   // { buffer } 超额部分
   let flushTimer = null;
-  let draining = false; // 下游 drain 事件未到时不再 push
+  let draining = false; // readable 侧背压（push 返回 false）时暂停推送
+  let currentDone = null; // 唯一在途的 transform/_flush callback（流语义保证同时只有一个）
 
   function refillTokens() {
     const now = Date.now();
@@ -43,13 +44,16 @@ function createThrottleStream(bytesPerSec) {
     }
   }
 
-  // 尝试把 pending 冲刷出去；清空时调 done（transform 的 callback）
-  function tryFlush(stream, done) {
-    if (!pending) {
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (done) done();
-      return true;
-    }
+  // 尝试把 pending 按令牌节奏 push 出去；清空时归还 callback。
+  // callback 必须在 pending 清空后才归还：这保证 _flush/EOF 晚于全部数据，
+  // 源流 end 时不会出现 push-after-EOF 丢尾。
+  //
+  // readable 侧背压（push 返回 false）的正确恢复信号是 _read 被再次调用
+  //（下游消费、缓冲降到 hwm 以下时触发）。不能用 'drain' 事件 —— 那是
+  // writable 侧的事件，且 writable 缓冲的排空依赖 callback 归还，互相等待
+  // 会死锁（旧实现 push(false) 发生在 flushTimer 回调里时无人在场挂
+  // drain 监听，正是 H2 死锁根因）。
+  function tryFlush(stream) {
     while (pending && !draining) {
       refillTokens();
       const take = Math.min(pending.buffer.length, Math.floor(tokens));
@@ -60,19 +64,19 @@ function createThrottleStream(bytesPerSec) {
       if (pending.buffer.length === 0) pending = null;
       if (!stream.push(piece)) {
         draining = true;
-        break;
+        break; // 等 _read 恢复
       }
     }
     if (!pending) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (done) done();
+      if (currentDone) { const d = currentDone; currentDone = null; d(); }
       return true;
     }
     // 还有剩余：安排下一轮（unref：不阻塞进程退出）
     if (!flushTimer) {
       flushTimer = setTimeout(() => {
         flushTimer = null;
-        tryFlush(stream, done);
+        tryFlush(stream);
       }, FLUSH_INTERVAL_MS);
       if (flushTimer.unref) flushTimer.unref();
     }
@@ -86,17 +90,23 @@ function createThrottleStream(bytesPerSec) {
       } else {
         pending = { buffer: chunk };
       }
-      const flushed = tryFlush(this, callback);
-      if (!flushed && draining) {
-        this.once('drain', () => {
-          draining = false;
-          tryFlush(this, callback);
-        });
-      }
+      currentDone = callback;
+      tryFlush(this);
+    },
+    // 源流 end：把 _flush 的 callback 当作 currentDone，等 pending 清空后归还
+    flush(callback) {
+      currentDone = callback;
+      tryFlush(this);
+    },
+    // readable 侧背压恢复点：下游消费后缓冲降位，从这里继续推送
+    read() {
+      draining = false;
+      tryFlush(this);
     },
     _destroy(err, cb) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       pending = null;
+      currentDone = null;
       cb(err);
     },
   });
@@ -382,7 +392,10 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
         }
       });
 
-      dataStream.on('error', (e) => { cleanupTmp(); reject(e); });
+      // 瞬时网络错误保留 .tmp：downloadFileWithRetry 会按 .tmp 大小发 Range
+      // 续传；删掉它等于让断点续传功能彻底失效。永久性失败（HTTP 状态码/
+      // HTML 错误页/重定向失败/落盘错误）仍清理。
+      dataStream.on('error', (e) => { reject(e); });
       dataStream.pipe(writeStream);
 
       writeStream.on('finish', () => {
@@ -396,8 +409,9 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
       writeStream.on('error', (e) => { cleanupTmp(); reject(e); });
     });
 
-    req.on('error', (e) => { if (req._cancelled) e.cancelled = true; cleanupTmp(); reject(e); });
-    req.on('timeout', () => { req.destroy(); cleanupTmp(); reject(new Error('下载超时')); });
+    // 瞬时错误保留 .tmp（同 dataStream.on('error') —— 续传依赖残留前缀）
+    req.on('error', (e) => { if (req._cancelled) e.cancelled = true; reject(e); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('下载超时')); });
     // Minor: 注册在途请求，支持按 token 打断（用户取消下载中任务）
     if (options.token) {
       const token = String(options.token);
@@ -584,7 +598,10 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
     } catch (e) {
       if (e && e.cancelled) throw e; // 用户取消：绝不续传重试
       attempt++;
-      const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(e.message || '');
+      // code 也要看：Node 网络层错误的 message 常是 'aborted' 这类无信息文本，
+      // 真正的错误类别在 err.code（如 ECONNRESET）
+      const msgOrCode = `${e.message || ''} ${e.code || ''}`;
+      const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(msgOrCode);
       if (attempt <= maxRetry && isTransient) {
         // 只有成功写入过部分数据才值得续传；用已落盘 .tmp 大小作为偏移
         const tmpStat = await fsa.statOrNull(savePath + '.tmp');

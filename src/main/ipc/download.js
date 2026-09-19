@@ -111,17 +111,20 @@ function register() {
     return { queued: true, taskId };
   });
 
-  // 取消下载：pending 直接移出队列；downloading 走协作式取消
-  // （置标记 + 打断在途请求，.tmp 由失败路径清理，任务转入 error=已取消）
+  // 取消下载：pending 且协程在途（重试等待期）走协作式取消，不能 splice ——
+  // splice 会留下孤儿协程照常落盘写历史；真正的 pending 直接移出队列；
+  // downloading 置标记 + 打断在途请求（.tmp 由失败路径清理，任务转入 error=已取消）
   handle('cancel-download', (_, taskId) => {
     const downloadQueue = getDownloadQueue();
-    const { persistQueue } = require('../context').getCtx();
+    const { persistQueue, requestCancelDownload } = require('../context').getCtx();
+    const inFlight = downloadQueue.find(s => s.taskId === taskId &&
+      (s.status === 'downloading' || (s.status === 'pending' && s._processing)));
+    if (inFlight) {
+      const ok = typeof requestCancelDownload === 'function' ? requestCancelDownload(taskId) : false;
+      return ok ? { canceled: true, cancelling: true } : { canceled: false };
+    }
     const idx = downloadQueue.findIndex(s => s.taskId === taskId && s.status === 'pending');
     if (idx === -1) {
-      const { requestCancelDownload } = require('../context').getCtx();
-      if (typeof requestCancelDownload === 'function' && requestCancelDownload(taskId)) {
-        return { canceled: true, cancelling: true };
-      }
       return { canceled: false };
     }
     downloadQueue.splice(idx, 1);

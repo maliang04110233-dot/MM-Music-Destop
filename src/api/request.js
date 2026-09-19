@@ -133,7 +133,8 @@ function _followRedirects(url, options, redirectCount = 0, pinnedIps = null) {
     });
 
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
+    // code=ETIMEDOUT 让 isRetriableError 识别：socket 空闲超时值得重试（M4）
+    req.on('timeout', () => { req.destroy(); reject(Object.assign(new Error('请求超时'), { code: 'ETIMEDOUT' })); });
 
     if (options.body) req.write(options.body);
     req.end();

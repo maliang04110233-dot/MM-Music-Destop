@@ -148,3 +148,48 @@ test('downloadFile: 200 + text/html → 识别为 CDN 错误页并拒绝', async
     fs.rmSync(savePath + '.tmp', { force: true });
   }
 });
+
+// ══════════════════════════════════════════════════════════
+// M5：瞬时错误后的断点续传（第二轮审计修复）
+// 修复前：所有错误路径 cleanupTmp() 删掉 .tmp → resumeOffset 恒 0，续传死功能
+// ══════════════════════════════════════════════════════════
+
+const { downloadFileWithRetry } = require('../src/utils/downloader');
+
+test('downloadFileWithRetry: 瞬时中断后保留 .tmp，重试带 Range 断点续传', async () => {
+  const part1 = Buffer.alloc(16 * 1024, 0xAA);
+  const part2 = Buffer.alloc(48 * 1024, 0xBB);
+  let hits = 0;
+  const ranges = [];
+  const { server, url } = await startServer((req, res) => {
+    hits++;
+    ranges.push(req.headers['range'] || null);
+    if (hits === 1) {
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': 64 * 1024 });
+      res.write(part1);
+      // 首段写完后强制断开 socket → 客户端 ECONNRESET（瞬时错误）
+      setTimeout(() => res.socket.destroy(), 30);
+    } else {
+      res.writeHead(206, { 'Content-Type': 'audio/mpeg', 'Content-Length': part2.length });
+      res.end(part2);
+    }
+  });
+  const savePath = tmpFile('resume-retry.bin');
+  try {
+    const result = await downloadFileWithRetry(url + '/f.mp3', savePath, () => {}, {}, OPTS);
+    assert.strictEqual(result, savePath);
+    const retryRange = ranges[1];
+    assert.ok(typeof retryRange === 'string' && /^bytes=\d+-$/.test(retryRange + ''),
+      `重试请求应携带 Range 头（实测 ranges=${JSON.stringify(ranges)}）—— .tmp 被删则续传失效`);
+    const offset = parseInt(retryRange.slice(6), 10);
+    assert.ok(offset > 0, `续传偏移必须 > 0，实际 ${offset}`);
+    const finalBuf = fs.readFileSync(savePath);
+    assert.strictEqual(finalBuf.length, offset + part2.length, '最终 = 已落盘前缀 + 剩余');
+    assert.ok(finalBuf.subarray(0, offset).every((b) => b === 0xAA), '前缀内容 = 首段数据');
+    assert.ok(finalBuf.subarray(offset).equals(part2), '剩余内容 = 重试段数据');
+  } finally {
+    server.close();
+    fs.rmSync(savePath, { force: true });
+    fs.rmSync(savePath + '.tmp', { force: true });
+  }
+});

@@ -142,10 +142,10 @@ function createDownloadQueueEngine({
     return n;
   }
 
-  /** 取下一个可调度任务：pending 且其平台未到并发上限（按队列顺序即展示顺序） */
+  /** 取下一个可调度任务：pending 且协程不在途、其平台未到并发上限（按队列顺序即展示顺序） */
   function pickSchedulable(cap) {
     for (const s of downloadQueue) {
-      if (!s || s.status !== 'pending') continue;
+      if (!s || s.status !== 'pending' || s._processing) continue;
       if (activeCountBySource(s.source) < cap) return s;
     }
     return null;
@@ -226,6 +226,9 @@ function createDownloadQueueEngine({
       //         pending 不到 1 天 / error / done -> 保留
       const now = Date.now();
       for (const item of list) {
+        // 瞬态调度标记不应跨重启存活（持久化文件可能携带）
+        delete item._processing;
+        delete item._cancelRequested;
         if (item.status === 'downloading') {
           item.status = 'error';
           item.error = '应用异常关闭，请重试';
@@ -243,14 +246,28 @@ function createDownloadQueueEngine({
     }
   }
 
-  /** 处理单个下载任务（含重试循环 + 致命错误短路） */
+  /**
+   * 处理单个下载任务（含重试循环 + 致命错误短路）。
+   * _processing 标记协程全程在途（含 403 重试退避窗口，此时 status 是 pending），
+   * 调度器据此跳过，杜绝同一首歌两个协程并发写同一目标文件（审计 H1）。
+   */
   async function processOneSong(song) {
+    song._processing = true;
+    try {
+      return await _processOneSongInner(song);
+    } finally {
+      song._processing = false;
+    }
+  }
+
+  async function _processOneSongInner(song) {
     let lastError = null;
     let isFatal = false;
     const cancelToken = String(song.taskId || song.id);
 
     for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
-      if (song._cancelRequested) {
+      // 取消 / 任务已被移出队列（如重试等待期被 splice）→ 终止协程，不再取流落盘
+      if (song._cancelRequested || !downloadQueue.includes(song)) {
         lastError = Object.assign(new Error('下载已取消'), { cancelled: true });
         break;
       }
@@ -428,7 +445,9 @@ function createDownloadQueueEngine({
       delete speedStates[song.taskId];
       if (lastError.cancelled) {
         // 用户主动取消：不写失败历史、不发 download-error toast
-        notifyQueueChanged();
+        // 终态立即落盘（不能依赖调度器 .finally —— 微任务时序下 waitFor
+        // 观察到终态时可能尚未落盘；且防抖窗口内崩溃会丢取消终态）
+        notifyQueueChanged(true);
         return;
       }
       // 写历史：失败
@@ -459,6 +478,8 @@ function createDownloadQueueEngine({
         error: lastError.message,
         fatal: isFatal,
       });
+      // error 终态立即落盘（同 cancelled —— 不能依赖调度器 .finally 的微任务时序）
+      notifyQueueChanged(true);
     }
   }
 
@@ -518,13 +539,13 @@ function createDownloadQueueEngine({
   }
 
   /**
-   * Minor: 取消「下载中」任务（协作式）：置标记 + 打断在途请求。
-   * downloader.cancelDownload 销毁 req → downloader 既有失败路径清理 .tmp，
-   * processOneSong 捕获 cancelled 错误后不再重试、不写失败历史。
-   * @returns {boolean} 是否命中一个下载中任务
+   * 取消任务（协作式）：下载中置标记 + 打断在途请求；重试等待期（status=pending
+   * 但 _processing=true，协程在退避 await 中）只置标记，协程在下一轮循环顶退出。
+   * @returns {boolean} 是否命中一个在途任务
    */
   function requestCancel(taskId) {
-    const song = downloadQueue.find(s => s.taskId === taskId && s.status === 'downloading');
+    const song = downloadQueue.find(s => s.taskId === taskId &&
+      (s.status === 'downloading' || (s.status === 'pending' && s._processing)));
     if (!song) return false;
     song._cancelRequested = true;
     if (typeof downloader.cancelDownload === 'function') {

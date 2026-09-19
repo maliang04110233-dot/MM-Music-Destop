@@ -134,3 +134,57 @@ test('createThrottleStream: 背压——下游停止消费时 readableLength 有
     `下游停消费时缓冲应受背压约束，峰值 ${maxBuffered}B（预期 ≤700KB）`
   );
 });
+
+// ══════════════════════════════════════════════════════════
+// H2：背压恢复后的死锁回归（第二轮审计）
+// 死锁形态：push 返回 false 若发生在 flushTimer 回调或 drain 处理器内
+// （而非 transform 内），once('drain') 无人注册 → draining 永真 → 流冻结
+// ══════════════════════════════════════════════════════════
+
+test('createThrottleStream: drain 后数据继续流动直至流完（H2 死锁回归）', async () => {
+  const RATE = 100 * 1024; // 每冲刷周期(100ms)令牌 10240B
+  const { Writable } = require('node:stream');
+  const throttle = createThrottleStream(RATE);
+
+  const received = [];
+  let sinkCbs = [];
+  const sink = new Writable({
+    highWaterMark: 8192,
+    write(chunk, enc, cb) { received.push(chunk.length); sinkCbs.push(cb); },
+  });
+
+  const src = new Readable({ read() {} });
+  let endedFlag = false;
+  throttle.on('end', () => { endedFlag = true; });
+  src.pipe(throttle).pipe(sink);
+  const TOTAL = 64 * 1024;
+  src.push(Buffer.alloc(TOTAL, 0x01));
+  src.push(null);
+
+  const totalBytes = () => received.reduce((a, b) => a + b, 0);
+  try {
+    // 持续泵送：每轮放行 sink 积压，观察是否有新数据。
+    // 正常限速：每轮(150ms ≥ 1 个冲刷周期)必有新数据；
+    // 死锁：push=false 后 draining 永真，连续多轮零增长。
+    let stallRounds = 0;
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const cbs = sinkCbs; sinkCbs = [];
+      cbs.forEach((cb) => cb());
+      const before = totalBytes();
+      await sleepKeepingAlive(150);
+      if (totalBytes() > before) stallRounds = 0;
+      else if (totalBytes() > 0) stallRounds++;
+      if (endedFlag) break;
+      if (stallRounds >= 5) break;
+    }
+    assert.strictEqual(totalBytes(), TOTAL,
+      `64KB 应在限速下全部流完（实测 ${totalBytes()}B，` +
+      `${stallRounds} 轮连续零增长 = drain 后死锁）`);
+  } finally {
+    src.destroy();
+    sink.destroy();
+    throttle.destroy();
+    await new Promise((r) => setImmediate(r));
+  }
+});

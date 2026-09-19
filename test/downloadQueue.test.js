@@ -727,3 +727,88 @@ test('取消下载：迟到的 onProgress 不再写进度、不再推送事件�
     restore();
   }
 });
+
+// ══════════════════════════════════════════════════════════
+// H1/M1：重试等待期的调度与取消（第二轮审计修复）
+// ══════════════════════════════════════════════════════════
+
+test('H1: 403 重试等待期的任务不得被二次调度（同曲并发下载协程=1）', async () => {
+  const fetchCalls = [];
+  const dlConcurrent = {};
+  let maxConcurrentA = 0;
+  let releaseA;
+  const aGate = new Promise((r) => { releaseA = r; });
+  const { engine, restore } = buildEngine({
+    prefs: { concurrency: 2 },
+    getDownloadUrlSmart: async (song) => {
+      fetchCalls.push(song.taskId);
+      const n = fetchCalls.filter((c) => c === song.taskId).length;
+      if (song.taskId === 'A' && n === 1) throw new Error('HTTP 403: 签名过期');
+      return { url: 'https://cdn/' + song.taskId + '.mp3', ext: 'mp3' };
+    },
+    downloadFileWithRetry: async (url, savePath, onProgress, headers, options = {}) => {
+      const id = options.token;
+      dlConcurrent[id] = (dlConcurrent[id] || 0) + 1;
+      if (id === 'A') maxConcurrentA = Math.max(maxConcurrentA, dlConcurrent[id]);
+      if (id === 'A') await aGate;
+      dlConcurrent[id]--;
+    },
+  });
+  try {
+    const q = engine.getQueue();
+    q.push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'A', status: 'pending' });
+    q.push({ id: '2', source: 'netease', title: 't2', artist: 'a', taskId: 'B', status: 'pending' });
+    await engine.processQueue();
+    // A 首次取流 403 → 进入 500ms 重试退避；B 快速完成 → 触发调度器重入窗口
+    await waitFor(() =>
+      fetchCalls.includes('A') &&
+      q.find((s) => s.taskId === 'B').status === 'done');
+    // 覆盖退避期（500ms）+ 重调度定时器（100ms）
+    await new Promise((r) => setTimeout(r, 700));
+    releaseA();
+    await waitFor(() => q.find((s) => s.taskId === 'A').status === 'done');
+    const aFetch = fetchCalls.filter((c) => c === 'A').length;
+    assert.strictEqual(aFetch, 2,
+      `A 应恰好 2 次取流（1 失败 + 1 重试），实际 ${aFetch} —— 重试等待期被二次调度`);
+    assert.strictEqual(maxConcurrentA, 1,
+      `同一首歌不允许两个下载协程并发写同一文件，实测峰值 ${maxConcurrentA}`);
+  } finally {
+    restore();
+  }
+});
+
+test('M1: 重试等待期取消任务 → 协程终止，不再取流/落盘/写历史', async () => {
+  const fetchCalls = [];
+  const dlCalls = [];
+  const { engine, historyAdds, sent, restore } = buildEngine({
+    prefs: { concurrency: 1 },
+    getDownloadUrlSmart: async (song) => {
+      fetchCalls.push(song.taskId);
+      if (song.taskId === 'A' && fetchCalls.filter((c) => c === 'A').length === 1) {
+        throw new Error('HTTP 403: x');
+      }
+      return { url: 'https://cdn/A.mp3', ext: 'mp3' };
+    },
+    downloadFileWithRetry: async (url, savePath, onProgress, headers, options = {}) => {
+      dlCalls.push(options.token);
+    },
+  });
+  try {
+    const q = engine.getQueue();
+    q.push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'A', status: 'pending' });
+    await engine.processQueue();
+    // A 进入 500ms 退避（status=pending 且协程仍在途）
+    await waitFor(() => fetchCalls.filter((c) => c === 'A').length === 1 && q[0].status === 'pending');
+    const hit = engine.requestCancel('A');
+    assert.strictEqual(hit, true, '重试等待期的任务应可被取消');
+    await waitFor(() => q[0].status === 'error' && !q[0]._processing);
+    assert.match(q[0].error || '', /取消/);
+    await new Promise((r) => setTimeout(r, 700)); // 确认退避结束后不再取流
+    assert.strictEqual(fetchCalls.filter((c) => c === 'A').length, 1, '取消后不得再取流');
+    assert.strictEqual(dlCalls.length, 0, '取消后不得开始下载');
+    assert.strictEqual(historyAdds.length, 0, '取消不写历史');
+    assert.strictEqual(sent.filter((s) => s.ch === 'download-error').length, 0, '取消不发 download-error');
+  } finally {
+    restore();
+  }
+});
