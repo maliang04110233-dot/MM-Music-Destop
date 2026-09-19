@@ -1214,6 +1214,7 @@
     <div style="display:flex;gap:8px;align-items:center;margin:4px 16px 0;">
       <input type="text" class="setting-input" id="playlistSongFilter" placeholder="🔍 过滤本歌单歌曲（标题/歌手/专辑）" style="flex:1;min-width:0;box-sizing:border-box;" oninput="onPlaylistSongFilterInput(this.value)">
       <button class="btn-sm" id="playlistSortBtn" style="flex-shrink:0;" title="切换排序（仅视图，不改存储序；排序中拖拽停用）：默认 / 标题 / 歌手 / 添加时间" onclick="cyclePlaylistSort()">↕ 默认序</button>
+      <button class="btn-sm" id="plDlFilterBtn" style="flex-shrink:0;" title="切换下载状态过滤（仅视图）：全部 / 只看未下载（顺手补下）/ 只看已下载（本地能播的）" onclick="cyclePlDlFilter()">⬇ 全部状态</button>
       <button class="btn-sm" id="plSelModeBtn" style="flex-shrink:0;" title="多选模式：行首出现勾选框，一次把多首歌移出本歌单（不影响歌曲本身）" onclick="togglePlBulkMode()">☑ 多选</button>
       <button class="btn-sm hidden" id="plSelAllBtn" style="flex-shrink:0;" title="勾选/取消当前过滤视图的全部歌曲" onclick="plSelectAllVisible()">☑ 全选</button>
       <button class="btn-sm hidden" id="plSelRemoveBtn" style="flex-shrink:0;color:#ff6b81;" title="把勾选的歌从本歌单移除" onclick="removeCheckedFromPlaylist()">🗑 移除</button>

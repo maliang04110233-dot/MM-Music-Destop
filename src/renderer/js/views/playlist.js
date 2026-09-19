@@ -13,7 +13,7 @@ import { loadAndPlay } from '../player.js';
 import { HEART_ON, heartBtnHtml } from '../favorites.js';
 import { FAVORITES_PLAYLIST_ID, subscribe } from '../state.js';
 import { resolveQuality } from '../quality.js';
-import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
+import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener, dlStatusFor } from '../dlStatus.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { moveInList, sortPlaylistPairs, nextPlSortMode, PL_SORT_MODES, sortPlaylists, nextPlCardSortMode, PL_CARD_MODES, filterPlaylists } from '../playlistSort.js';
 import { normalizeCoverUrl, pickFirstSongCover } from '../playlistCover.js';
@@ -23,12 +23,14 @@ import { mergeSongLists } from '../playlistMerge.js';
 import { indexOfPlaying, flashRow } from '../locatePlaying.js';
 import { sanitizeFileBase } from '../artistGroups.js';
 import { plSongKey, splitBySelection, keysOf } from '../plBulkRemove.js';
+import { filterByDlMode, nextPlDlMode, plDlModeLabel } from '../plDlFilter.js';
 
 // ── 状态 ─────────────────────────────────────────────
 let _currentPlaylistId = null;
 let _currentDetailSongs = [];
 let _plSongKw = ''; // 详情弹层会话级过滤词（切歌单/关闭即清）
 let _plSortMode = ''; // 详情弹层会话级视图排序（''=默认序，排序中禁拖把手）
+let _plDlMode = 'all'; // 详情弹层下载状态过滤（增量103：all/undone/done，切歌单即复位）
 let _plCardSortMode = ''; // 歌单页卡片排序（会话级，收藏系统单恒置顶）
 let _plCardKw = ''; // 歌单页卡片过滤词（会话级，先过滤后排序）
 // 取流用智能接口（本源失败自动换源）；请求序号做竞态守卫，快速连点只认最后一次
@@ -99,7 +101,9 @@ async function openPlaylistDetail(playlistId) {
     _currentPlaylistId = playlistId;
     _plSongKw = '';
     _plSortMode = '';
+    _plDlMode = 'all';
     _syncPlSortBtn();
+    _syncPlDlBtn();
     _resetPlSel();
     const filterInput = document.getElementById('playlistSongFilter');
     if (filterInput) filterInput.value = '';
@@ -126,6 +130,15 @@ function closePlaylistDetail() {
 }
 
 // ── 渲染歌单歌曲列表 ──────────────────────────────────
+// 视图管线唯一入口：关键词过滤 → 下载状态过滤 → 排序（渲染/全选/任何读视图序的地方都走它，
+// 三处管线各自为政迟早漂出「全选选到隐形歌」这类 bug）
+function _plVisiblePairs(songs) {
+  const queue = getState('queueSnapshot') || [];
+  const kwFiltered = filterPlaylistSongs(songs || [], _plSongKw);
+  const dlFiltered = filterByDlMode(kwFiltered, _plDlMode, (s) => dlStatusFor(s, queue));
+  return sortPlaylistPairs(dlFiltered, _plSortMode);
+}
+
 function renderPlaylistDetailSongs(songs) {
   const list = document.getElementById('playlistDetailSongs');
   if (!list) return;
@@ -138,10 +151,12 @@ function renderPlaylistDetailSongs(songs) {
     return;
   }
 
-  const pairs = sortPlaylistPairs(filterPlaylistSongs(songs, _plSongKw), _plSortMode);
+  const pairs = _plVisiblePairs(songs);
   const reorderable = songs.length > 1 && !_plSortMode; // 排序时展示序≠存储序，禁用拖把手防误持久化
   if (!pairs.length) {
-    list.innerHTML = `<div class="empty-hint" style="text-align:center;padding:30px 0;">没有匹配「${esc(_plSongKw.trim())}」的歌曲</div>`;
+    const kwPart = _plSongKw.trim() ? `「${esc(_plSongKw.trim())}」` : '';
+    const dlPart = _plDlMode !== 'all' ? (kwPart ? '且符合所选下载状态' : '所选下载状态') : '';
+    list.innerHTML = `<div class="empty-hint" style="text-align:center;padding:30px 0;">没有匹配${kwPart}${dlPart}的歌曲</div>`;
     return;
   }
   list.innerHTML = pairs.map(({ song, i: idx }) => `
@@ -446,7 +461,7 @@ function togglePlSongSel(idx) {
 
 /** 全选/取消全选「当前过滤视图」的歌（隐形歌不动） */
 function plSelectAllVisible() {
-  const pairs = sortPlaylistPairs(filterPlaylistSongs(_currentDetailSongs, _plSongKw), _plSortMode);
+  const pairs = _plVisiblePairs(_currentDetailSongs);
   const vis = keysOf(pairs.map(p => p.song));
   if (!vis.size) { showToast('当前视图没有歌曲', 'info'); return; }
   const allOn = [...vis].every(k => _plSelKeys.has(k));
@@ -738,6 +753,19 @@ function _syncPlSortBtn() {
 function cyclePlaylistSort() {
   _plSortMode = nextPlSortMode(_plSortMode);
   _syncPlSortBtn();
+  if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
+}
+
+// ── 详情下载状态过滤循环（增量103：plDlFilter.js 纯函数的接线层）──
+// 判定复用 dlStatusFor（与行内徽标同一来源），'done' 之外都算未下载
+function _syncPlDlBtn() {
+  const btn = document.getElementById('plDlFilterBtn');
+  if (btn) btn.textContent = plDlModeLabel(_plDlMode);
+}
+
+function cyclePlDlFilter() {
+  _plDlMode = nextPlDlMode(_plDlMode);
+  _syncPlDlBtn();
   if (_currentPlaylistId) renderPlaylistDetailSongs(_currentDetailSongs);
 }
 
@@ -1090,3 +1118,4 @@ window.togglePlBulkMode = togglePlBulkMode;
 window.togglePlSongSel = togglePlSongSel;
 window.plSelectAllVisible = plSelectAllVisible;
 window.removeCheckedFromPlaylist = removeCheckedFromPlaylist;
+window.cyclePlDlFilter = cyclePlDlFilter;
