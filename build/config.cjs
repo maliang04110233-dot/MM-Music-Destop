@@ -25,7 +25,8 @@ module.exports = {
     'dist/api/**/*',
     'dist/utils/**/*',
     'dist/shared/**/*',
-    'scripts/**/*',
+    // scripts 不进 asar：Python 标签/转码脚本运行时从 resourcesPath/scripts 取
+    // （src/utils/downloader.js 的路径解析第二候选），由下方 extraResources 提供
     'assets/**/*',
     'package.json',
     // ⚠️ package-lock.json 无法通过这里打进包 —— app-builder-lib 在
@@ -166,7 +167,9 @@ module.exports = {
   },
 
   // ── 额外资源 ───────────────────────────────────────
+  // 只带运行期真正执行的 Python 脚本（write_tags.py 标签写入；convert_audio.py
+  // 应急转码兜底），17 个开发期 js 脚本不再随包分发（2026-09 审计产物卫生项）
   extraResources: [
-    { from: 'scripts/', to: 'scripts/', filter: ['**/*'] },
+    { from: 'scripts/', to: 'scripts/', filter: ['*.py'] },
   ],
 };

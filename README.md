@@ -54,8 +54,11 @@ npm run dev
 # 正式运行
 npm start
 
-# 打包（Windows 安装包）
+# 构建前端产物（vite + postbuild，不生成安装包）
 npm run build
+
+# 打包（Windows 安装包）
+npm run package
 ```
 
 ## 目录结构

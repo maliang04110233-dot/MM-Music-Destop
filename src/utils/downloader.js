@@ -548,32 +548,6 @@ async function embedId3Tags(filePath, { title, artist, album, coverUrl, lrc } = 
 }
 
 /**
- * 格式化文件大小
- */
-function formatSize(bytes) {
-  if (!bytes) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let size = bytes;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit++;
-  }
-  return `${size.toFixed(1)} ${units[unit]}`;
-}
-
-/**
- * 格式化时长 ms → mm:ss
- */
-function formatDuration(ms) {
-  if (!ms) return '--:--';
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-/**
  * 带重试的文件下载（传输层容错）
  *
  * 背景：downloadFile 在 req error / 超时时会直接 reject，而 processOneSong 的
@@ -621,4 +595,4 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
   return tryOnce();
 }
 
-module.exports = { createThrottleStream, downloadFile, downloadFileWithRetry, cancelDownload, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen, formatSize, formatDuration };
+module.exports = { createThrottleStream, downloadFile, downloadFileWithRetry, cancelDownload, downloadBuffer, embedId3Tags, embedTagsWithPython, findPythonWithMutagen };
