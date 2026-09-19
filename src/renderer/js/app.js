@@ -65,6 +65,7 @@ import './lyricNudge.js';
 import './abLoop.js';
 import './player/fade.js';
 import './player/visualizer.js';
+import { resolvePlayingIndex, flashRow } from './locatePlaying.js';
 import './songGroups.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
@@ -1124,6 +1125,18 @@ window.togglePlayQueue = () => {
   if (chev) chev.textContent = _pqVisible ? '收起' : '展开';
   renderPlayQueueUI();
 };
+
+// 🎯 队列面板定位正在播放：面板未开先展开；playIdx 漂移时退回全量匹配
+function locatePlayingInQueue() {
+  const queue = getState('playQueue') || [];
+  const cur = getState('currentPlaying');
+  const idx = resolvePlayingIndex(queue, cur, getState('playIdx') || 0);
+  if (idx < 0) { showToast('正在播放的歌不在当前队列', 'info', 2500); return; }
+  if (!_pqVisible) window.togglePlayQueue();
+  const row = document.querySelector(`#pqList .pq-item[data-pqidx="${idx}"]`);
+  if (row) flashRow(row);
+}
+window.locatePlayingInQueue = locatePlayingInQueue;
 
 function renderPlayQueueUI() {
   const list = document.getElementById('pqList');

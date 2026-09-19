@@ -40,3 +40,14 @@ export function flashRow(row) {
   setTimeout(() => { row.style.outline = ''; }, 1200);
   return true;
 }
+
+/**
+ * playIdx 防漂移：声明下标处正是当前引用就信它（O(1) 快路径），
+ * 否则退回 indexOfPlaying 全量匹配（队列去重/删行可能让下标错位）。
+ */
+export function resolvePlayingIndex(list, cur, declaredIdx) {
+  if (!Array.isArray(list) || !cur) return -1;
+  const d = +declaredIdx;
+  if (Number.isInteger(d) && d >= 0 && d < list.length && list[d] === cur) return d;
+  return indexOfPlaying(list, cur);
+}
