@@ -6,7 +6,7 @@
  */
 
 import { logger } from './logger.js';
-import { resolveQuality } from './quality.js';
+import { resolveQuality, playedQualityLabel } from './quality.js';
 import {
   addToRecentlyPlayed, updatePlayStatsOnStart, updatePlayStatsOnStop, recordPlay,
   restartPlayTimer, getRecentlyPlayed, loadRecentlyPlayed, clearRecentlyPlayed,
@@ -117,6 +117,7 @@ export function updatePlayerCard(song) {
     document.getElementById('playerDiscImg').style.display = 'none';
     document.getElementById('playerDiscPh').style.display = 'flex';
     _updateSrcBadge(null);
+    _updateQualityBadge(null);
     _applyTitleMarquee();
     return;
   }
@@ -126,6 +127,7 @@ export function updatePlayerCard(song) {
   document.getElementById('playerTitle').textContent = song.title || '未知歌曲';
   document.getElementById('playerArtist').textContent = song.artist || '未知艺术家';
   _updateSrcBadge(song);
+  _updateQualityBadge(song);
   _applyTitleMarquee();
   const discPh = document.getElementById('playerDiscPh');
   const discImg = document.getElementById('playerDiscImg');
@@ -152,6 +154,20 @@ function _updateSrcBadge(song) {
   if (alt && alt.source && alt.source !== song.source) {
     badge.textContent = `↻ ${platformName(alt.source)}源`;
     badge.title = `原源 ${platformName(song.source)} 不可用，已自动切换`;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/** 播放音质徽标：显示本次实际取流档位（song._playedQuality，由取流成功处回写） */
+function _updateQualityBadge(song) {
+  const badge = document.getElementById('playerQualityBadge');
+  if (!badge) return;
+  const label = playedQualityLabel(song && song._playedQuality);
+  if (label) {
+    badge.textContent = label;
+    badge.title = '本次播放音质';
     badge.style.display = '';
   } else {
     badge.style.display = 'none';
@@ -384,6 +400,7 @@ async function playSongByIdx(idx, song) {
       showToast('⚠️ 暂无法获取音源', 'warn', 3000);
       return;
     }
+    song._playedQuality = quality;
     if (result.matchedSong) {
       showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };

@@ -65,6 +65,7 @@ export function syncToMiniPlayer(audio) {
     payload.title = song ? song.title : '未在播放';
     payload.artist = song ? (song.artist || '未知艺术家') : '—';
     payload.cover = song ? (song.cover || '') : '';
+    payload.quality = song ? (song._playedQuality || '') : '';
   }
   api.syncMiniPlayer(payload);
 }

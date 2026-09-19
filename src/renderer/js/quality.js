@@ -21,6 +21,12 @@ export const QUALITY_OPTIONS = [
 
 const VALID = new Set(QUALITY_OPTIONS.map(o => o.value));
 
+/** 播放中音质徽标的短标签（迷你窗/主播放器共用同一映射） */
+const PLAYED_BADGE_LABELS = { standard: '128k', hq: '320k', lossless: '无损' };
+export function playedQualityLabel(q) {
+  return PLAYED_BADGE_LABELS[q] || '';
+}
+
 /**
 * 服务端不区分音质的平台：quality 参数不产生实际差异（免登录只有一档）。
 * 依据各平台插件注释 —— migu.js:25 / soda.js:35-36。

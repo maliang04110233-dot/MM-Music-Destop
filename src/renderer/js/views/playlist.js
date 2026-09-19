@@ -166,6 +166,7 @@ async function playPlaylistSong(idx) {
       }
       return;
     }
+    song._playedQuality = quality;
     if (result.matchedSong) {
       showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };

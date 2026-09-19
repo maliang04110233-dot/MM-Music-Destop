@@ -783,6 +783,7 @@ async function playPlaylistModalSong(idx) {
       showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
+    song._playedQuality = quality;
     const playSource = result.matchedSong?.source || song.source;
     const referer = playSource === 'bilibili' ? 'https://www.bilibili.com/'
                   : playSource === 'qq' ? 'https://y.qq.com/'

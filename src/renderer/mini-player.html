@@ -111,6 +111,16 @@
       font-variant-numeric: tabular-nums;
       -webkit-app-region: no-drag;
     }
+    .mp-quality {
+      flex-shrink: 0;
+      font-size: 10px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 999px;
+      color: var(--accent-ui);
+      background: var(--accent-soft);
+      -webkit-app-region: no-drag;
+    }
     .mp-close {
       width: 22px; height: 22px;
       display: flex; align-items: center; justify-content: center;
@@ -161,6 +171,7 @@
       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
     </button>
   </div>
+  <span class="mp-quality" id="miniQuality" style="display:none" title="本次播放音质"></span>
   <span class="mp-time" id="miniTime">0:00 / 0:00</span>
   <button class="mp-close" onclick="send('mini-close')" title="关闭" aria-label="关闭迷你播放器">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -184,6 +195,8 @@
       const progress = document.getElementById('miniProgressFill');
       const lyric = document.getElementById('miniLyric');
       const timeEl = document.getElementById('miniTime');
+      const qualityEl = document.getElementById('miniQuality');
+      const QLAB = { standard: '128k', hq: '320k', lossless: '无损' };
 
       if (data.title) {
         title.textContent = data.title;
@@ -225,6 +238,12 @@
       }
       if (data.time) {
         timeEl.textContent = data.time;
+      }
+      // M13 同款约定：quality 只在换曲时推送，未提供时保持上一次显示
+      if (data.quality !== undefined) {
+        const ql = QLAB[data.quality] || '';
+        if (ql) { qualityEl.textContent = ql; qualityEl.style.display = 'inline-block'; }
+        else qualityEl.style.display = 'none';
       }
     });
   </script>
