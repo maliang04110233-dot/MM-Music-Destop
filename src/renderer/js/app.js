@@ -52,7 +52,7 @@ import './player-controls.js';
 import './sleepTimer.js';
 import './playQueueSort.js';
 import { removeQueueItem, removeQueueItemsByIdentity, dedupeQueue } from './playQueueEdit.js';
-import { queueToSongs, defaultQueuePlaylistName } from './queuePlaylist.js';
+import { queueToSongs, defaultQueuePlaylistName, pickPlSavableRows } from './queuePlaylist.js';
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
@@ -1290,6 +1290,11 @@ function _syncPqSelBtns() {
     rm.classList.toggle('hidden', !_pqSelMode);
     rm.textContent = `🗑 移除 ${_pqSel.size}`;
   }
+  const pl = document.getElementById('pqSelPlBtn');
+  if (pl) {
+    pl.classList.toggle('hidden', !_pqSelMode);
+    pl.textContent = `🎼 歌单 ${_pqSel.size}`;
+  }
 }
 
 window.togglePqSelMode = () => {
@@ -1328,6 +1333,20 @@ window.removeCheckedFromQueue = () => {
     setState('playIdx', r.playIdx);
   }
   showToast(`🗑 已移出 ${r.removed} 首`, 'success');
+};
+
+// 队列多选「🎼 加歌单」（增量115）：勾选行按队列原序投影成可持久行，
+// 喂 quickAddToPlaylist 既有批量链（引擎端 id+source 去重）。drop 行是
+// 临时 blob、本地行缺 filePath 播不动 —— 都被纯函数挡在门外。
+window.pqSelAddPlaylist = () => {
+  if (!_pqSel.size) { showToast('先勾选要加歌单的行', 'warn'); return; }
+  const picked = (getState('playQueue') || []).filter(s => _pqSel.has(s));
+  const rows = pickPlSavableRows(picked);
+  if (!rows.length) {
+    showToast('勾到的行都不能持久（拖入即播/缺路径的播不了），换正常的歌试试', 'warn', 2600);
+    return;
+  }
+  if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(rows);
 };
 
 // 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：

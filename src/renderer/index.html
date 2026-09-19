@@ -633,6 +633,7 @@
         <button class="pq-clear-btn" onclick="locatePlayingInQueue()" title="滚动到队列中正在播放的歌并闪烁标记（面板未开会先展开）">🎯 定位</button>
         <button class="pq-clear-btn" id="pqSelBtn" onclick="togglePqSelMode()" title="多选模式：点行勾选，一次移出多首（选态跟歌走，拖拽排序也不误伤）">☑ 多选</button>
         <button class="pq-clear-btn hidden" id="pqSelRmBtn" style="color:#ff6b81;" onclick="removeCheckedFromQueue()" title="把勾选的行移出播放队列（不删本地文件）">🗑 移除 0</button>
+        <button class="pq-clear-btn hidden" id="pqSelPlBtn" onclick="pqSelAddPlaylist()" title="把勾选的歌加进我的歌单（拖入即播的临时行自动跳过）">🎼 歌单 0</button>
         <button class="pq-clear-btn" onclick="clearPlayQueue()" title="清空队列" data-i18n="player.queue.clear">清空</button>
       </div>
       <div class="pq-list" id="pqList">

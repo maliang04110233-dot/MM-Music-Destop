@@ -101,6 +101,7 @@ const COMMANDS = [
   { id: 'pl-locate', icon: '🎯', group: '播放', label: '在歌单详情中定位正在播放的歌', keywords: ['locate', '定位', '正在播放', '歌单'], run: () => _call('locatePlayingInDetail') },
   { id: 'pq-locate', icon: '🎯', group: '播放', label: '在播放队列面板中定位正在播放的歌（未开自动展开）', keywords: ['queue', 'locate', '定位', '队列', '正在播放'], run: () => _call('locatePlayingInQueue') },
   { id: 'pq-bulkrm', icon: '☑', group: '播放', label: '播放队列多选模式：勾选后批量移出队列', keywords: ['queue', 'bulk remove', '多选', '批量', '移除', '队列'], run: () => _call('togglePqSelMode') },
+  { id: 'pq-selpl', icon: '🎼', group: '播放', label: '播放队列多选：把勾选的歌加进我的歌单', keywords: ['queue', 'add to playlist', '歌单', '批量', '勾选', '队列'], run: () => _call('pqSelAddPlaylist') },
   { id: 'pl-csort', icon: '↕', group: '播放', label: '歌单卡片排序：默认 / 名称 / 曲数 / 最近更新', keywords: ['playlist', 'card', 'sort', '歌单排序'], run: () => _call('cyclePlCardSort') },
   { id: 'pl-fade', icon: '🌊', group: '播放', label: '播放淡入档位：关 / 0.5s / 1s / 2s', keywords: ['fade', '淡入', '音量', '渐变'], run: () => _call('cycleFadeIn') },
   { id: 'viz-toggle', icon: '📊', group: '播放', label: '频谱可视化开关（进度条下方实时频谱）', keywords: ['visualizer', 'spectrum', '频谱', '可视化'], run: () => _call('toggleVisualizer') },
