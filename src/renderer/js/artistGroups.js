@@ -9,12 +9,23 @@
 export const UNKNOWN_ARTIST = '未知歌手';
 export const UNKNOWN_ALBUM = '未知专辑';
 
+/** 分组键归一（聚合与导出取组共用，保证桶名一致） */
+export function normalizeGroupKey(value, unknown) {
+  return String(value || '').trim() || unknown;
+}
+
+/** 导出文件名基底：剔除路径非法字符与结尾点/空格，限长防默认名过长 */
+export function sanitizeFileBase(name) {
+  const s = String(name || '').replace(/[\\/:*?"<>|]/g, '_').replace(/[.\s]+$/, '');
+  return (s.slice(0, 80) || 'playlist');
+}
+
 function _groupField(songs, field, unknown) {
   if (!Array.isArray(songs)) return [];
   const map = new Map();
   for (const s of songs) {
     if (!s) continue;
-    const name = String(s[field] || '').trim() || unknown;
+    const name = normalizeGroupKey(s[field], unknown);
     let g = map.get(name);
     if (!g) { g = { [field]: name, count: 0, size: 0 }; map.set(name, g); }
     g.count++;
@@ -73,7 +84,7 @@ function _applyLocalFilter(panelId, unknownLabel, value) {
   _closePanel(panelId);
 }
 
-function _renderPanel({ id, heading, groups, field, unknownLabel }) {
+function _renderPanel({ id, heading, groups, field, unknownLabel, songsOf }) {
   _closePanel(id);
   const overlay = document.createElement('div');
   overlay.id = id;
@@ -120,9 +131,18 @@ function _renderPanel({ id, heading, groups, field, unknownLabel }) {
     const meta = document.createElement('span');
     meta.style.cssText = 'flex:0 0 auto;font-size:11px;opacity:.75;white-space:nowrap;';
     meta.textContent = `${g.count} 首 · ${_fmtBytes(g.size)}`;
+    const exp = document.createElement('button');
+    exp.style.cssText = 'flex:0 0 auto;background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;opacity:.7;';
+    exp.textContent = '⤴';
+    exp.title = `导出「${label}」为 m3u 歌单文件`;
+    exp.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _exportGroup(songsOf(label), label, id);
+    });
     row.appendChild(name);
     row.appendChild(barWrap);
     row.appendChild(meta);
+    row.appendChild(exp);
     row.addEventListener('click', () => _applyLocalFilter(id, unknownLabel, label));
     body.appendChild(row);
   }
@@ -131,6 +151,21 @@ function _renderPanel({ id, heading, groups, field, unknownLabel }) {
   panel.appendChild(body);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
+}
+
+async function _exportGroup(songs, label) {
+  if (!songs || !songs.length) { showToast('该组没有可导出的歌曲', 'warn'); return; }
+  try {
+    const r = await api.exportPlaylist({
+      songs, format: 'm3u',
+      name: 'MusicDL-' + sanitizeFileBase(label),
+    });
+    if (r && r.canceled) return;
+    if (r && r.error) throw new Error(r.error);
+    showToast(`已导出 ${songs.length} 首：${label}`, 'success', 2500);
+  } catch (e) {
+    showToast('导出失败：' + (e.message || e), 'error');
+  }
 }
 
 function _showGroups(opts) {
@@ -142,7 +177,8 @@ function _showGroups(opts) {
     }
     const groups = opts.groups(songs);
     if (!groups.length) { showToast('暂无可分组的歌曲', 'info'); return; }
-    _renderPanel({ ...opts, groups });
+    const songsOf = (label) => songs.filter((s) => s && normalizeGroupKey(s[opts.field], opts.unknownLabel) === label);
+    _renderPanel({ ...opts, groups, songsOf });
   } catch (e) {
     showToast('分组统计失败：' + (e.message || e), 'error');
   }

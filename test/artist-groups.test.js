@@ -82,3 +82,26 @@ test('未知专辑桶：trim 后空串与缺失合并', async () => {
   const unk = r.find((g) => g.album === UNKNOWN_ALBUM);
   assert.equal(unk.count, 2);
 });
+
+test('normalizeGroupKey：trim、空值归未知桶', async () => {
+  const { normalizeGroupKey } = await mod();
+  assert.equal(normalizeGroupKey(' 周杰伦 ', '未知歌手'), '周杰伦');
+  assert.equal(normalizeGroupKey('', '未知歌手'), '未知歌手');
+  assert.equal(normalizeGroupKey(null, '未知专辑'), '未知专辑');
+  assert.equal(normalizeGroupKey(undefined, 'U'), 'U');
+});
+
+test('sanitizeFileBase：非法字符替换、结尾点/空格剥离、空串兜底、限长', async () => {
+  const { sanitizeFileBase } = await mod();
+  assert.equal(sanitizeFileBase('周杰伦: 范特西'), '周杰伦_ 范特西');
+  assert.equal(sanitizeFileBase('a/b\\c:d*e?f"g<h>i|j'), 'a_b_c_d_e_f_g_h_i_j');
+  assert.equal(sanitizeFileBase('abc...  '), 'abc');
+  assert.equal(sanitizeFileBase('   '), 'playlist');
+  assert.equal(sanitizeFileBase(null), 'playlist');
+  assert.equal(sanitizeFileBase('x'.repeat(200)).length, 80);
+});
+
+test('sanitizeFileBase 保留中文/数字/连字符（常见专辑名无需替换）', async () => {
+  const { sanitizeFileBase } = await mod();
+  assert.equal(sanitizeFileBase('七里香-2004'), '七里香-2004');
+});
