@@ -12,6 +12,7 @@ import {
   initConvertOutputDir, pickConvertOutputDir,
   runConvertBatch, cancelConvert,
 } from '../converter-core.js';
+import { filterConverterSongsByKw } from '../converterFilter.js';
 
 // ── 状态 ────────────────────────────────────────────────
 let _convQueue = [];
@@ -113,9 +114,10 @@ async function scanLocalForConvert() {
   _convLocalSongs = localSongs;
   _convSelected.clear();
 
-  if (info) info.textContent = `共 ${localSongs.length} 首歌曲`;
   showToast(`扫描完成，发现 ${localSongs.length} 首歌曲`, 'success');
-  renderConverterSongs();
+  // 必须重过关键词：只调 renderConverterSongs 会拿上一轮的 convFiltered 渲染
+  // （换了文件夹后列表/计数/全选全是旧库的）；info 由渲染函数按过滤后数量写
+  filterConverterSongs();
 }
 
 // ── 加载本地歌曲 ────────────────────────────────────────
@@ -123,7 +125,9 @@ async function loadLocalSongsForConvert() {
   let localSongs = getState('localSongs');
   if (localSongs && localSongs.length > 0) {
     _convLocalSongs = localSongs;
-    renderConverterSongs();
+    // 首屏扫描未回来时用户可能已敲过关键词 → convFiltered 已存在且基于空库，
+    // 这里若不重过筛就会渲染成空列表（明明扫到了歌却显示 0 首）
+    filterConverterSongs();
     return;
   }
 
@@ -143,21 +147,16 @@ async function loadLocalSongsForConvert() {
   localSongs = result.songs || [];
   setState('localSongs', localSongs);
   _convLocalSongs = localSongs;
-  renderConverterSongs();
+  filterConverterSongs();
 }
 
 // ── 过滤歌曲 ────────────────────────────────────────────
+// 视图管线唯一入口：读搜索框 → 过纯函数 → setState → 渲染。
+// 凡改动 _convLocalSongs 的地方都必须调它（而不是 renderConverterSongs），
+// 否则新库会配上一轮的 convFiltered，列表/计数/全选三处一起陈旧。
 function filterConverterSongs() {
-  const kw = (document.getElementById('converterSearch')?.value || '').trim().toLowerCase();
-  if (!kw) {
-    setState('convFiltered', [..._convLocalSongs]);
-  } else {
-    setState('convFiltered', _convLocalSongs.filter(s =>
-      (s.title || '').toLowerCase().includes(kw) ||
-      (s.artist || '').toLowerCase().includes(kw) ||
-      (s.album || '').toLowerCase().includes(kw)
-    ));
-  }
+  const kw = document.getElementById('converterSearch')?.value || '';
+  setState('convFiltered', filterConverterSongsByKw(_convLocalSongs, kw));
   renderConverterSongs();
 }
 
