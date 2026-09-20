@@ -70,6 +70,14 @@ function clearAbLoop() {
   showToast('已清除 A-B 循环', 'success', 2000);
 }
 
+/**
+ * 当前 A-B 区间（两端齐全才返回），供「导出片段」等下游功能读取。
+ * 返回副本：外部改了不该污染循环状态本身。
+ */
+export function getAbRegion() {
+  return _st.a != null && _st.b != null ? { a: _st.a, b: _st.b } : null;
+}
+
 if (typeof document !== 'undefined') {
   // timeupdate/play/loadstart 在 audio 上不冒泡但可捕获，无需 player.js 埋点
   document.addEventListener('timeupdate', () => {

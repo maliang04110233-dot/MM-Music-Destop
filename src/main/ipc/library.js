@@ -22,7 +22,7 @@ const { scheduleOnlineLrcFetch } = require('../../utils/onlineLrc');
 const { safeSend } = require('../context');
 const prefs = require('../../utils/prefs');
 const approvedDirs = require('../approvedDirs');
-const { convertAudioFile, normalizeFormat, formatExtension } = require('../../utils/audioConvert');
+const { convertAudioFile, normalizeFormat, formatExtension, normalizeClip, clipNameSuffix } = require('../../utils/audioConvert');
 const { bucketBySize, slicePlan, groupByHash, dupGroupView, wastedBytes } = require('../../utils/dupScan');
 // 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
 const fsa = require('../../utils/fsAsync');
@@ -292,6 +292,8 @@ function register() {
         outputDir = null,
         revealFolder = false,
         timeoutMs,
+        start = null,
+        end = null,
       } = params;
 
       if (!isValidPath(inputPath) || !isInAllowedDir(inputPath)) {
@@ -306,13 +308,20 @@ function register() {
       if (outputDir && !isInAllowedDir(outputDir)) {
         return { error: '输出目录不可访问' };
       }
+      // 传了任一端却合不成合法区间 = 调用方逻辑出错，宁可明确失败，
+      // 也不能静默按全曲输出（用户以为截了 30 秒，结果拿到整首）
+      const clip = (start != null || end != null) ? normalizeClip(start, end) : null;
+      if ((start != null || end != null) && !clip) {
+        return { error: '片段区间无效：终点须晚于起点' };
+      }
+      const nameSuffix = clip ? clipNameSuffix(clip.start, clip.end) : '';
 
       // 无输出目录 = 用户想自己挑保存位置，必须弹对话框；
       // 批量转换页总是传 outputDir，不会走到这里
       let resolvedOutputDir = outputDir;
       if (!resolvedOutputDir) {
         const ext = formatExtension(outputFormat);
-        const defaultName = path.basename(inputPath, path.extname(inputPath)) + '.' + ext;
+        const defaultName = path.basename(inputPath, path.extname(inputPath)) + nameSuffix + '.' + ext;
         const result = await dialog.showSaveDialog({
           defaultPath: defaultName,
           filters: [
@@ -334,6 +343,8 @@ function register() {
         bitrate,
         // 响度归一（P0-B）是全局转码偏好，在设置页勾选，不由调用方逐次传
         loudnorm: prefs.get('convertLoudnorm') === true,
+        start: clip ? clip.start : null,
+        end: clip ? clip.end : null,
         onProgress: (pct) => safeSend('convert-audio-progress', { path: inputPath, pct }),
         shouldStop: () => _cancelRequested,
         timeoutMs,

@@ -81,6 +81,7 @@ const COMMANDS = [
   { id: 'pl-lyradv', icon: '⏪', group: '播放', label: '歌词提前 0.5s（偏移 -500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', -500) },
   { id: 'pl-lyrdly', icon: '⏩', group: '播放', label: '歌词延后 0.5s（偏移 +500ms）', keywords: ['lyric offset', '歌词', '偏移'], run: () => _call('nudgeLyricOffset', 500) },
   { id: 'pl-abloop', icon: '🔁', group: '播放', label: 'A-B 循环：设 A 点 / 设 B 点 / 清除', keywords: ['ab loop', '循环', '片段', '副歌'], run: () => _call('abLoopClick') },
+  { id: 'pl-abclip', icon: '✂', group: '播放', label: '导出 A-B 片段为新文件（原曲不动）', keywords: ['clip', 'cut', '片段', '截取', '铃声', '导出'], run: () => _call('exportAbClip') },
   { id: 'pl-lyedit', icon: '✏️', group: '播放', label: '编辑当前歌曲歌词（本地 .lrc / 在线覆写）', keywords: ['lyric', '歌词', '编辑', 'edit'], run: () => _call('openLyricEditor') },
   { id: 'pl-addsong', icon: '➕', group: '播放', label: '搜索并添加歌曲到当前打开的歌单', keywords: ['playlist', '歌单', '加歌', '添加', 'add song'], run: () => _call('openPlaylistAddSongs') },
   { id: 'pl-psort', icon: '↕', group: '播放', label: '歌单详情排序：默认 / 标题 / 歌手 / 添加时间', keywords: ['playlist', 'sort', '歌单', '排序'], run: () => _call('cyclePlaylistSort') },

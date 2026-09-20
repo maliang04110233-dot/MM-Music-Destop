@@ -33,6 +33,56 @@ const BITRATES = ['64k', '96k', '128k', '192k', '256k', '320k'];
 /** 单个文件转码最长耗时，防止 ffmpeg 挂死拖住 IPC handler */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** 片段截取的最短可用长度（秒）：比这更短的多半是误点，且编码后可能出空文件 */
+const MIN_CLIP_SEC = 0.2;
+
+/**
+ * 片段截取的两端：只接受数字或数字字符串。
+ * 数组/对象交给 Number() 会得出意外值（Number([1, 2]) 之外的 [1] → 1），
+ * 跨进程参数不可信，这里显式收窄类型而不是靠 NaN 兜。
+ */
+function _clipNum(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim() !== '') return Number(v);
+  return NaN;
+}
+
+/**
+ * 归一化「A-B 片段」区间。跨进程参数不可信，这里一次性收敛：
+ * 两端都必须有限、终点必须比起点晚至少 MIN_CLIP_SEC，秒数保留 2 位小数
+ * （ffmpeg 接受小数秒，留着十几位只会让命令行断言写不稳）。
+ *
+ * @returns {{start:number,end:number}|null} 非法或未传 → null（调用方按全曲处理）
+ */
+function normalizeClip(start, end) {
+  if (start == null && end == null) return null;
+  const a = _clipNum(start);
+  const b = _clipNum(end);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const s = Math.max(0, Math.round(a * 100) / 100);
+  const e = Math.round(b * 100) / 100;
+  if (!(e - s >= MIN_CLIP_SEC)) return null;
+  return { start: s, end: e };
+}
+
+/**
+ * 片段输出文件的名称后缀。
+ *
+ * 不能用 mmss 的「1:20」形态 —— Windows 文件名不允许冒号。
+ * 只由数字与我们自己的模板拼出，调用方传不进任意字符串（主进程据此命名）。
+ */
+function clipNameSuffix(start, end) {
+  const clip = normalizeClip(start, end);
+  if (!clip) return '';
+  const fmt = (sec) => {
+    const t = Math.floor(sec);
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    return (m > 0 ? m + 'm' : '') + s + 's';
+  };
+  return `_片段${fmt(clip.start)}-${fmt(clip.end)}`;
+}
+
 /**
  * 归一化格式名。'm4a' 归到 'aac'（同一编码器，只是容器扩展不同）。
  * @returns {string|null} 规范化 key，未知返回 null
@@ -151,10 +201,13 @@ function resolveOutputDir(outputDir, inputPath) {
  * @param {{inputPath:string, outputDir?:string|null, format:string}} opt
  * @returns {string} 可直接写入的输出绝对路径
  */
-function resolveOutputPath({ inputPath, outputDir = null, format }) {
+function resolveOutputPath({ inputPath, outputDir = null, format, nameSuffix = '' }) {
   const dir = resolveOutputDir(outputDir, inputPath);
   const ext = formatExtension(format);
-  const base = path.basename(inputPath, path.extname(inputPath));
+  // nameSuffix 只由本模块的 clipNameSuffix 生成（数字 + 固定模板），
+  // 不接受外部自由字符串，避免把路径分隔符写进文件名
+  const suffix = String(nameSuffix || '').replace(/[\\/:*?"<>|]/g, '');
+  const base = path.basename(inputPath, path.extname(inputPath)) + suffix;
   let candidate = path.join(dir, base + '.' + ext);
   for (let i = 1; fs.existsSync(candidate); i++) {
     candidate = path.join(dir, `${base}_${i}.${ext}`);
@@ -173,12 +226,20 @@ const LOUDNORM_FILTER = 'loudnorm=I=-14:TP=-1.5:LRA=11';
  * 拼装 ffmpeg 命令行参数（纯函数，便于单测）。
  * 无损格式不吃 -b:a，传了也会被忽略——这里直接不下发。
  *
+ * 片段截取：-ss 放在 -i **之前**（输入侧定位，长文件不必从头解码），
+ * 时长用 -t 而不是 -to —— 定位后输出时间戳从 0 重计，-to 的语义会跟着漂，
+ * 而「输出多少秒」恒等于 end-start。
+ *
  * @returns {string[]}
  */
-function buildFfmpegArgs({ inputPath, outputPath, format, bitrate = '320k', loudnorm = false }) {
+function buildFfmpegArgs({ inputPath, outputPath, format, bitrate = '320k', loudnorm = false, start = null, end = null }) {
   const def = FORMATS[normalizeFormat(format)] || FORMATS.mp3;
+  const clip = normalizeClip(start, end);
   // -nostdin：避免 ffmpeg 在读到 stdin 时进入交互式确认
-  const args = ['-nostdin', '-i', inputPath, '-y'];
+  const args = ['-nostdin'];
+  if (clip) args.push('-ss', String(clip.start));
+  args.push('-i', inputPath, '-y');
+  if (clip) args.push('-t', String(Math.round((clip.end - clip.start) * 100) / 100));
   args.push(def.codec[0], def.codec[1]);
   // 无损格式不吃比特率；有损格式在比特率非法时退回编码器默认值
   if (def.lossy && isBitrate(bitrate)) args.push('-b:a', bitrate);
@@ -232,6 +293,8 @@ function probeDuration(ffmpegPath, inputPath) {
  * @param {string} opt.format       mp3|flac|aac|m4a|ogg|wav
  * @param {string} opt.bitrate      128k~320k，非法值降级为编码器默认
  * @param {boolean} [opt.loudnorm]  true 时输出前做响度归一（-14 LUFS）
+ * @param {number} [opt.start]      片段起点秒数（与 end 成对，非法则按全曲）
+ * @param {number} [opt.end]        片段终点秒数
  * @param {(p:number)=>void} [opt.onProgress] 进度回调 0~100
  * @param {()=>boolean} [opt.shouldStop]      返回 true 时中止
  * @param {number} [opt.timeoutMs]            超时毫秒
@@ -243,6 +306,8 @@ async function convertAudioFile({
   format = 'mp3',
   bitrate = '320k',
   loudnorm = false,
+  start = null,
+  end = null,
   onProgress,
   shouldStop,
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -250,9 +315,18 @@ async function convertAudioFile({
   const ffmpegPath = await findFfmpeg();
   if (!ffmpegPath) return { error: '未找到 ffmpeg，请安装后重试' };
 
-  const outputPath = resolveOutputPath({ inputPath, outputDir, format });
-  const duration = await probeDuration(ffmpegPath, inputPath);
-  const args = buildFfmpegArgs({ inputPath, outputPath, format, bitrate, loudnorm });
+  const clip = normalizeClip(start, end);
+  const outputPath = resolveOutputPath({
+    inputPath,
+    outputDir,
+    format,
+    nameSuffix: clip ? clipNameSuffix(clip.start, clip.end) : '',
+  });
+  // 进度分母：截片段时 ffmpeg 的 out_time_ms 从定位点重新起算，
+  // 仍拿整曲时长当分母会让 1 分钟的片段永远停在 20%。
+  const fullDuration = await probeDuration(ffmpegPath, inputPath);
+  const duration = clip ? clip.end - clip.start : fullDuration;
+  const args = buildFfmpegArgs({ inputPath, outputPath, format, bitrate, loudnorm, start, end });
 
   return new Promise((resolve) => {
     let settled = false;
@@ -341,6 +415,9 @@ module.exports = {
   formatExtension,
   isBitrate,
   defaultFormatFor,
+  MIN_CLIP_SEC,
+  normalizeClip,
+  clipNameSuffix,
   findFfmpeg,
   ffmpegAvailable,
   resolveOutputDir,

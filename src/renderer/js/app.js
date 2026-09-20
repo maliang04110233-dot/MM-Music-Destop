@@ -69,6 +69,7 @@ import './diagnose.js';
 import './queueSummary.js';
 import './lyricNudge.js';
 import './abLoop.js';
+import './abClip.js';
 import './player/fade.js';
 import './player/visualizer.js';
 import { resolvePlayingIndex, flashRow } from './locatePlaying.js';
