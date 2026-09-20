@@ -15,6 +15,9 @@ import './toast.js';
 import './utils.js';
 import { buildFallbackNotice } from './fallbackNotice.js';
 import { describePlayError } from './playError.js';
+import { pickQueueCopyRows, queueCopyToastText } from './queueCopy.js';
+import { toTrackLines } from './songListText.js';
+import { copyText } from './songShare.js';
 import './router.js';
 
 // 播放器和快捷键
@@ -1353,6 +1356,21 @@ window.pqSelAddPlaylist = () => {
     return;
   }
   if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(rows);
+};
+
+// 播放队列「📋 复制曲单」（增量147）：多选模式下只复制勾到的行，否则整队，
+// 一行一首「歌名 - 歌手」纯文本进剪贴板（同 108 的两个消费方口径）。
+// 入口刻意只挂命令面板：pq-header 已 6 个按钮，而 .pq-panel 是不换行的
+// flex + overflow:hidden，第 7 个会被静默裁掉。
+window.copyQueueListText = async () => {
+  const { rows, scope } = pickQueueCopyRows(getState('playQueue') || [], _pqSel);
+  const lines = toTrackLines(rows);
+  if (!lines.length) {
+    showToast(scope === 'checked' ? '勾到的行都没有歌名，复制不了' : '播放队列是空的', 'info', 2500);
+    return;
+  }
+  const ok = await copyText(lines.join('\n'));
+  showToast(ok ? queueCopyToastText(lines.length, scope) : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
 };
 
 // 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：
