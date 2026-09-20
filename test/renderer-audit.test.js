@@ -292,6 +292,19 @@ test('回归钉：删重只改源数据，不得就地改派生状态 localFilte
     'deleteSelectedDups 删除成功后必须触发库变更回调，否则列表/网格不会刷新');
 });
 
+// ── 增量159（审计 F2 收尾）：删重确认框必须诚实 —— 点名影响 + 给出真实退路 ──
+test('删重确认框：点名个数与总大小、告知进系统回收站可还原；"不可撤销"谎话不得复活', () => {
+  const src = read('js', 'views', 'local-stats.js');
+  const body = fnBodyL(stripComments(src), 'deleteSelectedDups');
+  assert.ok(!body.includes('不可撤销'),
+    '旧文案「此操作不可撤销！」是谎话：delete-file 走 shell.trashItem（libraryIpc 集成测试钉死"移入回收站后原路径消失"），吓阻话术禁止复活');
+  assert.match(body, /确认删除 \$\{count\} 个重复文件（共 \$\{sizeTxt\}）/, '确认框必须点名个数与总大小（F2：删除必见影响）');
+  assert.ok(body.includes('formatBytes(totalSize)'), '总大小必须来自选中项 fileSize 汇总，不许拍脑袋');
+  assert.ok(body.includes('系统回收站'), '确认框必须告知真实退路（可随时还原），而不是笼统"不可撤销"');
+  assert.ok(body.includes('保留音质最好的一个版本'), '必须说清每组保留策略——删重最有价值的承诺（152 的自动选差）要在确认框里可见');
+  assert.ok(body.includes('随时可还原'), '成功 toast 必须点名去处');
+});
+
 // ── 增量134：首页分区列表与「查看完整榜单」弹窗必须共用同一个过滤词 ──
 
 test('home.js: 分区列表的计数必须来自过滤结果（用未过滤的 data.length 会让「查看完整榜单」在筛选后仍报全量）', () => {

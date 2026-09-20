@@ -312,7 +312,13 @@ export async function deleteSelectedDups() {
   if (!selected.size) return;
 
   const count = selected.size;
-  if (!confirm(`确认删除 ${count} 个重复文件？\n\n此操作不可撤销！`)) return;
+  // 增量159（审计 F2 收尾）：旧文案「此操作不可撤销！」是谎话 —— delete-file 走的是
+  // shell.trashItem（test/libraryIpc 钉死"移入回收站后原路径消失"），文件一直在系统回收站里。
+  // 吓阻不是诚实；诚实的写法是点名影响（个数 + 总大小）并告知真实退路（回收站可还原）。
+  const selSongs = _dupState.groups.flat().filter(s => selected.has(s.filePath));
+  const totalSize = selSongs.reduce((sum, s) => sum + (s.fileSize || 0), 0);
+  const sizeTxt = totalSize > 0 ? formatBytes(totalSize) : '大小未知';
+  if (!confirm(`确认删除 ${count} 个重复文件（共 ${sizeTxt}）？\n\n• 每组都会保留音质最好的一个版本，只有勾上的会动\n• 文件移入系统回收站，反悔了随时可还原`)) return;
 
   let deleted = 0;
   let failed = 0;
@@ -349,7 +355,11 @@ export async function deleteSelectedDups() {
   const overlay = document.getElementById('dupModal');
   if (overlay) overlay.remove();
 
-  showToast(`删除完成：✅ ${deleted} 成功  ❌ ${failed} 失败`, deleted > 0 ? 'success' : 'warn', 4000);
+  // 增量159：成功语点名去处（回收站可还原），失败语保留原样逐数播报
+  showToast(failed > 0
+    ? `删除完成：✅ ${deleted} 成功  ❌ ${failed} 失败`
+    : `已删除 ${deleted} 个重复文件，它们在系统回收站里，随时可还原`,
+  deleted > 0 ? 'success' : 'warn', 4000);
 
   // 重新检测
   if (deleted > 0) {
