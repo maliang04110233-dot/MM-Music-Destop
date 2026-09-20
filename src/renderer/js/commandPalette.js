@@ -94,6 +94,7 @@ const COMMANDS = [
   { id: 'pl-dlfilt', icon: '⬇', group: '下载', label: '歌单详情切换下载状态过滤（全部/未下载/已下载）', keywords: ['playlist downloaded filter', '未下载', '已下载', '过滤', '歌单'], run: () => _call('cyclePlDlFilter') },
   { id: 'loc-fmt', icon: '🎞', group: '下载', label: '本地曲库格式过滤循环（全部 / 曲库实际存在的格式）', keywords: ['local', 'format', '格式', '本地', 'flac', 'mp3', '过滤'], run: () => { _goto('local'); _call('cycleLocalFmt'); } },
   { id: 'loc-qual', icon: '🧪', group: '下载', label: '本地曲库音质视图过滤循环（全部 / 标称无损 / 真无损 / 存疑 / 待验）', keywords: ['quality', '音质', '无损', '伪无损', '待验', '过滤'], run: () => { _goto('local'); _call('cycleLocalQual'); } },
+  { id: 'loc-meta', icon: '🏷', group: '下载', label: '本地曲库元数据完整度过滤循环（全部 / 缺封面 / 缺专辑 / 缺歌手标题 / 缺内嵌歌词）', keywords: ['metadata', '完整度', '缺封面', '缺歌词', '缺专辑', '标签', '过滤'], run: () => { _goto('local'); _call('cycleLocalMeta'); } },
   { id: 'loc-copylist', icon: '📋', group: '下载', label: '复制本地曲库当前视图的曲名清单（一行一首）', keywords: ['copy', 'local', '曲单', '清单', '本地', '复制'], run: () => { _goto('local'); _call('copyLocalListText'); } },
   { id: 'pl-merge', icon: '📥', group: '播放', label: '把其他歌单合并进当前打开的歌单（去重）', keywords: ['merge', '歌单', '合并', '去重'], run: () => _call('openPlaylistMergePicker') },
   { id: 'pl-dedupe', icon: '🧹', group: '播放', label: '清理当前歌单内的重复歌曲（保留首次出现）', keywords: ['dedupe', 'duplicate', '重复', '清理', '歌单'], run: () => _call('dedupeCurrentPlaylist') },

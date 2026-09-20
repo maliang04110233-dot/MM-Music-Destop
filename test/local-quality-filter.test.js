@@ -84,9 +84,9 @@ test('接线钉：local.js 管线 + 循环函数 + window 桥 + HTML 按钮 + �
     "  _localQualMode = nextQualMode(_localQualMode);",
     "  const btn = document.getElementById('localQualBtn');",
     '  if (btn) btn.textContent = qualModeLabel(_localQualMode);',
-    '  renderLocalSongs();',
+    '  filterLocalSongs();',
     '}',
-  ].join('\n')), '循环函数：换态 → 刷按钮字样 → 重画列表');
+  ].join('\n')), '循环函数：换态 → 刷按钮字样 → 重过筛（必须 filterLocalSongs，renderLocalSongs 只重画旧数组，等于点了没用）');
   assert.ok(LOCAL_JS.indexOf('if (_localFmtMode !== ') < LOCAL_JS.indexOf('if (_localQualMode !== '),
     '格式轴先于音质轴（音质按已过滤的视图再切，与收藏/关键词同为 AND 叠加）');
   assert.equal((LOCAL_JS.match(/window\.cycleLocalQual = cycleLocalQual;/g) || []).length, 1);
