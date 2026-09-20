@@ -146,8 +146,12 @@ async function neteaseVerifyCookie(cookie) {
  * @param {number} limit
  * @returns {Promise<Array>}
  */
-async function neteaseGetPlaylistDetail(id, limit = 200) {
-  const res = await ncm.playlist_detail({ id: parseInt(id), limit });
+async function neteaseGetPlaylistDetail(id, limit = 200, cookie = '') {
+  const res = await ncm.playlist_detail({
+    id: parseInt(id),
+    limit,
+    ...(cookie ? { cookie } : {}),
+  });
   const tracks = (res?.body?.playlist?.tracks || []).slice(0, limit);
   return tracks.map(t => ({
     id: String(t.id),
@@ -259,8 +263,12 @@ async function neteaseSearchSinger(keyword, page = 1) {
 /**
  * 获取歌手热门歌曲（前 50 首）
  */
-async function neteaseGetSingerSongs(singerId, limit = 50) {
-  const res = await ncm.artists({ id: parseInt(singerId), limit: Math.min(limit, 100) });
+async function neteaseGetSingerSongs(singerId, limit = 50, cookie = '') {
+  const res = await ncm.artists({
+    id: parseInt(singerId),
+    limit: Math.min(limit, 100),
+    ...(cookie ? { cookie } : {}),
+  });
   const songs = res?.body?.hotSongs || [];
   return songs.slice(0, limit).map(s => ({
     id: String(s.id),
@@ -304,8 +312,11 @@ async function neteaseGetSingerAlbums(singerId, pageNo = 1, pageSize = 20) {
 /**
  * 获取专辑内歌曲
  */
-async function neteaseGetAlbumSongs(albumId, limit = 999) {
-  const res = await ncm.album({ id: parseInt(albumId) });
+async function neteaseGetAlbumSongs(albumId, limit = 999, cookie = '') {
+  const res = await ncm.album({
+    id: parseInt(albumId),
+    ...(cookie ? { cookie } : {}),
+  });
   const songs = res?.body?.songs || [];
   return songs.slice(0, limit).map(s => ({
     id: String(s.id),

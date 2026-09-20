@@ -20,6 +20,7 @@ import { describePlayError, playFailureRetry, playFailureRetryText } from './pla
 import { retryAfterPlayFailure } from './playRetry.js';
 import { pickQueueCopyRows, queueCopyToastText } from './queueCopy.js';
 import { toTrackLines } from './songListText.js';
+import { listAccessHint, term } from './listAccess.js';
 import { copyText } from './songShare.js';
 import { skeletonHtml, SKEL_ROWS } from './skeleton.js';
 import './router.js';
@@ -715,10 +716,32 @@ async function saveNamingTemplate(template) {
 }
 
 // ── 歌单弹层 ──────────────────────────────────────────
+/**
+ * 「取不到曲目」的统一口径：取数前判一次档（确定不支持的平台连请求都不发），
+ * 取回空数组后复用同一次判档的文案。判据的家在 listAccess.js，这里只接线。
+ */
+function listAccessFor(platformId, capability, subjectKey, subjectFallback) {
+  const t = (key, params) => (typeof window.t === 'function' ? window.t(key, params) : '');
+  const subject = term(t, subjectKey, subjectFallback);
+  return listAccessHint(getPlatforms().find(x => x && x.id === platformId), {
+    capability, subject, name: platformName(platformId), tr: t,
+  });
+}
+
+function showListEmpty(body, text) {
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">'
+    + esc(text) + '</div>';
+}
+
 async function openPlaylistModal(platform, id, name) {
   document.getElementById('playlistModalTitle').textContent = '📀 ' + name;
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
+  const hint = listAccessFor(platform, 'playlistSongs', 'modal.subjectPlaylist', '歌单');
+  if (!hint.fetch) {
+    showListEmpty(body, hint.text);
+    return;
+  }
   body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载中...');
 
   state.setPlaylistMeta({ platform, id, name });
@@ -727,7 +750,7 @@ async function openPlaylistModal(platform, id, name) {
   try {
     const songs = await api.getPlaylistSongs(platform, id, 200);
     if (!songs.length) {
-      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">暂无歌曲</div>';
+      showListEmpty(body, hint.text);
       return;
     }
     state.setPlaylistSongs(songs);
@@ -1101,6 +1124,11 @@ async function openAlbumView(albumMid, source, albumName) {
   document.getElementById('playlistModalTitle').textContent = '💿 ' + (albumName || '专辑');
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
+  const hint = listAccessFor(source || 'qq', 'albumSongs', 'modal.subjectAlbum', '专辑');
+  if (!hint.fetch) {
+    showListEmpty(body, hint.text);
+    return;
+  }
   body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载专辑中...');
 
   state.setPlaylistMeta({ platform: source, id: albumMid, name: albumName || '专辑' });
@@ -1109,7 +1137,7 @@ async function openAlbumView(albumMid, source, albumName) {
   try {
     const songs = await api.getAlbumSongs(source || 'qq', albumMid, 200);
     if (!songs.length) {
-      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">暂无歌曲</div>';
+      showListEmpty(body, hint.text);
       return;
     }
     state.setPlaylistSongs(songs);
@@ -1179,6 +1207,9 @@ window.openPlaylistModal = openPlaylistModal;
 window.closePlaylistModal = closePlaylistModal;
 window.closePlaylistModalOnBg = closePlaylistModalOnBg;
 window.renderPlaylistModal = renderPlaylistModal;
+// 搜索页的专辑弹层与本页两个弹层共用同一个 playlistModal：判档与空态必须同一句口径
+window.listAccessFor = listAccessFor;
+window.showListEmpty = showListEmpty;
 window.updatePlToolbarInfo = updatePlToolbarInfo;
 window.toggleSelectAll = toggleSelectAll;
 window.toggleSongCheck = toggleSongCheck;

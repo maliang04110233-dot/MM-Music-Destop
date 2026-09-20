@@ -600,13 +600,18 @@ async function openAlbumSongsModal(platform, albumId) {
   document.getElementById('playlistModalTitle').textContent = '📀 ' + (nameMap[platform] || '专辑');
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
+  const hint = listAccessFor(platform, 'albumSongs', 'modal.subjectAlbum', '专辑');
+  if (!hint.fetch) {
+    showListEmpty(body, hint.text);
+    return;
+  }
   body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载中...');
   state.setPlaylistSongs([]);
   state.setPlaylistChecked(new Set());
   try {
     const songs = await api.getAlbumSongs(platform, albumId, 200);
     if (!songs.length) {
-      body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:16px;text-align:center;">专辑暂无歌曲（链接可能已失效）</div>';
+      showListEmpty(body, hint.text);
       return;
     }
     state.setPlaylistSongs(songs);

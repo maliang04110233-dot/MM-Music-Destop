@@ -79,6 +79,22 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
   }
 
   /**
+   * 需要把 cookie 作为**末位参数**注入的方法 —— 全仓唯一一份清单。
+   *
+   * 判据只有一条：**平台侧能否靠登录态多拿到东西**。
+   *   - getRanking：B 站排行，历史上就靠 cookie；
+   *   - getPlaylistSongs / getAlbumSongs / getSingerSongs：网易云 SDK 按次接受
+   *     cookie，缺了它 VIP/私密歌单会静默返回空清单（gateway 折叠成 []，
+   *     订阅与歌单弹层于是"看起来是空的"）。
+   * 刻意不在清单里的：qq 的取曲目走 qq-music-api 的 api() 客户端模式，该 SDK 的
+   * cookie 只存在于它自带的 server 路由中（util/request.js 读 globalCookie，
+   * api() 模式下压根没有），要带登录态必须换掉整条请求路径 —— 另案。
+   */
+  const COOKIE_LAST_ARG_METHODS = Object.freeze(new Set([
+    'getRanking', 'getPlaylistSongs', 'getAlbumSongs', 'getSingerSongs',
+  ]));
+
+  /**
    * 取平台实例；不存在时返回 null（不抛错）。
    * @param {string} platformId
    */
@@ -217,16 +233,10 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
 
   /**
    * 取专辑曲目。返回歌曲数组。
+   * 走统一入口以便带上登录态（见 COOKIE_LAST_ARG_METHODS）。
    */
-  async function getAlbumSongs(platformId, albumMid, limit = 999) {
-    const plugin = pluginOf(platformId);
-    if (!plugin || typeof plugin.getAlbumSongs !== 'function') return EMPTY.list();
-    const r = await safeRun(
-      `${platformId}.getAlbumSongs`,
-      () => plugin.getAlbumSongs(albumMid, limit),
-      EMPTY.list(),
-    );
-    return Array.isArray(r) ? r : EMPTY.list();
+  function getAlbumSongs(platformId, albumMid, limit = 999) {
+    return recommendCall(platformId, 'getAlbumSongs', [albumMid, limit]);
   }
 
   /**
@@ -247,16 +257,10 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
 
   /**
    * 取歌手歌曲。返回歌曲数组。
+   * 走统一入口以便带上登录态（见 COOKIE_LAST_ARG_METHODS）。
    */
-  async function getSingerSongs(platformId, singerMid, limit = 30) {
-    const plugin = pluginOf(platformId);
-    if (!plugin || typeof plugin.getSingerSongs !== 'function') return EMPTY.list();
-    const r = await safeRun(
-      `${platformId}.getSingerSongs`,
-      () => plugin.getSingerSongs(singerMid, limit),
-      EMPTY.list(),
-    );
-    return Array.isArray(r) ? r : EMPTY.list();
+  function getSingerSongs(platformId, singerMid, limit = 30) {
+    return recommendCall(platformId, 'getSingerSongs', [singerMid, limit]);
   }
 
   /**
@@ -275,16 +279,10 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
 
   /**
    * 取歌单曲目。返回歌曲数组。
+   * 走统一入口以便带上登录态（见 COOKIE_LAST_ARG_METHODS）。
    */
-  async function getPlaylistSongs(platformId, id, limit = 200) {
-    const plugin = pluginOf(platformId);
-    if (!plugin || typeof plugin.getPlaylistSongs !== 'function') return EMPTY.list();
-    const r = await safeRun(
-      `${platformId}.getPlaylistSongs`,
-      () => plugin.getPlaylistSongs(id, limit),
-      EMPTY.list(),
-    );
-    return Array.isArray(r) ? r : EMPTY.list();
+  function getPlaylistSongs(platformId, id, limit = 200) {
+    return recommendCall(platformId, 'getPlaylistSongs', [id, limit]);
   }
 
   // ── 首页推荐域 ────────────────────────────────────────────
@@ -297,20 +295,13 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
   //
   // 空值约定与历史行为一致：推荐类接口失败 / 平台无此能力 ⇒ []。
   //
-  // 参数约定（与各平台 manifest 实现的形参顺序一致）：
-  //   除 getRanking 外，推荐域方法都**不需要 cookie**；
-  //   getRanking（B 站排行）历史上需要 cookie，故末位注入。
-  //   这是本域唯一的 cookie 差异，用 WITH_COOKIE_METHODS 显式记录，
-  //   避免"哪个方法要 cookie"再次散落进调用点。
+  // 参数约定：哪些方法需要末位带 cookie 见文件上方的 COOKIE_LAST_ARG_METHODS（全仓唯一一份）。
 
   /**
-   * 需要把 cookie 作为**末位参数**注入的推荐域方法。
-   * 仅 B 站排行 —— 其余推荐接口均无需登录态。
-   */
-  const WITH_COOKIE_METHODS = Object.freeze(new Set(['getRanking']));
-
-  /**
-   * 调用推荐域方法。
+   * 调用「返回曲目/条目数组」的方法：无能力、抛错、返回非数组 ⇒ []。
+   *
+   * 取曲目族（getPlaylistSongs / getAlbumSongs / getSingerSongs）与推荐域语义完全
+   * 同形，故共用这一处 —— 「怎么调一个列表方法」也只许有一个家。
    *
    * 能力判定走 registry 推导的 `_caps`（经 supports），而非 gateway 自带清单：
    * 新增平台只要在 manifest 上实现同名方法，这里立刻可用，无需改本文件。
@@ -323,10 +314,10 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
   async function recommendCall(platformId, method, args = []) {
     const plugin = pluginOf(platformId);
     if (!plugin || typeof plugin[method] !== 'function') {
-      logger.warn(`[gateway] ${platformId}.${method}: 平台未实现该推荐能力`);
+      logger.warn(`[gateway] ${platformId}.${method}: 平台未实现该方法`);
       return EMPTY.list();
     }
-    const finalArgs = WITH_COOKIE_METHODS.has(method)
+    const finalArgs = COOKIE_LAST_ARG_METHODS.has(method)
       ? [...args, cookieFor(platformId)]
       : args;
     const r = await safeRun(
@@ -367,7 +358,7 @@ function createPlatformGateway({ registry, getCookie = () => '' } = {}) {
     return recommendCall(platformId, 'getHotSingers', [limit]);
   }
 
-  /** 排行榜（B 站）。需要 cookie，由 recommendCall 按 WITH_COOKIE_METHODS 末位注入。 */
+  /** 排行榜（B 站）。需要 cookie，由 recommendCall 按 COOKIE_LAST_ARG_METHODS 末位注入。 */
   function getRanking(platformId, limit) {
     return recommendCall(platformId, 'getRanking', [limit]);
   }

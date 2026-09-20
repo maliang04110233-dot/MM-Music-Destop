@@ -470,8 +470,9 @@ test('守卫：recommendations.js 经 gateway 调用平台，不再直连或手�
 test('守卫：所有消费方均不直连平台模块（gateway 是唯一调用出口）', () => {
   // 允许直连的两类例外：
   //   1. src/api/platforms/* 自身
-  //   2. 平台单测（test/{fivesing,kuwo,migu,qq,soda}.test.js 直接测平台实现）
-  const ALLOW = /^(src\/api\/platforms\/|test\/[a-z0-9]+\.test\.js$)/;
+  //   2. 平台单测（test/*.test.js 直接测平台实现，如 fivesing/qq/list-cookie-scope）
+  // ⚠️ 豁免只针对 test/ 目录：生产代码（src/）无论文件名怎么起都不在名单里。
+  const ALLOW = /^(src\/api\/platforms\/|test\/[a-z0-9-]+\.test\.js$)/;
   const offenders = [];
 
   const walk = (dir) => {
@@ -484,10 +485,8 @@ test('守卫：所有消费方均不直连平台模块（gateway 是唯一调用
         if (ALLOW.test(rel)) continue;
         const src = read(rel);
         const hits = [...src.matchAll(/require\((?:'|")[^'"]*platforms\/[a-z0-9]+(?:'|")\)/g)];
-        // 平台单测按文件名豁免；其余文件出现直连即记
-        if (hits.length && !/^test\/[a-z0-9]+\.test\.js$/.test(rel)) {
-          offenders.push(`${rel} (${hits.length} 处)`);
-        }
+        // 豁免判据只有 ALLOW 一家（上面已 continue），这里不再重复一遍文件名规则
+        if (hits.length) offenders.push(`${rel} (${hits.length} 处)`);
       }
     }
   };
