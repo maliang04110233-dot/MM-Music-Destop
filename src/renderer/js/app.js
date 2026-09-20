@@ -14,6 +14,7 @@ import './state.js';
 import './toast.js';
 import './utils.js';
 import { buildFallbackNotice } from './fallbackNotice.js';
+import { describePlayError } from './playError.js';
 import './router.js';
 
 // 播放器和快捷键
@@ -371,11 +372,13 @@ async function init() {
         syncToDesktopLyric(_audio);
       });
       _audio.addEventListener('ended', onAudioEnded);
-      // 音源加载/解码出错（URL 失效、代理文件损坏）：toast + 跳下一曲，避免静默卡死
+      // 音源加载/解码出错（URL 失效、代理文件损坏）：toast + 跳下一曲，避免静默卡死。
+      // 文案按行来源分流：本地文件被移走时不能说"音源出错"，那会把人支去查网络。
       _audio.addEventListener('error', () => {
         const cur = getState('currentPlaying');
         if (!cur || !_audio.error) return;
-        showToast('⚠️ 音源播放出错，自动播放下一曲', 'warn', 3000);
+        const e = describePlayError(cur, _audio.error.code);
+        showToast(e.text, e.kind, e.local ? 5500 : 3000);
         if (typeof window.nextSong === 'function') window.nextSong();
       });
       // 25s 加载超时守卫（借鉴 lx usePlayEvent）：一直没等到可播数据则跳下一曲，
