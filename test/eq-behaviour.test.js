@@ -49,7 +49,8 @@ function exportsOf(src) {
 
 const EQ_PUBLIC = ['applyEqPreset', 'resetEq', 'restoreEqPresetSetting', 'saveEqSettings', 'setEqBand', 'toggleEqBypass'];
 // 增量82：eq.js 另有两个仅供频谱可视化模块 import 的图访问器（不走 onclick/window）
-const EQ_ALL = [...EQ_PUBLIC, 'ensureAudioGraph', 'getAnalyser'].sort();
+// 增量187：再加一个仅供单测/派生使用的纯函数 matchPresetName（同上，不经 player 中转）
+const EQ_ALL = [...EQ_PUBLIC, 'ensureAudioGraph', 'getAnalyser', 'matchPresetName'].sort();
 
 // ── A. 音频图已接通（正向钉，增量77）────────────────────────
 test('eq.js: eqFilters 存在填充点（EQ 已接入音频图，回退即红）', () => {
@@ -120,7 +121,7 @@ test('eq.js: 启动恢复接线在首次 playing（用户手势后），不在�
 });
 
 // ── C. 公开面（拆分的核心约束） ────────────────────────
-test('eq.js: 公开面恰为 8 个函数（6 个 UI 面 + 2 个增量82 图访问器）', () => {
+test('eq.js: 公开面恰为 9 个函数（6 个 UI 面 + 2 个增量82 图访问器 + 1 个增量187 派生纯函数）', () => {
   assert.deepEqual(
     exportsOf(EQ_CODE), EQ_ALL,
     'eq.js 的 export 面变化了，player.js 的 re-export、window 挂载与 visualizer 的 import 需同步'
@@ -154,7 +155,7 @@ test('player.js: 6 个 EQ 函数仍挂在 window 上（index.html onclick 的存
 
 test('player.js: EQ 实现已清空（不应再有 EQ_BANDS / EQ_PRESETS / eqFilters 定义）', () => {
   const leaked = [];
-  for (const sym of ['const EQ_BANDS', 'const EQ_PRESETS', 'const eqFilters', 'let eqBypassed', 'let currentEqPreset', 'function getEqGains']) {
+  for (const sym of ['const EQ_BANDS', 'const EQ_PRESETS', 'const eqFilters', 'let eqBypassed', 'function matchPresetName', 'function getEqGains']) {
     if (PLAYER_CODE.includes(sym)) leaked.push(sym);
   }
   assert.deepEqual(leaked, [], `player.js 仍残留 EQ 实现：${leaked.join(', ')}（拆分未完成或发生回退）`);

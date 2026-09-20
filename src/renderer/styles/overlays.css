@@ -402,6 +402,8 @@
   font-variant-numeric: tabular-nums;
 }
 .eq-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
+/* 曲线偏离所有预设时补的一句解释（增量187）：推到最左，与右侧两颗按钮同行不打架 */
+.eq-custom-hint { margin-right: auto; align-self: center; }
 
 /* ── 账号卡片 ────────────────────────────────────────── */
 /* 卡片数量由主进程平台能力派生，不再写死列数；宽度够就并排，不够就折行 */

@@ -183,6 +183,7 @@
   "settings.general.lyricOffset": "Lyrics time offset",
   "settings.general.lyricOffsetHint": "Use a positive value when lyrics run ahead of the audio",
   "settings.general.eqTitle": "Equalizer (EQ)",
+  "settings.general.eqCustom": "Custom curve",
   "settings.general.cacheTitle": "Cache Management",
   "settings.general.clearCache": "🧹 Clear Play Cache",
   "settings.general.cacheHint": "Removes temporary preview files; downloaded music is not affected",

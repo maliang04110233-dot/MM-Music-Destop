@@ -183,6 +183,7 @@
   "settings.general.lyricOffset": "歌词时间偏移",
   "settings.general.lyricOffsetHint": "歌词比声音快时填正值",
   "settings.general.eqTitle": "均衡器 EQ",
+  "settings.general.eqCustom": "当前为自定义曲线",
   "settings.general.cacheTitle": "缓存管理",
   "settings.general.clearCache": "🧹 清理播放缓存",
   "settings.general.cacheHint": "清除试听产生的临时文件，不会影响已下载的音乐",

@@ -11,10 +11,18 @@
  * 原生输出后又不 resume（那会导致无声）。
  * 持久化闭环：eqPreset（曲线名）+ eqBypass + eqGains（逐段手调值）三个
  * 偏好键在预设/手调/重置/bypass 四个动作里都会写，恢复时以 eqGains 为准。
+ * 写这三键的家只有一个：saveEqSettings（增量187 把原先分开的两只手合成一处）。
  * 「默认态」也只有一份定义：重置 = applyEqPreset('flat')（增量179 收口，
  * 此前 resetEq 自带半份归零循环，漏掉预设名、bypass 与按钮高亮）。
  * test/eq-behaviour.test.js 由「现状钉」反转为「正向钉」守卫本实现，
  * test/eq-reset.test.js 守默认态那条路。
+ *
+ * 增量187 收掉 179 当时记在候选里的那扇门：「当前是哪条曲线」不许有第二个家。
+ * 原先除 _gains 外还养着 currentEqPreset 一份抄本，而手调滑块只动 _gains ——
+ * 于是曲线已偏离 rock、按钮上的高亮与 pref 里的 eqPreset 仍说 rock（当场说谎，
+ * 且谎话能活过重启）。现在高亮与 eqPreset 一律由 matchPresetName(_gains) 现推，
+ * 推不出就是 PRESET_CUSTOM（面板上显式标「自定义」），影子变量删除。
+ * test/eq-preset-highlight.test.js 守这条路。
  */
 
 // ── EQ 5 段均衡器 ────────────────────────────────────
@@ -43,11 +51,35 @@ const EQ_PRESETS = {
   jazz:    [ 2,  3,  2,  1,  3],
   bass:    [ 6,  3, -1, -1,  0],
 };
-let currentEqPreset = 'flat';
+
+/** 曲线不属于任何预设时写进 eqPreset 的哨兵（老版本读到它会在 EQ_PRESETS 校验处失配 → 回退，向后兼容） */
+export const PRESET_CUSTOM = 'custom';
 
 const _clampGain = (v) => Math.max(-12, Math.min(12, Number(v) || 0));
 const _effective = () => (eqBypassed ? _gains.map(() => 0) : _gains);
 const _hasProfile = () => !eqBypassed && _gains.some((g) => g !== 0);
+
+/**
+ * 曲线 → 预设名的唯一一只手（增量187）。
+ * 认不出返回 null，由调用方决定怎么交代——绝不"挑一条最接近的"糊上去。
+ * 段数不符直接 null：半条曲线不是任何预设。
+ */
+export function matchPresetName(gains) {
+  if (!Array.isArray(gains) || gains.length !== EQ_BANDS.length) return null;
+  const hit = Object.keys(EQ_PRESETS).find((n) => EQ_PRESETS[n].every((g, i) => g === Number(gains[i])));
+  return hit || null;
+}
+
+/** 高亮与「自定义」标记的唯一写入口。刻意不接名字参数：镜子只能是曲线的函数 */
+function _syncPresetHighlight() {
+  const name = matchPresetName(_gains);
+  document.querySelectorAll('.eq-preset-btn').forEach((b) => {
+    const mine = b.dataset ? b.dataset.eqPreset : null;
+    b.classList.toggle('eq-preset-active', mine === name);
+  });
+  const hint = document.getElementById('eqCustomHint');
+  if (hint) hint.style.display = name ? 'none' : '';
+}
 
 /** 把 _gains（含 bypass 语义）镜像到已存在的滤波器节点 */
 function _mirrorToGraph() {
@@ -113,7 +145,6 @@ export function getAnalyser() { return analyserNode; }
 export function applyEqPreset(name) {
   const gains = EQ_PRESETS[name];
   if (!gains) return;
-  currentEqPreset = name;
   eqBypassed = false;
   gains.forEach((g, i) => { _gains[i] = _clampGain(g); });
   ensureEqGraph();
@@ -127,13 +158,11 @@ export function applyEqPreset(name) {
       if (labels[i]) labels[i].textContent = gains[i] + 'dB';
     }
   });
-  // 更新预设按钮高亮
-  document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('eq-preset-active'));
-  document.querySelectorAll(`[data-eq-preset="${name}"]`).forEach(b => b.classList.add('eq-preset-active'));
+  // 高亮由曲线现推（增量187）：这里刻意不传 name —— 传了就等于又养一份影子状态
+  _syncPresetHighlight();
   // 选预设隐含"EQ 是开着的"（上面刚把 eqBypassed 置 false），按钮必须跟着走：
   // 增量179 之前这里漏了这一格，于是"重置/选预设"之后按钮还写着 🔇 EQ关闭
   _syncBypassBtn();
-  saveEqPresetSetting(name);
   saveEqSettings();
 }
 
@@ -143,28 +172,21 @@ export function toggleEqBypass() {
   _mirrorToGraph();
   // bypass 时不改滑块显示，只改按钮状态
   _syncBypassBtn();
-  saveEqPresetSetting(currentEqPreset);
+  saveEqSettings(); // 三键的唯一持久化家；bypass 不改曲线，高亮自然也不改
 }
 
-// ── 预设持久化 ────────────────────────────────────────
-async function saveEqPresetSetting(name) {
-  try {
-    await api.setPref('eqPreset', name);
-    await api.setPref('eqBypass', eqBypassed);
-  } catch (e) { /* silent */ }
-}
-
+// ── 启动恢复 ─────────────────────────────────────────
 async function restoreEqPresetSetting() {
   try {
-    const name = await api.getPref('eqPreset') || 'flat';
+    const stored = await api.getPref('eqPreset') || 'flat';
     const bypass = await api.getPref('eqBypass');
     const rawGains = await api.getPref('eqGains');
-    if (name && EQ_PRESETS[name]) currentEqPreset = name;
     eqBypassed = bypass === true;
     const valid = Array.isArray(rawGains)
       && rawGains.length === EQ_BANDS.length
       && rawGains.every((g) => Number.isFinite(g));
-    const gains = valid ? rawGains.map(_clampGain) : (EQ_PRESETS[currentEqPreset] || EQ_PRESETS.flat);
+    // 没有 eqGains 的老备份按存过的曲线名兜底；'custom' 这类认不出的名字回落到 flat
+    const gains = valid ? rawGains.map(_clampGain) : (EQ_PRESETS[stored] || EQ_PRESETS.flat);
     gains.forEach((g, i) => { _gains[i] = g; });
     _mirrorToGraph();
     // UI 对齐持久化状态（重启后台词/滑块不再停留默认值）
@@ -175,8 +197,8 @@ async function restoreEqPresetSetting() {
       if (label) label.textContent = _gains[i] + 'dB';
     });
     _syncBypassBtn();
-    document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('eq-preset-active'));
-    document.querySelectorAll(`[data-eq-preset="${currentEqPreset}"]`).forEach(b => b.classList.add('eq-preset-active'));
+    // 增量187：亮哪枚只看恢复出来的曲线，不看 stored 名字 —— 名字可能是上个版本存的谎
+    _syncPresetHighlight();
   } catch (e) { /* silent */ }
 }
 
@@ -193,6 +215,8 @@ export function setEqBand(index, gain) {
    _gains[index] = _clampGain(gain);
    ensureEqGraph();
    _mirrorToGraph();
+   // 拖一格，按钮就该当场改口（松手时 onchange 才写 pref）
+   _syncPresetHighlight();
 }
 
 export function resetEq() {
@@ -202,9 +226,17 @@ export function resetEq() {
   applyEqPreset('flat');
 }
 
+/** 三键的唯一持久化家：曲线/预设名/开关要么一起写，要么都不写（增量187 收拢） */
 export async function saveEqSettings() {
+   _syncPresetHighlight();
+   const gains = getEqGains();
+   const name = matchPresetName(gains) || PRESET_CUSTOM;
    try {
-     await api.setPref('eqGains', getEqGains());
+     await Promise.all([
+       api.setPref('eqGains', gains),
+       api.setPref('eqPreset', name),
+       api.setPref('eqBypass', eqBypassed),
+     ]);
    } catch (_e) { /* EQ 保存失败使用默认 */ }
 }
 
