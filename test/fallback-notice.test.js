@@ -67,14 +67,13 @@ test('nameOf 缺省时走全局 platformName，都没有则原样 id（node 环�
   }
 });
 
-test('接线钉：四处播放入口都改用 buildFallbackNotice，旧复制文案在干净文件里清零', async () => {
+test('接线钉：五处播放入口都改用 buildFallbackNotice，旧复制文案清零', async () => {
   const { readFileSync } = await import('node:fs');
-  for (const f of ['player.js', 'app.js', 'views/search.js', 'views/playlist.js']) {
+  for (const f of ['player.js', 'app.js', 'views/search.js', 'views/playlist.js', 'views/home.js']) {
     const src = readFileSync(new URL(`../src/renderer/js/${f}`, import.meta.url), 'utf8');
     assert.ok(!src.includes('本源不可用，已切换到'), `${f} 仍残留手抄换源文案`);
     assert.ok(src.includes('buildFallbackNotice'), `${f} 未接共享文案`);
+    // referer 口径统一：实际出流平台优先（记忆命中时 result.source 才是别家源）
+    assert.ok(!src.includes('matchedSong?.source ||'), `${f} playSource 仍是旧口径`);
   }
-  // referer 口径统一：实际出流平台优先（记忆命中时 result.source 才是别家源）
-  const player = readFileSync(new URL('../src/renderer/js/player.js', import.meta.url), 'utf8');
-  assert.ok(!player.includes('matchedSong?.source || song.source'), 'playSource 旧口径残留');
 });

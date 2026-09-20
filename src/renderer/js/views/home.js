@@ -23,6 +23,7 @@ import { resolveQuality } from '../quality.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { filterHomeSection } from '../homeFilter.js';
 import { platIdsOf, normalizePlatTab, nextPlatTab, HOME_PLAT_LS_KEY } from '../homePlatTabs.js';
+import { buildFallbackNotice } from '../fallbackNotice.js';
 
 // 首页榜单过滤词（会话级；小写化在 filterHomeSection 内统一处理）
 let _homeFilterStr = '';
@@ -816,11 +817,12 @@ async function playRecommendSong(song) {
       return;
     }
     song._playedQuality = quality;
+    const notice = buildFallbackNotice(result, song.source);
+    if (notice) showToast(notice, 'info', 3000);
     if (result.matchedSong) {
-      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
-    const playSource = result.matchedSong?.source || song.source;
+    const playSource = result.source || song.source;
     const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (!proxied || !proxied.fileUrl) {
