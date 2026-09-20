@@ -378,7 +378,7 @@ function _renderLocalRow(s, i) {
   const rowClass = selected && _localSelectionMode ? 'local-row selected' : 'local-row';
   const encodedPath = btoa(encodeURIComponent(s.filePath));
   return `
-  <div class="${rowClass}" data-idx="${i}" onclick="playLocalSong(${i})" oncontextmenu="event.preventDefault();event.stopPropagation();showLocalRowMenu(event,${i})" style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer;">
+  <div class="${rowClass}" data-idx="${i}" tabindex="0" role="button" onclick="playLocalSong(${i})" oncontextmenu="event.preventDefault();event.stopPropagation();showLocalRowMenu(event,${i})" style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border-subtle);cursor:pointer;">
     ${_localSelectionMode ? `
     <div class="local-row-cb" onclick="event.stopPropagation();toggleLocalSelect('${encodedPath}',${i})">
       <input type="checkbox" id="localcb_${i}" ${selected ? 'checked' : ''} onchange="event.stopPropagation();toggleLocalSelect('${encodedPath}',${i})">
@@ -950,7 +950,7 @@ function renderLocalGrid() {
     return;
   }
   grid.innerHTML = localFiltered.map((s, i) => `
-    <div class="grid-cell" onclick="playLocalSong(${i})">
+    <div class="grid-cell" tabindex="0" role="button" onclick="playLocalSong(${i})">
       <div class="grid-cover">
         ${s.cover
           ? `<img src="${escAttr(s.cover)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`

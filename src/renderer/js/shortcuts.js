@@ -8,6 +8,24 @@
   document.addEventListener('keydown', handleKey);
 })();
 
+// ── 键盘可达桥（qa-5 回写）：带 onclick 的 div 卡片/行只认鼠标 ──
+// 收口成一处：模板只负责挂 tabindex="0"，激活语义全在这里，
+// 之后任何新卡片补 tabindex 即自动可键盘，零逐页补丁。
+function isKbClickable(el) {
+  return !!(el && el.matches && el.matches('[tabindex="0"][onclick]'));
+}
+(function setupKbClickableBridge() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented) return; // 已被前面的消费者（如搜索列表导航）处理
+    const el = document.activeElement;
+    if (!isKbClickable(el)) return;
+    e.preventDefault(); // Space 不滚页
+    el.click(); // 合成 click，onclick 属性与冒泡监听都照常走
+  });
+})();
+
 function handleKey(e) {
   // 输入框中不拦截（除了 Esc）
   const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)
@@ -106,7 +124,8 @@ function handleKey(e) {
 
   // ── Space 播放/暂停（不在输入框）──
   if (e.key === ' ') {
-    if (inInput || _anyModalOpen()) return;
+    // 焦点在键盘可点卡片上时让位：Space 应"按"这张卡，不是全局播放/暂停
+    if (inInput || _anyModalOpen() || isKbClickable(document.activeElement)) return;
     e.preventDefault();
     if (typeof togglePlay === 'function') togglePlay();
     return;

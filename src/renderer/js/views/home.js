@@ -500,7 +500,7 @@ function renderSectionError(meta, msg) {
   // is-unavailable 是「本分区没有可用内容」的语义标记：
   // _sinkUnavailableSections 据此把它连同页签一起沉到平台区块末尾。
   el.classList.add('is-unavailable');
-  el.innerHTML = `<div class="home-sec-msg is-error" onclick="reloadHomePlatform('${escQ(_platOf(meta.sec))}')">⚠️ ${esc(msg)}，点击重试</div>`;
+  el.innerHTML = `<div class="home-sec-msg is-error" tabindex="0" role="button" onclick="reloadHomePlatform('${escQ(_platOf(meta.sec))}')">⚠️ ${esc(msg)}，点击重试</div>`;
   _sinkUnavailableSections(_platOf(meta.sec));
 }
 
@@ -558,7 +558,7 @@ function _sinkUnavailableSections(plat) {
  */
 function playlistCardHtml(p) {
   return `
-    <div class="playlist-card" onclick="openPlaylistModal('${escQ(p.source)}', '${escQ(p.id)}', '${escQ(p.name)}')">
+    <div class="playlist-card" tabindex="0" role="button" onclick="openPlaylistModal('${escQ(p.source)}', '${escQ(p.id)}', '${escQ(p.name)}')">
       <div class="playlist-cover-wrap">
         ${p.cover
           ? `<img class="playlist-cover" src="${escAttr(p.cover)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.remove()">`
@@ -601,7 +601,7 @@ function songRowsHtml(meta, rows) {
   // _resolveSectionSong 回查，过滤后重排下标会点 A 播 B；id 一起烘焙进回调，
   // 弹窗快照与 live 数组错位时按下标+id 双重校验，id 命中则仍能正确取歌。
   return rows.map(({ s, i }) => `
-    <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" onclick="playRecommendById('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">
+    <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" tabindex="0" role="button" onclick="playRecommendById('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">
       <span class="top-song-rank ${i < 3 ? 'top3' : ''}">${i + 1}</span>
       ${coverThumbHtml(s.cover)}
       <div class="top-song-info">
@@ -988,7 +988,7 @@ function renderRecentlyPlayed() {
   }
 
   list.innerHTML = recent.slice(0, 10).map((s, i) => `
-    <div class="recent-item" onclick="playRecentSong(${i})" title="${esc(s.title)} - ${esc(s.artist)}">
+    <div class="recent-item" tabindex="0" role="button" onclick="playRecentSong(${i})" title="${esc(s.title)} - ${esc(s.artist)}">
       <div class="recent-cover">
         ${s.cover
           ? `<img src="${escAttr(s.cover)}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="this.parentElement.innerHTML='🎵'">`

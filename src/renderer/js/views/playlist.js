@@ -82,7 +82,7 @@ function renderPlaylistList(playlists) {
   }
 
   container.innerHTML = shown.map(pl => `
-    <div class="playlist-card" data-id="${escAttr(pl.id)}" onclick="openPlaylistDetail('${escQ(pl.id)}')">
+    <div class="playlist-card" data-id="${escAttr(pl.id)}" tabindex="0" role="button" onclick="openPlaylistDetail('${escQ(pl.id)}')">
       <div class="playlist-card-cover">
         ${pl.cover ? `<img src="${escAttr(pl.cover)}" alt="${esc(pl.name)}" onerror="this.style.display='none'">` : `<div class="playlist-card-placeholder">${pl.system ? HEART_ON : '📋'}</div>`}
         <div class="playlist-card-overlay">
@@ -821,7 +821,7 @@ function showPlaylistSelectModal(song, playlists) {
     if (!modal || !list) return;
 
     list.innerHTML = playlists.map(pl => `
-      <div class="playlist-select-item" onclick="addToSelectedPlaylist('${escQ(pl.id)}')">
+      <div class="playlist-select-item" tabindex="0" role="button" onclick="addToSelectedPlaylist('${escQ(pl.id)}')">
         <span class="playlist-select-icon">🎼</span>
         <span class="playlist-select-name">${esc(pl.name)}</span>
         <span class="playlist-select-count" style="font-size:11px;color:var(--neon-dim);">${pl.songs?.length || 0} 首</span>
