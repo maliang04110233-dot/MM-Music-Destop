@@ -102,7 +102,7 @@ function renderHistory(items, stats) {
       <div class="history-icon">${s.status === 'done' ? (dead ? '🚫' : '✅') : '❌'}</div>
       <div class="history-info">
         <div class="history-title">${esc(s.title)}</div>
-        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}${dead ? ' · <span style="color:var(--neon-yellow)">文件已不在磁盘上</span>' : ''}${s.status === 'error' ? failureTagHtml(s.errorCode) : ''}</div>
+        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}${dead ? ' · <span style="color:var(--neon-yellow)">文件已不在磁盘上</span>' : ''}${s.status === 'error' ? failureTagHtml(s.errorCode, { fn: 'diagnoseHistoryItem', arg: idx }) : ''}</div>
       </div>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       <span class="history-quality">${esc(s.quality || 'standard')}</span>

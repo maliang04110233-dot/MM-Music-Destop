@@ -109,7 +109,7 @@ test('download.js 不再自带码表与手抄鉴权正则', () => {
   assert.match(src, /import \{[^}]*failureTagHtml[^}]*\} from '\.\.\/diagnose\.js'/,
     '队列页应从 diagnose.js 取徽标');
   assert.match(src, /import \{[^}]*isAuthFailure[^}]*\} from '\.\.\/diagnose\.js'/);
-  assert.match(src, /failureTagHtml\(s\.errorCode\)/, '队列行须继续渲染徽标');
+  assert.match(src, /failureTagHtml\(s\.errorCode\b/, '队列行须继续渲染徽标');
   assert.match(src, /if \(isAuthFailure\(s\.errorCode\)\) continue/, '批量重试须走统一鉴权判定');
 });
 
@@ -153,7 +153,7 @@ test('历史失败行就地显示原因徽标，且只在 error 行显示', () =
     '历史页应从 diagnose.js 取徽标，而不是自己造句');
   assert.ok(!/ERROR_TAGS|VIP_REQUIRED:/.test(src), '历史页不许再开一份码表');
   const row = src.slice(src.indexOf('_historyItems.map'), src.indexOf('exportHistoryM3u'));
-  assert.match(row, /s\.status === 'error' \? failureTagHtml\(s\.errorCode\)/,
+  assert.match(row, /s\.status === 'error' \? failureTagHtml\(s\.errorCode\b/,
     '徽标必须按 status 把关：合并写会留下上一次失败的 errorCode，不看 status 就是给 ✅ 戴 ❌ 的帽子');
   assert.ok(!/!s\.status|dead \? failureTagHtml/.test(row), '判活失效行（🚫）不是失败行，不该出现原因徽标');
 });
@@ -164,5 +164,88 @@ test('徽标两条消费路径都零新 IPC 通道', () => {
     const used = [...read(f).matchAll(/\bapi\.([A-Za-z0-9_]+)\s*\(/g)].map((m) => m[1]);
     const extra = used.filter((k) => !(k in METHODS));
     assert.deepEqual(extra, [], `${f} 引入了契约外的 api 调用：${extra.join(', ')}`);
+  }
+});
+
+// ── 增量175：徽标本身即诊断入口 ────────────────────────────
+//
+// 症状：162 让行内戴上了「需VIP / Cookie过期」，158+164 让 🆘 弹层会说「怎么办」，
+// 但这两样在空间上是分开的 —— 用户的眼睛落在徽标上，手却要摸到行尾那枚按钮。
+// 队列进入批量选择模式时行尾 🆘 整组隐藏，那一刻徽标是唯一的失败线索，却点不动。
+// 修法：failureTagHtml 接第二参 {fn, arg}，由页面把「这一行该调哪个入口」交给徽标。
+// 通用层依旧不认识任何一页的动作（158 立的规矩），拿到的只是入口名 + 机器生成的 id。
+
+test('徽标挂上点击：先掐掉行级 onclick，再调页面交来的入口', async () => {
+  const { failureTagHtml } = await fresh();
+  const html = failureTagHtml('NETWORK_TIMEOUT', { fn: 'diagnoseFailure', arg: 'lx7ab_3f9k2c' });
+  assert.match(html, /^<span class="fail-tag"/, '它仍是那枚徽标，不是换成了别的控件');
+  assert.match(html, /role="button"/, '可点的非按钮元素要报出角色（读屏与队列行内已有的点击区同一写法）');
+  assert.match(html, /tabindex="0"/);
+  assert.match(html, /title="[^"]*诊断[^"]*"/, '悬停须说清点下去会看到什么');
+  assert.match(html, /onclick="event\.stopPropagation\(\);diagnoseFailure\('lx7ab_3f9k2c'\)"/,
+    '徽标在队列的 queue-info 点击区内部，不 stopPropagation 就是"点开诊断顺便展开详情"');
+  assert.match(html, /cursor:pointer/, '看不出来能点的入口等于没有入口');
+  assert.match(html, />网络超时<\/span>$/, '徽标文案一字不许动（长文案属于弹层）');
+});
+
+test('不给动作时长相与 162 一字不差（九码全数无 onclick / 无指针 / 无角色）', async () => {
+  const { failureTagHtml } = await fresh();
+  for (const code of CODES) {
+    const html = failureTagHtml(code);
+    assert.ok(!/onclick|cursor|title=|role=|tabindex/.test(html),
+      `${code} 无动作时不该长出可点痕迹：${html}`);
+  }
+});
+
+test('数字参数按数值传入（历史行号与行尾 🆘 的 diagnoseHistoryItem(idx) 同一口径）', async () => {
+  const { failureTagHtml } = await fresh();
+  const html = failureTagHtml('CDN_EMPTY', { fn: 'diagnoseHistoryItem', arg: 3 });
+  assert.match(html, /diagnoseHistoryItem\(3\)/, '行号是数值，不该被引号变成字符串');
+  assert.match(failureTagHtml('CDN_EMPTY', { fn: 'diagnoseHistoryItem', arg: 0 }), /diagnoseHistoryItem\(0\)/,
+    '第一行的行号 0 是合法值，不许被当成空值丢掉');
+});
+
+test('参数形状不合规就不挂点击：徽标层没有转义器，宁可退回不可点徽标', async () => {
+  const { failureTagHtml } = await fresh();
+  const plain = failureTagHtml('NETWORK_TIMEOUT');
+  const bad = [
+    { fn: 'f', arg: "a'b" }, { fn: 'f', arg: 'a"b' }, { fn: 'f', arg: '<script>' },
+    { fn: 'f', arg: 'x;alert(1)' }, { fn: 'f', arg: 'a b' }, { fn: 'f', arg: '' },
+    { fn: 'f', arg: NaN }, { fn: 'f', arg: -1 }, { fn: 'f', arg: 1.5 },
+    { fn: '', arg: 1 }, { fn: 'a-b', arg: 1 }, { fn: 'window.x', arg: 1 }, { fn: null, arg: 1 },
+    {}, null, undefined, 'f', ['f'], 42,
+  ];
+  for (const diag of bad) {
+    assert.equal(failureTagHtml('NETWORK_TIMEOUT', diag), plain,
+      `${JSON.stringify(diag)} 不该挂上点击`);
+  }
+});
+
+test('接线：队列把 taskId 交给徽标（批量选择模式下行尾 🆘 会隐藏）', () => {
+  const src = read('src/renderer/js/views/download.js');
+  assert.match(src, /failureTagHtml\(s\.errorCode, \{ fn: 'diagnoseFailure', arg: s\.taskId \}\)/,
+    '队列行徽标未接诊断入口');
+});
+
+test('接线：历史把行号交给徽标，与行尾 🆘 共用同一个 diagnoseHistoryItem', () => {
+  const src = read('src/renderer/js/views/history.js');
+  const row = src.slice(src.indexOf('_historyItems.map'), src.indexOf('exportHistoryM3u'));
+  assert.match(row, /failureTagHtml\(s\.errorCode, \{ fn: 'diagnoseHistoryItem', arg: idx \}\)/,
+    '历史行徽标未接诊断入口');
+  assert.match(row, /onclick="diagnoseHistoryItem\(\$\{idx\}\)">🆘</,
+    '行尾按钮与徽标必须调同一个入口，否则两处入口会各自漂移');
+});
+
+test('诊断入口都是页面已挂在 window 上的既有函数（零新 IPC、零新入口）', () => {
+  assert.match(read('src/renderer/js/diagnose.js'), /window\.diagnoseFailure = diagnoseFailure;/);
+  assert.match(read('src/renderer/js/views/history.js'), /window\.diagnoseHistoryItem = diagnoseHistoryItem;/);
+});
+
+test('徽标渲染保持纯函数：不碰 api / window / document（Node 里直接测得动）', () => {
+  const src = read('src/renderer/js/diagnose.js');
+  const body = src.slice(src.indexOf('export function failureTagHtml'), src.indexOf('function _closeDiag'));
+  assert.ok(body.length > 0, 'failureTagHtml 与 _closeDiag 的相对位置变了，本钉取不到片段');
+  for (const re of [/\bapi\./, /\bwindow\./, /\bdocument\./]) {
+    assert.ok(!re.test(body), `徽标渲染里出现了 ${re}，纯函数口径会被打破（测试得在 Node 里跑）`);
   }
 });

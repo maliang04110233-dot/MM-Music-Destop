@@ -206,7 +206,7 @@ function _queueRowHtml(s) {
       <div class="queue-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
       <div class="queue-info" tabindex="0" role="button" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" style="cursor:pointer;">
         <div class="queue-title">${esc(s.title || '未知')}</div>
-        <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${failureTagHtml(s.errorCode)}</div>
+        <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${failureTagHtml(s.errorCode, { fn: 'diagnoseFailure', arg: s.taskId })}</div>
         ${s.status === 'downloading' ? `
         <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>
         <div class="queue-dl-meta" id="progmeta-${escAttr(s.taskId)}"></div>` : ''}

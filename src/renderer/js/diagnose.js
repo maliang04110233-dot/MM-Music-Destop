@@ -16,6 +16,11 @@
  * 增量164 起「最近的失败」不再只住队列（队列重启即清空，开机后两条 ⌘K 入口只会说
  * 「没有失败任务」，而历史里全是红的）：失败清单由 pickFailureSource 定谁提供 ——
  * 队列优先、队列没有才用历史兜底，两个入口共用 _failureSources 一份取数。
+ *
+ * 增量175 起徽标自己就是入口：162 让行内戴上了「需VIP / Cookie过期」，但要说「怎么办」
+ * 还得摸到行尾那枚 🆘 —— 而队列进入批量选择模式时那一整组按钮会隐藏。现在点徽标即弹诊断，
+ * 页面只交出「入口名 + 机器生成的 id」（diagnoseFailure(taskId) / diagnoseHistoryItem(idx)），
+ * 通用层依旧不认识任何一页的动作（158 的规矩）；id 形状不对就不挂点击，宁可少一个入口也不给注入留缝。
  */
 
 /** 码表：cause=给用户看的原因，advice=下一步建议，heal=可一键执行的动作，tag=行内徽标（短标签+语义色） */
@@ -68,11 +73,33 @@ export function failureTag(errorCode) {
   return row ? { label: row.tag.label, color: row.tag.color } : null;
 }
 
-/** 徽标 HTML：队列行与历史行共用这一份渲染（两处各写一遍必然长歪） */
-export function failureTagHtml(errorCode) {
+/**
+ * 徽标 HTML：队列行与历史行共用这一份渲染（两处各写一遍必然长歪）。
+ * 第二参 diag={fn,arg} 给定时，徽标本身就是诊断入口 —— 用户的眼睛落在徽标上，手不必去摸
+ * 行尾那枚 🆘；而队列进入批量选择模式时行尾按钮整组隐藏，那一刻它是仅剩的入口。
+ * 页面交出来的只有「入口名 + 机器生成的 id」（taskId / 行号），通用层依旧不认识任何一页的动作。
+ * 本函数不配 HTML 转义器（它是纯函数，测试在 Node 里直接调），所以 id 只认 token 字符集，
+ * 形状不对就退回不可点徽标：宁可少一个入口，也不给注入留缝。
+ */
+export function failureTagHtml(errorCode, diag) {
   const t = failureTag(errorCode);
   if (!t) return '';
-  return `<span class="fail-tag" style="color:${t.color}">${t.label}</span>`;
+  const call = _diagCall(diag);
+  if (!call) return `<span class="fail-tag" style="color:${t.color}">${t.label}</span>`;
+  return `<span class="fail-tag" role="button" tabindex="0" title="点击诊断这次失败（原因 + 建议 + 下一步）"`
+    + ` style="color:${t.color};cursor:pointer;" onclick="${call}">${t.label}</span>`;
+}
+
+const DIAG_FN_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const DIAG_ID_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function _diagCall(diag) {
+  if (!diag || typeof diag !== 'object') return '';
+  const { fn, arg } = diag;
+  if (typeof fn !== 'string' || !DIAG_FN_RE.test(fn)) return '';
+  if (typeof arg === 'number') return Number.isInteger(arg) && arg >= 0 ? `event.stopPropagation();${fn}(${arg})` : '';
+  if (typeof arg === 'string') return DIAG_ID_RE.test(arg) ? `event.stopPropagation();${fn}('${arg}')` : '';
+  return '';
 }
 
 function _closeDiag() {
