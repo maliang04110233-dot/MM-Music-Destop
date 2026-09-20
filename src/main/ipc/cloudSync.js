@@ -7,6 +7,7 @@
 const { dialog } = require('electron');
 const { handle } = require('./register');
 const prefs = require('../../utils/prefs');
+const { ALLOWED_PREF_KEYS } = require('./prefs');
 const history = require('../../utils/history');
 const secretStore = require('../../utils/secretStore');
 const webdav = require('../../utils/webdav');
@@ -19,21 +20,31 @@ const logger = require('../../utils/logger');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
 
-// 导入允许写入的 prefs 键（与 ipc/prefs.js 的 ALLOWED_PREF_KEYS 保持一致，
-// 另加仅主进程内部使用的键）。导入文件内容不可信，未列出的键一律丢弃。
-const IMPORTABLE_PREF_KEYS = new Set([
-  'saveDir', 'localDirPath', 'theme', 'language',
-  'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
-  'namingTemplate', 'qualityBySource',
-  'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
-  'lyricFontSize', 'lyricOffset', 'playProgressMemory',
-  'recentlyPlayed', 'playStats', 'playProgressMap',
-  'eqPreset', 'eqGains', 'eqBypass',
-  'aiMusicApiKey', 'aiMusicSaveDir', 'convertOutputDir', 'convertLoudnorm',
-  'downloadTemplates', 'searchHistory',
+// 导入允许写入的 prefs 键：直接以 ipc/prefs.js 的 ALLOWED_PREF_KEYS 为唯一来源。
+// 曾经这里手抄过一份字面量清单，结果每加一个设置键就漂移一次——备份里明明
+// 存着 换源排除平台/歌词逐曲覆写/倍速/队列完成后动作…，导入时被静默丢弃，
+// 换机恢复完用户只看到"设置少了一半"。密文键（webdavPass/mcpToken）本就不在
+// ALLOWED 里，导出侧也会主动删除，不会进备份。
+const IMPORTABLE_PREF_KEYS = new Set([...ALLOWED_PREF_KEYS,
   // 主进程内部维护的数据键（导出时单独收集，导入时回写）
-  'userPlaylists', 'activeDownloadTemplate',
-]);
+  'userPlaylists', 'activeDownloadTemplate']);
+
+// 从不可信备份里挑出可回写的 prefs 键。两道闸：白名单 + 目录键的已批准目录守卫
+// （导入不等于授予任意目录读写权，被挡下的目录键计数以便如实报告）。
+function pickImportablePrefs(raw) {
+  const kept = {};
+  let droppedDirs = 0;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kept, droppedDirs };
+  for (const [key, value] of Object.entries(raw)) {
+    if (!IMPORTABLE_PREF_KEYS.has(key)) continue;
+    if (DIR_PREF_KEYS.has(key) && value && !approvedDirs.isApprovedDir(value)) {
+      droppedDirs++;
+      continue;
+    }
+    kept[key] = value;
+  }
+  return { kept, droppedDirs };
+}
 
 function register() {
   // 导出所有数据
@@ -153,19 +164,9 @@ function register() {
 
       // 通用设置：只接受白名单键（导入文件内容不可信，防止注入未知键）
       if (data.prefs && typeof data.prefs === 'object') {
-        let applied = 0;
-        let droppedDirs = 0;
-        for (const [key, value] of Object.entries(data.prefs)) {
-          if (!IMPORTABLE_PREF_KEYS.has(key)) continue;
-          // C1: 目录键来自不可信备份 —— 只接受已批准目录，否则丢弃，
-          // 让用户在设置里重新选一次（导入不应等于授予任意目录读写权）
-          if (DIR_PREF_KEYS.has(key) && value && !approvedDirs.isApprovedDir(value)) {
-            droppedDirs++;
-            continue;
-          }
-          prefs.set(key, value);
-          applied++;
-        }
+        const { kept, droppedDirs } = pickImportablePrefs(data.prefs);
+        for (const [key, value] of Object.entries(kept)) prefs.set(key, value);
+        const applied = Object.keys(kept).length;
         if (applied) results.push(`通用设置: ${applied} 项`);
         if (droppedDirs) results.push(`目录设置: ${droppedDirs} 项被忽略（需在设置中重新选择）`);
       }
@@ -250,4 +251,4 @@ async function getAllPrefs() {
   return {};
 }
 
-module.exports = { register, IMPORTABLE_PREF_KEYS };
+module.exports = { register, IMPORTABLE_PREF_KEYS, pickImportablePrefs };
