@@ -147,19 +147,15 @@ async function _doScanLocalDir() {
       const retry = await api.scanLocalLibrary(localDirPath);
       if (retry.error) { showToast('扫描失败: ' + retry.error, 'error'); return; }
       setState('localSongs', retry.songs || []);
-      setState('localFiltered', _sortL([...(retry.songs || [])]));
       document.getElementById('localInfo').textContent = `共 ${(retry.songs || []).length} 首 · ${localDirPath}`;
-      if (_localGridView) renderLocalGrid();
-      else renderLocalSongs();
+      filterLocalSongs(); // 重扫后必须重套当前筛选（与 refreshLocalLibrary 同一约定）
       showToast(`扫描完成，发现 ${(retry.songs || []).length} 首歌曲`, 'success');
       return;
     }
     const localSongs = result.songs || [];
     setState('localSongs', localSongs);
-    setState('localFiltered', _sortL([...localSongs]));
     document.getElementById('localInfo').textContent = `共 ${localSongs.length} 首 · ${localDirPath}`;
-    if (_localGridView) renderLocalGrid();
-    else renderLocalSongs();
+    filterLocalSongs(); // 重扫后必须重套当前筛选：直接 setState('localFiltered') 会丢掉收藏/格式/音质/完整度/关键词全部轴
     showToast(`扫描完成，发现 ${localSongs.length} 首歌曲`, 'success');
   } catch (e) {
     showToast('扫描失败: ' + e.message, 'error');

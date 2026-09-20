@@ -192,3 +192,44 @@ test('player-controls.js: 定时到期只能暂停，不得调用 togglePlay（�
     'audio.pause() 后再 togglePlay 会把刚暂停的播放又续上');
   assert.match(timerBlock[0], /audio\.pause\(\)/, '到期必须主动 pause');
 });
+
+// ── 增量129：换库路径必须重套筛选（与 refreshLocalLibrary 同一约定）──
+
+/** 剥注释后再扫描：本仓库有「注释里写代码示例」的惯例，不剥会把说明文字当成代码证据 */
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, '');
+}
+
+test('自检: stripComments 生效（注释里的 setState 示例不得被当成代码）', () => {
+  assert.ok(!stripComments("// setState('localFiltered', x)").includes("setState('localFiltered'"), '行注释未剥离');
+  assert.ok(!stripComments("/* setState('localFiltered') */ let a = 1;").includes("setState('localFiltered'"), '块注释未剥离');
+  assert.ok(stripComments("setState('localFiltered', y);").includes("setState('localFiltered'"), '代码被误剥离');
+});
+
+test('local.js: 凡写 localSongs 的路径必须随后调 filterLocalSongs（只写 localFiltered 会静默丢掉全部过滤轴）', () => {
+  const lines = stripComments(read('js', 'views', 'local.js')).split('\n');
+  const sites = [];
+  lines.forEach((line, i) => {
+    if (!line.includes("setState('localSongs'")) return;
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+      if (lines[j].includes('filterLocalSongs()')) { sites.push({ at: i + 1, ok: true }); return; }
+      if (lines[j].includes("setState('localFiltered'")) { sites.push({ at: i + 1, ok: false, badAt: j + 1 }); return; }
+    }
+    sites.push({ at: i + 1, ok: false, badAt: null });
+  });
+  assert.ok(sites.length >= 3,
+    `应找到至少 3 条写入 localSongs 的路径（重扫 / 重选目录后重扫 / fs.watch 自动刷新），实际 ${sites.length}`);
+  for (const s of sites) {
+    assert.ok(s.ok, s.badAt
+      ? `local.js:${s.at} 写了 localSongs，随后却直接写 localFiltered（第 ${s.badAt} 行）——重扫后收藏/格式/音质/完整度/关键词全部轴静默失效，按钮还亮着`
+      : `local.js:${s.at} 写了 localSongs，但 8 行内没有 filterLocalSongs()，新库不会重套筛选`);
+  }
+});
+
+test('local.js: localFiltered 只允许由 filterLocalSongs 写入（多一处就多一条绕过过滤轴的路径）', () => {
+  const code = stripComments(read('js', 'views', 'local.js'));
+  const writes = (code.match(/setState\('localFiltered'/g) || []).length;
+  assert.strictEqual(writes, 1, `local.js 里应只有 filterLocalSongs 一处写 localFiltered，实际 ${writes} 处`);
+});
