@@ -459,31 +459,88 @@ function renderSection(meta, data) {
   if (!el) return;
 
   if (!Array.isArray(data) || !data.length) {
-    el.innerHTML = '<div class="home-sec-msg">暂无数据</div>';
+    // 空数据 **不等于**「这个榜真的没有歌」：失败信号在到达渲染层前已被两层抹平 ——
+    // qq.js 四类加载器一律 `catch → return []`，gateway.recommendCall 再经
+    // `safeRun(…, EMPTY.list())` 吞一次，于是 recommendations.getHomeSection
+    // 只能把它包成 `{ok:true, data:[]}`，home.js 走的是**成功分支**。
+    // 纯渲染层无法区分「真无数据」与「源失败」，故文案用「可能」而不断言
+    // （断言会把「某榜今日确实为空」误报成故障），并复用重试能力。
+    renderSectionError(meta, _tr('home.sectionUnavailable', '该区块暂无内容（音源可能暂时不可用）'));
     return;
   }
 
+  // 有内容：清掉上一次降级留下的标记，否则该分区会被一直沉底且一直带降级外观
+  el.classList.remove('is-unavailable');
+
+  // 单出口：两条渲染分支都不 return，沉底后处理只在末尾调一次。
+  // （早前 grid / list 各 return 各调一次，守卫只能断言「函数里提到过它」，
+  //   删掉其中一条分支的调用照样绿 —— 分支越多越容易漏。）
   if (meta.kind === 'grid') {
     const { items } = filterHomeSection('grid', data, _homeFilterStr);
     el.innerHTML = items.length
       ? items.slice(0, GRID_LIMIT).map(playlistCardHtml).join('')
       : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌单</div>`;
-    return;
+  } else {
+    const { pairs } = filterHomeSection('list', data, _homeFilterStr);
+    // 计数必须用**过滤后**的 pairs.length，不能用 data.length：
+    // 后者是未过滤总量，「查看完整榜单（共 N 首）」会在筛选后仍报全量，
+    // 且 N > LIST_FOLD 时按钮明明该消失却还在（点开只看到 2 首）。
+    el.innerHTML = pairs.length
+      ? listHtml(meta, pairs, pairs.length)
+      : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌曲</div>`;
   }
-
-  const { pairs } = filterHomeSection('list', data, _homeFilterStr);
-  // 计数必须用**过滤后**的 pairs.length，不能用 data.length：
-  // 后者是未过滤总量，「查看完整榜单（共 N 首）」会在筛选后仍报全量，
-  // 且 N > LIST_FOLD 时按钮明明该消失却还在（点开只看到 2 首）。
-  el.innerHTML = pairs.length
-    ? listHtml(meta, pairs, pairs.length)
-    : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌曲</div>`;
+  _sinkUnavailableSections(_platOf(meta.sec));
 }
 
 function renderSectionError(meta, msg) {
   const el = document.getElementById(_domId(meta.sec));
   if (!el) return;
+  // is-unavailable 是「本分区没有可用内容」的语义标记：
+  // _sinkUnavailableSections 据此把它连同页签一起沉到平台区块末尾。
+  el.classList.add('is-unavailable');
   el.innerHTML = `<div class="home-sec-msg is-error" onclick="reloadHomePlatform('${escQ(_platOf(meta.sec))}')">⚠️ ${esc(msg)}，点击重试</div>`;
+  _sinkUnavailableSections(_platOf(meta.sec));
+}
+
+/**
+ * 把「不可用」分区沉到平台区块末尾（含它的页签）。
+ *
+ * 每个平台一次只显示一个 .home-sec（showHomeSection 用 hidden 切换），默认可见的是
+ * **第一个**。若第一个分区恰好没有内容（QQ 九分区里有 7 个是空的），用户切到该平台
+ * 看到的就是一块降级提示，会以为整个平台都坏了 —— 尽管后面几个分区其实有数据。
+ * 故每次分区内容变化后做一次后处理：可用在前、不可用在后（组内保持原相对顺序），
+ * 页签顺序跟着走，并保证可见的那个是可用分区。
+ *
+ * 幂等：已就位时直接返回，不折腾 DOM（避免把用户当前选中的分区跳掉）。
+ */
+function _sinkUnavailableSections(plat) {
+  const block = document.getElementById(_blockId(plat));
+  if (!block) return;
+  const rail = block.querySelector('.plat-chips');
+  const secs = [...block.querySelectorAll('.home-sec')];
+  if (!rail || secs.length < 2) return;
+  const chips = [...rail.querySelectorAll('.plat-chip')];
+  const chipOf = (el) => chips.find(c => c.dataset.sec === el.dataset.sec);
+  const bad = (el) => el.classList.contains('is-unavailable');
+
+  // sort 稳定 → 同类内保持原有相对顺序，不会把「飙升榜/热歌榜」的次序打乱
+  const ordered = [...secs].sort((a, b) => (bad(a) ? 1 : 0) - (bad(b) ? 1 : 0));
+  if (ordered.every((el, i) => el === secs[i])) return;
+
+  for (const el of ordered) block.appendChild(el);
+  for (const el of ordered) { const c = chipOf(el); if (c) rail.appendChild(c); }
+
+  // 保持用户当前看的分区（若它仍可用）；否则退到第一个可用分区
+  const wasVisible = ordered.find(el => !el.hidden);
+  const firstOk = (wasVisible && !bad(wasVisible))
+    ? wasVisible
+    : (ordered.find(el => !bad(el)) || ordered[0]);
+  for (const el of ordered) el.hidden = el !== firstOk;
+  for (const c of chips) {
+    const on = c === chipOf(firstOk);
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-selected', String(on));
+  }
 }
 
 /**

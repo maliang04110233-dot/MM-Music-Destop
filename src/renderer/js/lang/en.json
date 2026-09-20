@@ -20,6 +20,7 @@
   "home.viewFullChart": "View full chart ({n} tracks)",
   "home.trackCount": "{n} tracks",
   "home.filteredCount": "{m} / {n} tracks · filtered by \"{kw}\"",
+  "home.sectionUnavailable": "No content in this section (the source may be temporarily unavailable)",
   "home.close": "Close",
   "home.subtab.tops": "Trending",
   "home.subtab.hot": "Hot Songs",

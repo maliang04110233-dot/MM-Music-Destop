@@ -401,3 +401,52 @@ test('接线钉：renderQueue 必须只读 queueSnapshot，不得回写', () => 
     + '本函数同时被切筛选/分组/展开详情等纯 UI 路径调用，一旦传入子集就会静默改掉全局快照，'
     + '而 search.js 的徽标、app.js:740、本文件十余处 getState 全读它');
 });
+
+// ── 增量136：首页空分区降级（失败信号被上游两层抹平，渲染层只能诚实降级）──
+
+test('回归钉：renderSection 的空数据分支必须走 renderSectionError（不得再写死「暂无数据」）', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'home.js')), 'renderSection');
+  assert.ok(body.includes('renderSectionError('),
+    'renderSection 的空数据分支必须调 renderSectionError —— 空数据**不等于**「这个榜真的没歌」：'
+    + 'qq.js 各加载器 catch→return []，gateway.recommendCall 再经 safeRun(…, EMPTY.list()) 吞一次，'
+    + '失败在到达渲染层前已被两层抹平（recommendations 只能包成 {ok:true,data:[]}，走成功分支）。'
+    + '渲染层只能给「可能不可用」+ 重试入口，而不是一句「暂无数据」让人以为榜是空的、且无处可点');
+  assert.ok(!body.includes('暂无数据'),
+    'renderSection 不得再出现硬编码「暂无数据」——它把「源失败」与「真无数据」混为一谈，且没有重试入口');
+});
+
+test('接线钉：不可用分区必须带 is-unavailable 标记并被沉底（分区与页签同步）', () => {
+  const src = stripComments(read('js', 'views', 'home.js'));
+  assert.ok(fnBodyL(src, 'renderSectionError').includes("'is-unavailable'"),
+    'renderSectionError 必须给分区加 is-unavailable 标记 —— 它是沉底后处理的唯一依据');
+  const sink = fnBodyL(src, '_sinkUnavailableSections');
+  assert.ok(sink.length > 0, '必须有 _sinkUnavailableSections 后处理');
+  assert.ok(sink.includes('is-unavailable'), '沉底后处理需按 is-unavailable 分组');
+  assert.ok(sink.includes('.plat-chip'),
+    '沉底后处理需要认得出页签（.plat-chip）');
+  assert.ok(sink.includes('rail.appendChild('),
+    '沉底后处理必须把页签也重新 append 回页签栏 —— 只挪分区不挪页签的话，'
+    + '页签次序与内容次序不一致：data-sec 仍能对上，但点第 3 个页签显示的是第 1 个分区的内容');
+  for (const fn of ['renderSection', 'renderSectionError']) {
+    // 恰好一次：早前 grid / list 两条分支各 return 各调一次，钉只能断言
+    // 「函数里提到过它」，删掉其中一条的调用照样绿。改成单出口 + 计数钉堵住。
+    const calls = (fnBodyL(src, fn).match(/_sinkUnavailableSections\(/g) || []).length;
+    assert.strictEqual(calls, 1,
+      `${fn}() 必须恰好触发一次沉底后处理，实际 ${calls} 次 —— `
+      + '每个平台默认只显示**第一个**分区，第一个恰好为空时（QQ 九分区里 7 个空）'
+      + '用户切过去只看到降级提示，会以为整个平台坏了；'
+      + '散在多条 return 分支里则容易漏掉某一条');
+  }
+  // renderHomeShell 只画骨架（无 is-unavailable），无需沉底；数据到达一律经 renderSection
+  assert.ok(fnBodyL(src, 'renderHomeShell').includes('home-sec'),
+    'renderHomeShell 应仍在生成 .home-sec 骨架（哨兵缺失，钉可能已失效）');
+});
+
+test('接线钉：renderSection 成功路径必须清除 is-unavailable（否则一次失败就永久沉底）', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'home.js')), 'renderSection');
+  const clear = body.indexOf("classList.remove('is-unavailable')");
+  assert.ok(clear >= 0,
+    'renderSection 拿到内容时必须清掉 is-unavailable —— 否则重试成功后该分区仍被当作不可用沉底');
+  assert.ok(clear < body.indexOf('filterHomeSection('),
+    '清除必须发生在渲染分支之前 —— 塞进某一个分支里会漏掉另一条路径（grid / list）');
+});

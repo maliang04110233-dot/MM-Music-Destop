@@ -20,6 +20,7 @@
   "home.viewFullChart": "查看完整榜单（共 {n} 首）",
   "home.trackCount": "{n} 首",
   "home.filteredCount": "{m} / {n} 首 · 已筛选「{kw}」",
+  "home.sectionUnavailable": "该区块暂无内容（音源可能暂时不可用）",
   "home.close": "关闭",
   "home.subtab.tops": "飙升榜",
   "home.subtab.hot": "热歌榜",
