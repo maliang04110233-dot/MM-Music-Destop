@@ -1,19 +1,21 @@
 /**
- * localSort 单元测试：六档循环 + 各模式排序行为（缺字段垫底、中文 locale 序、稳定）
+ * localSort 单元测试：七档循环 + 各模式排序行为（缺字段垫底、中文 locale 序、稳定）
  */
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
 
 async function fresh() {
   return import(`../src/renderer/js/localSort.js?ck=${Math.random()}`);
 }
 
-test('nextLocalSortMode：六档循环，未知模式回默认', async () => {
+test('nextLocalSortMode：七档循环，未知模式回默认', async () => {
   const { nextLocalSortMode, localSortLabel, LOCAL_SORT_MODES } = await fresh();
   let m = 'default';
   const seq = [];
-  for (let i = 0; i < 6; i++) { m = nextLocalSortMode(m); seq.push(m); }
-  assert.deepStrictEqual(seq, ['title', 'artist', 'duration-desc', 'size-desc', 'plays-desc', 'default']);
+  for (let i = 0; i < 7; i++) { m = nextLocalSortMode(m); seq.push(m); }
+  assert.deepStrictEqual(seq, ['title', 'artist', 'duration-desc', 'size-desc', 'plays-desc', 'mtime-desc', 'default']);
   assert.strictEqual(nextLocalSortMode('nope'), 'default');
   for (const mode of LOCAL_SORT_MODES) assert.ok(localSortLabel(mode).includes('↕'), mode);
 });
@@ -67,6 +69,36 @@ test('sortLocalSongs：时长/大小降序，0/缺字段/非数字一律垫底',
   ];
   assert.deepStrictEqual(sortLocalSongs(songs, 'duration-desc').map(s => s.filePath), ['a', 'e', 'c', 'b', 'd']);
   assert.deepStrictEqual(sortLocalSongs(songs, 'size-desc').map(s => s.filePath), ['c', 'a', 'b', 'd', 'e']);
+});
+
+test('sortLocalSongs：mtime-desc 按文件修改时间降序，0/缺字段/非数字一律垫底保序', async () => {
+  const { sortLocalSongs } = await fresh();
+  const songs = [
+    { filePath: 'a', mtime: 1000 },
+    { filePath: 'b' },                        // 缺字段 → 垫底
+    { filePath: 'c', mtime: 3000 },
+    { filePath: 'd', mtime: 0 },              // 0 视同未知 → 垫底
+    { filePath: 'e', mtime: 'yesterday' },    // 非数字 → 垫底
+    { filePath: 'f', mtime: 2000 },
+  ];
+  assert.deepStrictEqual(
+    sortLocalSongs(songs, 'mtime-desc').map(s => s.filePath),
+    ['c', 'f', 'a', 'b', 'd', 'e']
+  );
+  // 全垫底时保持原序（稳定）
+  assert.deepStrictEqual(
+    sortLocalSongs([{ filePath: 'x' }, { filePath: 'y' }], 'mtime-desc').map(s => s.filePath),
+    ['x', 'y']
+  );
+});
+
+test('接线钉：扫描结果必须带出 mtime，否则「最近添加」排序会静默全体垫底', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'utils', 'localLibrary.js'), 'utf8');
+  assert.match(
+    src,
+    /mtime:\s*stat\.mtimeMs/,
+    'localLibrary 必须把文件 mtime 带进歌曲对象，否则 mtime-desc 排序恒等于原序（假绿）'
+  );
 });
 
 test('sortLocalSongs：畸形输入静默安全，不改原数组', async () => {

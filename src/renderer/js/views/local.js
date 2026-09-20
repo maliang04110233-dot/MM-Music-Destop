@@ -248,7 +248,7 @@ async function copyLocalListText() {
   showToast(ok ? `📋 已复制 ${lines.length} 首歌名清单` : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
 }
 
-/** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 默认 */
+/** 排序循环：默认 → 标题 → 歌手 → 时长↓ → 大小↓ → 播放🔥 → 最近添加↓ → 默认 */
 function cycleLocalSort() {
   _localSortMode = nextLocalSortMode(_localSortMode);
   const btn = document.getElementById('localSortBtn');

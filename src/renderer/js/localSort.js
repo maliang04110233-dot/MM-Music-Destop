@@ -1,11 +1,11 @@
 /**
- * 本地曲库排序纯逻辑：默认（扫描原序）→ 标题 → 歌手 → 时长↓ → 大小↓ → 播放次数↓ 循环。
+ * 本地曲库排序纯逻辑：默认（扫描原序）→ 标题 → 歌手 → 时长↓ → 大小↓ → 播放次数↓ → 最近添加↓ 循环。
  * 与 searchSort 不同：这里排的是对象数组本身（localFiltered 即渲染源），
  * 中文用 localeCompare('zh') 使拼音序可读。缺字段行一律垫底。
  * 无 DOM / api 依赖，node 可直接单测。
  */
 
-const LOCAL_SORT_MODES = ['default', 'title', 'artist', 'duration-desc', 'size-desc', 'plays-desc'];
+const LOCAL_SORT_MODES = ['default', 'title', 'artist', 'duration-desc', 'size-desc', 'plays-desc', 'mtime-desc'];
 
 const LABELS = {
   default: '↕ 默认序',
@@ -14,6 +14,7 @@ const LABELS = {
   'duration-desc': '↕ 时长 ↓',
   'size-desc': '↕ 大小 ↓',
   'plays-desc': '↕ 播放 🔥',
+  'mtime-desc': '↕ 最近添加',
 };
 
 function nextLocalSortMode(mode) {
@@ -49,6 +50,7 @@ function sortLocalSongs(songs, mode, playMap) {
       const n = playMap && playMap[playKeyOf(s)];
       key = _num(n);
     }
+    else if (mode === 'mtime-desc') key = _num(s && s.mtime);
     (key === null ? noKey : keyed).push({ s, key });
   }
   const cmp = (a, b) => (typeof a.key === 'string'

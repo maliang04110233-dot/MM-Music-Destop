@@ -216,6 +216,9 @@ async function _decodeAudioMetadata(filePath, stat) {
     durationMs,
     bitrate: bitrate || undefined,
     fileSize: stat.size,
+    // 文件修改时间：下载落盘 ≈ 入库存档时间，「最近添加」排序用。
+    // 全量扫描路径由此带出；增量路径（libraryIndex）另有一次 stat 注入，两者同口径。
+    mtime: stat.mtimeMs,
     _source: source, // 调试用：哪个解析器拿到数据
   };
 }
