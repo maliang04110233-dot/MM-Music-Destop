@@ -442,6 +442,25 @@ function relinkPath(oldPath, newPath) {
   return changed;
 }
 
+/**
+ * 列出「已完成」下载记录的路径引用（增量152 的对外改名对账用）。
+ *
+ * 只取 history 表里 status='done' 且有 save_path 的行：失败/进行中的记录本来就没有
+ * 「✔ 已下载」徽标可修，把它们也拿去指认只会把不存在的文件认成"已经下好了"。
+ * 被 _trim 淘汰、只剩 assets 索引孤儿的记录不在这里 —— 它们没有 title/artist 可比，
+ * 本来也无法唯一指认。
+ * @returns {Array<{id:string,source:string,title:string,artist:string,savePath:string}>}
+ */
+function donePathRefs() {
+  _ensure();
+  const rows = _db.prepare(
+    "SELECT key_id, key_source, title, artist, save_path FROM history WHERE status = 'done' AND save_path <> ''",
+  ).all();
+  return rows.map(r => ({
+    id: r.key_id, source: r.key_source, title: r.title, artist: r.artist, savePath: r.save_path,
+  }));
+}
+
 function destroy() {
   if (_db) {
     try { _db.close(); } catch (_e) { /* 已关闭 */ }
@@ -453,6 +472,6 @@ function destroy() {
 
 module.exports = {
   init, add, query, stats, flush, clear, remove, destroy, importEntries, findDownloaded,
-  relinkPath,
+  relinkPath, donePathRefs,
   MAX_ENTRIES,
 };

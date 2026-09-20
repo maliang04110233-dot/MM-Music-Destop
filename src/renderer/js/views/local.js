@@ -111,6 +111,20 @@ async function scanLocalDir() {
   }
 }
 
+/**
+ * 主进程扫描后顺手做了"外部改名对账"（增量152），这里做两件必做的事：
+ *   1. 把接回了几个说出口 —— 徽标/歌单悄悄变了而不告知，用户下次看到「✔ 已下载」会以为是巧合；
+ *   2. 重拉一次歌单：回写改的是盘上的 prefs，渲染层还攥着旧路径那份的话，
+ *      下一次收藏/建歌单就会把刚接回来的路径又覆盖回去（增量149 踩过同一个坑）。
+ * @returns {Promise<string>} 直接拼进扫描提示的话尾；没接回任何东西时是空串（也不重拉）
+ */
+async function _relinkNote(result) {
+  const n = (result && result.relinked && result.relinked.fixed) || 0;
+  if (!n) return '';
+  if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
+  return `  🔁 已自动接回 ${n} 个被外部改名的下载文件（徽标/歌单已同步）`;
+}
+
 async function _doScanLocalDir() {
   let localDirPath = getState('localDirPath');
   if (!localDirPath) {
@@ -149,14 +163,16 @@ async function _doScanLocalDir() {
       setState('localSongs', retry.songs || []);
       document.getElementById('localInfo').textContent = `共 ${(retry.songs || []).length} 首 · ${localDirPath}`;
       filterLocalSongs(); // 重扫后必须重套当前筛选（与 refreshLocalLibrary 同一约定）
-      showToast(`扫描完成，发现 ${(retry.songs || []).length} 首歌曲`, 'success');
+      const note = await _relinkNote(retry);
+      showToast(`扫描完成，发现 ${(retry.songs || []).length} 首歌曲${note}`, 'success');
       return;
     }
     const localSongs = result.songs || [];
     setState('localSongs', localSongs);
     document.getElementById('localInfo').textContent = `共 ${localSongs.length} 首 · ${localDirPath}`;
     filterLocalSongs(); // 重扫后必须重套当前筛选：直接 setState('localFiltered') 会丢掉收藏/格式/音质/完整度/关键词全部轴
-    showToast(`扫描完成，发现 ${localSongs.length} 首歌曲`, 'success');
+    const note = await _relinkNote(result);
+    showToast(`扫描完成，发现 ${localSongs.length} 首歌曲${note}`, 'success');
   } catch (e) {
     showToast('扫描失败: ' + e.message, 'error');
   }
@@ -268,7 +284,8 @@ async function refreshLocalLibrary() {
       setState('localSongs', songs);
       document.getElementById('localInfo').textContent = `共 ${songs.length} 首 · ${dir}`;
       filterLocalSongs(); // 重新套用当前筛选并重渲染（列表/网格都兼顾）
-      if (songs.length !== prevCount) showToast('📂 本地曲库已自动刷新', 'info', 1800);
+      const note = await _relinkNote(result);
+      if (songs.length !== prevCount || note) showToast(`📂 本地曲库已自动刷新${note}`, 'info', note ? 4500 : 1800);
     }
   } catch (e) {
     logger.warn('[refreshLocalLibrary] 自动刷新失败:', e && e.message);

@@ -24,7 +24,7 @@ const prefs = require('../../utils/prefs');
 const approvedDirs = require('../approvedDirs');
 const { convertAudioFile, normalizeFormat, formatExtension, normalizeClip, clipNameSuffix } = require('../../utils/audioConvert');
 const { bucketBySize, slicePlan, groupByHash, dupGroupView, wastedBytes } = require('../../utils/dupScan');
-const { relinkFileRefs } = require('../../utils/fileRelink');
+const { relinkFileRefs, reconcileScannedRefs } = require('../../utils/fileRelink');
 const { sidecarPathFor } = require('../../utils/relinkRefs');
 // 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
 const fsa = require('../../utils/fsAsync');
@@ -88,7 +88,16 @@ function register() {
         readAudioMetadata,
       );
 
-      return { songs: result.songs, count: result.songs.length, incremental: true };
+      // 增量152：用户在 app 外面改过文件名时，下载历史指向的旧路径已经失联。
+      // 刚扫到的文件清单就是磁盘真相，拿它对账一次并接回（失败不影响扫描本身）。
+      let relinked = { fixed: 0, ambiguous: 0 };
+      try {
+        relinked = await reconcileScannedRefs(result.songs);
+      } catch (e) {
+        logger.warn('[scan-local-library] 外部改名对账失败:', e.message);
+      }
+
+      return { songs: result.songs, count: result.songs.length, incremental: true, relinked };
     } catch (e) {
       logger.warn('[Library] 增量扫描失败，回退全量扫描:', e.message);
 
@@ -106,7 +115,14 @@ function register() {
           }
           await new Promise(r => setImmediate(r));
         }
-        return { songs, count: songs.length, incremental: false };
+        // 回退路径同样对账：漏了它等于"只有增量扫描才修得好"，那是半残功能
+        let relinked = { fixed: 0, ambiguous: 0 };
+        try {
+          relinked = await reconcileScannedRefs(songs);
+        } catch (e) {
+          logger.warn('[Library] 外部改名对账失败:', e.message);
+        }
+        return { songs, count: songs.length, incremental: false, relinked };
       } catch (e2) {
         return { error: e2.message, songs: [] };
       }

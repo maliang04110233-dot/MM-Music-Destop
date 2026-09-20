@@ -15,6 +15,7 @@ const fsa = require('./fsAsync');
 const {
   pathsEqual, sidecarPathFor, relinkPlaylists, relinkProgressMap, relinkRecent,
 } = require('./relinkRefs');
+const { matchRenamedRefs } = require('./reconcileRenames');
 
 /**
  * @returns {Promise<{history:number,playlists:number,recent:number,progress:number,lyricRenamed:boolean}>}
@@ -60,4 +61,30 @@ async function relinkFileRefs(oldPath, newPath) {
   return out;
 }
 
-module.exports = { relinkFileRefs };
+/**
+ * 曲库扫描后的外部改名对账（增量152）。
+ *
+ * 在资源管理器里改了下载文件的 name 时，app 一无所知：徽标消失、重复下载、
+ * 歌单里的本地歌播不动。扫描结果里有磁盘上真实存在的文件及其 ID3 标题/歌手，
+ * 拿它跟下载历史对账，唯一命中的按"app 内改名"的同一条路回写（relinkFileRefs）。
+ *
+ * @param {Array<{filePath,title,artist}>} scanned 本次扫描到的歌曲
+ * @returns {Promise<{fixed:number, ambiguous:number}>} fixed=接回几条；ambiguous=有候选但不唯一、放弃几条
+ */
+async function reconcileScannedRefs(scanned) {
+  const { fixes, ambiguous } = matchRenamedRefs(history.donePathRefs(), scanned);
+  let fixed = 0;
+  for (const f of fixes) {
+    try {
+      await relinkFileRefs(f.from, f.to);
+      fixed += 1;
+    } catch (e) {
+      logger.warn('[reconcile] 外部改名回写失败:', f.from, e.message);
+    }
+  }
+  if (fixed) logger.info(`[reconcile] 已自动接回 ${fixed} 个被外部改名的下载文件`);
+  if (ambiguous) logger.info(`[reconcile] ${ambiguous} 条记录疑似被改名但候选不唯一，未自动指认`);
+  return { fixed, ambiguous };
+}
+
+module.exports = { relinkFileRefs, reconcileScannedRefs };
