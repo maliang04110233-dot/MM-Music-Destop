@@ -291,3 +291,48 @@ test('回归钉：删重只改源数据，不得就地改派生状态 localFilte
   assert.match(body, /_onLibraryChanged\(\)/,
     'deleteSelectedDups 删除成功后必须触发库变更回调，否则列表/网格不会刷新');
 });
+
+// ── 增量134：首页分区列表与「查看完整榜单」弹窗必须共用同一个过滤词 ──
+
+test('home.js: 分区列表的计数必须来自过滤结果（用未过滤的 data.length 会让「查看完整榜单」在筛选后仍报全量）', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'home.js')), 'renderSection');
+  assert.ok(body.includes('filterHomeSection('),
+    'renderSection 需走 filterHomeSection 收敛（哨兵缺失，钉可能已失效）');
+  const call = /listHtml\(([^)]*)\)/.exec(body);
+  assert.ok(call, 'renderSection 需调用 listHtml');
+  assert.ok(call[1].includes('pairs.length'),
+    `listHtml 的计数实参必须来自过滤结果 pairs.length，实际「${call[1]}」——`
+    + '用 data.length（未过滤总量）会让筛选后仍显示「共 N 首」，'
+    + '且 N > LIST_FOLD 时按钮明明该消失却还在（点开只看到 2 首）');
+  assert.ok(!call[1].includes('data.length'),
+    'listHtml 的计数实参不得引用未过滤的 data.length');
+});
+
+test('home.js: 「查看完整榜单」弹窗必须应用同一个过滤词', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'home.js')), 'openHomeChartModal');
+  assert.ok(body.includes('_getSection('),
+    'openHomeChartModal 需从 _getSection 取分区数据（哨兵缺失，钉可能已失效）');
+  assert.ok(body.includes('filterHomeSection('),
+    'openHomeChartModal 必须用 filterHomeSection 收敛歌曲 —— 分区列表已按过滤词收敛，'
+    + '弹窗却渲染全量时，用户筛出 3 首、点「查看完整榜单」会看到 30 首，前后自相矛盾且无任何提示');
+  const call = /songRowsHtml\(\s*meta\s*,\s*([^)]*)\)/.exec(body);
+  assert.ok(call, 'openHomeChartModal 需调用 songRowsHtml');
+  assert.ok(call[1].includes('pairs'),
+    `songRowsHtml 的歌曲实参必须是过滤结果 pairs（保留原始下标，playRecommendById 的索引语义不变），实际「${call[1]}」`);
+  assert.ok(body.includes('home.filteredCount'),
+    '有过滤词时必须显式写出「命中/总量」与筛选词，否则用户会以为榜单被截断');
+});
+
+test('lang: zh/en 词条必须完全对齐（缺键或占位符不一致会让界面漏出 key 或原样显示 {n}）', () => {
+  const dir = path.join(__dirname, '..', 'src', 'renderer', 'js', 'lang');
+  const zh = JSON.parse(fs.readFileSync(path.join(dir, 'zh.json'), 'utf8'));
+  const en = JSON.parse(fs.readFileSync(path.join(dir, 'en.json'), 'utf8'));
+  const onlyZh = Object.keys(zh).filter((k) => !(k in en));
+  const onlyEn = Object.keys(en).filter((k) => !(k in zh));
+  assert.deepStrictEqual([onlyZh, onlyEn], [[], []],
+    `双语词条键必须一一对应 —— 仅 zh 有：${onlyZh.join(', ') || '无'}；仅 en 有：${onlyEn.join(', ') || '无'}`);
+  const ph = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+  const bad = Object.keys(zh).filter((k) => k in en && ph(zh[k]) !== ph(en[k]));
+  assert.deepStrictEqual(bad, [],
+    `以下词条中英占位符不一致（某语言下会原样显示 {n} 之类）：${bad.join(', ')}`);
+});

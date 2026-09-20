@@ -19,6 +19,7 @@
   "home.platformRec": "🎵 Platform Recommendations",
   "home.viewFullChart": "View full chart ({n} tracks)",
   "home.trackCount": "{n} tracks",
+  "home.filteredCount": "{m} / {n} tracks · filtered by \"{kw}\"",
   "home.close": "Close",
   "home.subtab.tops": "Trending",
   "home.subtab.hot": "Hot Songs",

@@ -472,8 +472,11 @@ function renderSection(meta, data) {
   }
 
   const { pairs } = filterHomeSection('list', data, _homeFilterStr);
+  // 计数必须用**过滤后**的 pairs.length，不能用 data.length：
+  // 后者是未过滤总量，「查看完整榜单（共 N 首）」会在筛选后仍报全量，
+  // 且 N > LIST_FOLD 时按钮明明该消失却还在（点开只看到 2 首）。
   el.innerHTML = pairs.length
-    ? listHtml(meta, pairs, data.length)
+    ? listHtml(meta, pairs, pairs.length)
     : `<div class="home-sec-msg">没有匹配「${esc(_homeFilterStr)}」的歌曲</div>`;
 }
 
@@ -681,7 +684,20 @@ function openHomeChartModal(sec) {
   const songs = _getSection(sec);
   if (!meta || !songs.length) return;
 
+  // 过滤词必须一并生效：分区列表已按 _homeFilterStr 收敛，弹窗若渲染全量，
+  // 用户筛出 3 首、点「查看完整榜单」却看到 30 首，且没有任何提示 —— 前后自相矛盾。
+  // 走同一个纯函数（不是自己写一遍 includes）：pairs 保留原始下标，
+  // playRecommendById(sec, i) 的索引语义因此不变。
+  const { pairs } = filterHomeSection('list', songs, _homeFilterStr);
+  if (!pairs.length) return; // 与分区一致：没有匹配就不该开出一个空弹窗
+
   closeHomeChartModal(); // 幂等：重复打开先清旧的
+
+  // 有过滤词时把「命中/总量」与筛选词写出来，否则用户会以为榜单被截断了
+  const countText = _homeFilterStr
+    ? _tr('home.filteredCount', `${pairs.length} / ${songs.length} 首 · 已筛选「${_homeFilterStr}」`,
+      { m: pairs.length, n: songs.length, kw: _homeFilterStr })
+    : _tr('home.trackCount', `${pairs.length} 首`, { n: pairs.length });
 
   const overlay = document.createElement('div');
   overlay.className = 'playlist-modal-overlay';
@@ -690,10 +706,10 @@ function openHomeChartModal(sec) {
     <div class="playlist-modal home-chart-modal" role="dialog" aria-modal="true" aria-label="${escAttr(_tr(meta.i18n, meta.title))}">
       <div class="playlist-modal-header">
         <span class="playlist-modal-title">${esc(_tr(meta.i18n, meta.title))} · ${esc(platformName(_platOf(sec)))}</span>
-        <span class="home-chart-count">${esc(_tr('home.trackCount', `${songs.length} 首`, { n: songs.length }))}</span>
+        <span class="home-chart-count">${esc(countText)}</span>
         <button class="playlist-modal-close" aria-label="${escAttr(_tr('home.close', '关闭'))}" onclick="closeHomeChartModal()">✕</button>
       </div>
-      <div class="playlist-modal-body" id="homeChartBody">${songRowsHtml(meta, songs.map((s, i) => ({ s, i })))}</div>
+      <div class="playlist-modal-body" id="homeChartBody">${songRowsHtml(meta, pairs)}</div>
     </div>`;
 
   // 点遮罩关闭（点内容区不关）—— 与既有 playlist-modal 行为一致
