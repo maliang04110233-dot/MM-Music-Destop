@@ -52,10 +52,12 @@ function handleKey(e) {
   if (inInput && !ctrlOrCmd) return;
 
   // ── 搜索页结果列表导航：↑/↓ 选行，Enter 将高亮曲加入下载队列 ──
+  // 在场判定问"搜索结果页是否可见"，不问导航高亮 —— 164 起搜歌/结果两视图
+  // 共用一个「搜歌」入口，data-tab="search" 的 active 探针永远不会再命中。
   if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')
       && !ctrlOrCmd
       && typeof window.searchListKey === 'function'
-      && document.querySelector('.nav-item.active[data-tab="search"]')
+      && window.isTabPageVisible?.('searchPage')
       && !_anyModalOpen()) {
     if (window.searchListKey(e)) return;
   }
@@ -88,7 +90,7 @@ function handleKey(e) {
       focusTab('history');
       return;
     }
-    // Ctrl+G 跳到首页
+    // Ctrl+G 跳到搜歌（发现视图）
     if (key === 'g') {
       e.preventDefault();
       focusTab('home');
@@ -133,10 +135,10 @@ function handleKey(e) {
 }
 
 function focusTab(tabName, focusElId) {
-  // 'history' 已并入 download 页（历史子 tab）：落到 download 导航项
-  const navName = tabName === 'history' ? 'download' : tabName;
-  const btn = document.querySelector(`.nav-item[data-tab="${navName}"]`);
-  if (btn && typeof switchTab === 'function') switchTab(tabName, btn);
+  // 高亮归属（history→download、search→home）集中在 app.js 的 NAV_ALIAS，
+  // 这里不再自己摸导航按钮 —— 164 合并入口后 data-tab="search" 已不存在，
+  // 任何"查不到按钮就不切换"的写法都会让 Ctrl+F 静默失灵。
+  if (typeof switchTab === 'function') switchTab(tabName);
   if (focusElId) {
     setTimeout(() => {
       const el = document.getElementById(focusElId);
@@ -232,7 +234,7 @@ export function showShortcutsHelp() {
           <div class="shortcut-group-title">导航</div>
           <div class="shortcut-row"><span>命令面板（直达全部动作）</span><kbd>Ctrl</kbd>+<kbd>K</kbd></div>
           <div class="shortcut-row"><span>聚焦搜索</span><kbd>Ctrl</kbd>+<kbd>F</kbd></div>
-          <div class="shortcut-row"><span>跳到首页</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
+          <div class="shortcut-row"><span>跳到搜歌</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
           <div class="shortcut-row"><span>跳到下载队列</span><kbd>Ctrl</kbd>+<kbd>D</kbd></div>
           <div class="shortcut-row"><span>跳到本地曲库</span><kbd>Ctrl</kbd>+<kbd>L</kbd></div>
           <div class="shortcut-row"><span>跳到下载历史</span><kbd>Ctrl</kbd>+<kbd>H</kbd></div>

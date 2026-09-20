@@ -49,8 +49,8 @@ function rankCommands(q, cmds) {
 
 // ── 命令清单 ─────────────────────────────────────────
 function _goto(tab) {
-  const btn = document.querySelector(`.nav-item[data-tab="${tab}"]`);
-  if (btn && typeof window.switchTab === 'function') window.switchTab(tab, btn);
+  // 不再摸导航按钮（164 起 search 没有自己的按钮）；高亮归属由 switchTab 的 NAV_ALIAS 统一给
+  if (typeof window.switchTab === 'function') window.switchTab(tab);
 }
 
 function _call(name, ...args) {
@@ -60,8 +60,8 @@ function _call(name, ...args) {
 }
 
 const COMMANDS = [
-  { id: 'nav-home', icon: '🏠', group: '导航', label: '前往 首页', keywords: ['home', '首页'], run: () => _goto('home') },
-  { id: 'nav-search', icon: '🔍', group: '导航', label: '前往 搜歌', keywords: ['search', '搜索'], run: () => _goto('search') },
+  { id: 'nav-home', icon: '🔍', group: '导航', label: '前往 搜歌（发现）', keywords: ['home', '首页', '发现', '推荐'], run: () => _goto('home') },
+  { id: 'nav-search', icon: '🔍', group: '导航', label: '前往 搜歌（结果）', keywords: ['search', '搜索'], run: () => _goto('search') },
   { id: 'nav-download', icon: '⬇', group: '导航', label: '前往 下载', keywords: ['download', '队列'], run: () => _goto('download') },
   { id: 'nav-local', icon: '📂', group: '导航', label: '前往 本地曲库', keywords: ['local', '本地'], run: () => _goto('local') },
   { id: 'nav-playlist', icon: '💿', group: '导航', label: '前往 歌单', keywords: ['playlist', '收藏'], run: () => _goto('playlist') },

@@ -464,15 +464,15 @@ test('接线钉：renderSection 成功路径必须清除 is-unavailable（否则
     '清除必须发生在渲染分支之前 —— 塞进某一个分支里会漏掉另一条路径（grid / list）');
 });
 
-// ── 增量160（IA 收敛第一步）：侧边栏聚为五组，条目零增删、路由零改动 ──
+// ── 增量160（IA 收敛第一步）：侧边栏聚为五组 → 增量164（第二步）：首页+搜索合为单一「搜歌」入口 ──
 
-test('侧边栏分组：五个分区标题按序就位，旧「导航」单段头与孤儿 i18n 键一并退场', () => {
+test('侧边栏分组：四个分区标题按序就位（164 起「搜歌」收敛为单条目，不再需要段头）', () => {
   const html = read('index.html');
   const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
   assert.ok(sb.length > 200, '侧边栏区块截取失败（锚点改名时同步本测试）');
   const titles = [...sb.matchAll(/class="sidebar-title"[^>]*>([^<]+)</g)].map(m => m[1].trim());
-  assert.deepStrictEqual(titles, ['搜歌', '下载', '曲库', '工具', '操作'],
-    '侧边栏必须恰好这五个分区标题且按此序 —— 对齐 redesign sitemap 的分组语义（总览是原型新增页，真 app 暂无对应，不硬凑）');
+  assert.deepStrictEqual(titles, ['下载', '曲库', '工具', '操作'],
+    '分区标题恰好这四个且按此序 —— 「搜歌」组头随 164 单条目化退役（组头+同名条目双份冗余），对齐 redesign sitemap 的分组语义');
   assert.ok(!sb.includes('nav.sidebar.title'),
     '「导航」单段旧头已退役：分组标题是纯中文硬写（改版决议：收缩为纯中文），不许再挂 i18n');
   assert.ok(sb.includes('data-i18n="nav.operations.title"'), '「操作」段沿用既有 i18n 键，不动');
@@ -482,23 +482,29 @@ test('侧边栏分组：五个分区标题按序就位，旧「导航」单段�
   }
 });
 
-test('侧边栏分组：八个 data-tab 条目次序不变且各自落在正确的组里（纯导航层搬家，零路由改动）', () => {
+test('侧边栏条目：七个 data-tab 且「搜歌」是唯一发现/搜索入口（164 合并：search 条目退役，页面路由保留）', () => {
   const html = read('index.html');
   const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
   const tabs = [...sb.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]);
-  assert.deepStrictEqual(tabs, ['home', 'search', 'download', 'local', 'playlist', 'subscription', 'ai-music', 'converter'],
-    '条目增删/换序会破坏 switchTab 兜底查询与 ⌘K/快捷键的 data-tab 反查 —— 本增量只许搬家，不许动账');
+  assert.deepStrictEqual(tabs, ['home', 'download', 'local', 'playlist', 'subscription', 'ai-music', 'converter'],
+    '条目增删/换序会破坏 switchTab 兜底查询与 ⌘K/快捷键的 data-tab 反查 —— 164 只合并 home+search，余账不动');
   for (const t of tabs) {
     assert.ok(sb.includes(`onclick="switchTab('${t}',this)"`), `${t} 的 onclick 形状被改，切换链路可能断`);
   }
-  // 按标题切段做归属核对
+  assert.ok(!sb.includes('data-tab="search"'),
+    '搜索不再是导航条目 —— 它是「搜歌」入口的第二个视图，高亮归属走 app.js 的 NAV_ALIAS');
+  assert.ok(sb.includes('搜歌'), '合并后的入口就叫「搜歌」（与 ⌘K「前往 搜歌」、原分组名同一词汇）');
+  assert.ok(!sb.includes('首页'), '导航条目退役后侧栏不许残留「首页」叫法（发现视图的说法留在 ⌘K 括注里）');
+  // 按标题切段做归属核对（parts[0] = 首个标题之前的段落，即「搜歌」条目本体）
   const seg = {};
   const parts = sb.split(/class="sidebar-title"[^>]*>/);
+  seg['搜歌'] = parts[0];
   for (let i = 1; i < parts.length; i++) {
     const name = parts[i].slice(0, parts[i].indexOf('<'));
     seg[name] = parts[i];
   }
-  assert.deepStrictEqual([...seg['搜歌'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['home', 'search']);
+  assert.deepStrictEqual([...seg['搜歌'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['home'],
+    '首个条目必须只有搜歌一项（多出来的说明有页面绕过分组挂在了栏顶）');
   assert.deepStrictEqual([...seg['下载'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['download']);
   assert.deepStrictEqual([...seg['曲库'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['local', 'playlist', 'subscription']);
   assert.deepStrictEqual([...seg['工具'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['ai-music', 'converter']);
@@ -516,4 +522,48 @@ test('侧边栏条目叫法统一：本地曲库 / 歌单（与首页统计、�
   const sc = read('js', 'shortcuts.js');
   assert.ok(sc.includes('跳到本地曲库'), '快捷键浮层文案跟着统一');
   assert.ok(!sc.includes('跳到本地歌曲'), '浮层旧叫法不许复活');
+});
+
+// ── 增量164（IA 收敛第二步）：首页+搜索合并为单一「搜歌」入口 —— 机制钉 ──
+
+test('app.js：NAV_ALIAS 是高亮归属的唯一映射（search/history 都归到宿主条目），视图在场判定有唯一真相源', () => {
+  const src = read('js', 'app.js');
+  assert.ok(src.includes("const NAV_ALIAS = { search: 'home', history: 'download' };"),
+    '页面路由→导航条目的归属集中在这一个映射 —— focusTab/命令面板不许再各自摸按钮存在性（映射的默认值只许有一个家）');
+  assert.ok(src.includes('.nav-item[data-tab="${NAV_ALIAS[tab] || tab}"]'),
+    'switchTab 兜底查询必须过别名 —— 裸查 search 会因条目退役找不到按钮，侧栏从此不高亮、也无报错');
+  assert.ok(src.includes('function isTabPageVisible('), '视图在场判定函数必须存在');
+  assert.ok(src.includes('window.isTabPageVisible = isTabPageVisible'),
+    '必须挂 window —— shortcuts/home 两个独立模块都要问同一个真相源');
+});
+
+test('探针收口：键盘在场判定问「页面可见」而非「导航高亮」（反向钉禁回潮）', () => {
+  const sc = read('js', 'shortcuts.js');
+  assert.ok(!sc.includes('.nav-item.active[data-tab='),
+    'shortcuts.js 里拿导航高亮做在场判定是 164 前的写法 —— 入口合并后 data-tab="search" 永不再出现，搜索结果键盘导航会静默死亡');
+  assert.ok(sc.includes("window.isTabPageVisible?.('searchPage')"), '搜索结果列表导航改用页面可见探针');
+  const hm = read('js', 'views', 'home.js');
+  assert.ok(!hm.includes('.nav-item.active[data-tab='), 'home.js 同理 —— ←/→ 切平台的守卫若回潮成高亮探针，合并后会在搜索视图里偷切隐藏首页的平台 tab');
+  assert.ok(hm.includes("window.isTabPageVisible?.('homePage')"));
+});
+
+test('调用点收口：谁都不许再摸已退役的 search 导航按钮（querySelector 返回 null 会让切换静默失灵）', () => {
+  for (const f of [['js', 'app.js'], ['js', 'commandPalette.js'], ['js', 'shortcuts.js'], ['js', 'views', 'home.js'], ['js', 'views', 'search.js']]) {
+    const src = read(...f);
+    assert.ok(!src.includes('.nav-item[data-tab="search"]'),
+      `${f.join('/')} 仍在查已删除的 data-tab="search" 按钮 —— querySelector 返回 null 后 "有按钮才切换" 的守卫会把「去搜索」变成无声空操作`);
+  }
+  const cp = read('js', 'commandPalette.js');
+  const gotoBody = cp.slice(cp.indexOf('function _goto('), cp.indexOf('function _call('));
+  assert.ok(gotoBody.length > 20 && !gotoBody.includes('querySelector'),
+    '_goto 必须直接 switchTab(tab)，高亮归属交给 NAV_ALIAS');
+});
+
+test('词汇跟进：⌘K 与快捷键浮层不再把「首页」当导航条目名（发现/结果是两个视图，不是一个页面）', () => {
+  const cp = read('js', 'commandPalette.js');
+  assert.ok(cp.includes('前往 搜歌（发现') && cp.includes('前往 搜歌（结果'),
+    '两个目的地都保留括注入口 —— 合并的是导航条目，不该弄丢直达结果视图的路径');
+  assert.ok(!cp.includes("'前往 首页'"), '旧条目名「首页」不许回潮');
+  const sc = read('js', 'shortcuts.js');
+  assert.ok(!sc.includes('跳到首页'), '快捷键浮层改叫「跳到搜歌」，与侧栏同一词汇');
 });

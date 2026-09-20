@@ -106,7 +106,7 @@ test('←/→ 键盘切换有边界守卫（输入框/弹窗/非首页一律放�
   const handler = HOME.slice(start, HOME.indexOf('});', call));
   assert.ok(handler.includes("t.tagName === 'INPUT'"), '输入框内不得抢方向键');
   assert.ok(handler.includes('isContentEditable'), '可编辑区不得抢方向键');
-  assert.ok(handler.includes('.nav-item.active[data-tab="home"]'), '只在首页生效');
+  assert.ok(handler.includes("window.isTabPageVisible?.('homePage')"), '只在首页视图生效（164 起问页面可见，不问导航高亮 —— 见 renderer-audit 的探针收口钉）');
   assert.ok(handler.includes('_homeModalOpen()'), '弹窗打开时不得抢方向键');
   // 曾经的事故：写成 querySelector('.playlist-modal-overlay') 判弹窗，但 index.html 里
   // 六个弹层常驻 DOM（.hidden 控显隐）→ 判定恒真 → 方向键静默失效。

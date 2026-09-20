@@ -301,7 +301,7 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-  if (!document.querySelector('.nav-item.active[data-tab="home"]')) return;
+  if (!window.isTabPageVisible?.('homePage')) return; // 只在首页视图生效（真相源=页面可见，非导航高亮，见 164）
   if (_homeModalOpen()) return;
   const next = nextPlatTab(_platIds, _activePlat, e.key === 'ArrowRight' ? 1 : -1);
   if (!next || next === _activePlat) return;
@@ -900,8 +900,7 @@ async function quickAddRecommendToPlaylist(sec, idx, songId) {
 function quickSearch(keyword) {
   const input = document.getElementById('searchInput');
   if (input) input.value = keyword;
-  const searchNav = document.querySelector('.nav-item[data-tab="search"]');
-  if (searchNav) switchTab('search', searchNav);
+  switchTab('search');
   doSearch(1);
 }
 

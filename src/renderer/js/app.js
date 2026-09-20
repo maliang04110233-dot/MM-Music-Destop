@@ -599,10 +599,25 @@ async function init() {
 }
 
 // ── 页面切换 ───────────────────────────────────────────
+// 导航条目合并后（160 分组 → 164 合一），部分"页面路由"没有自己的侧栏按钮：
+// search 是「搜歌」入口的第二个视图、history 是「下载」页的历史子 tab。
+// 高亮归属集中在 NAV_ALIAS 一处映射（默认值只许有一个家），
+// 调用方一律 switchTab(tab) 即可，不再各自摸 .nav-item[data-tab=...] 是否存在。
+const NAV_ALIAS = { search: 'home', history: 'download' };
+
+// 「用户当前看着哪个视图」的唯一真相源：switchTab 用行内 display 控制显隐，
+// 隐藏页 style 已写上 none，未访问过的初始态由 index.html 行内样式给出。
+// 键盘在场探针（搜索列表导航 / 首页方向键切平台）必须问它，
+// 不再问 .nav-item.active —— 164 合并入口后高亮归属只有「搜歌」一个。
+function isTabPageVisible(id) {
+  const el = document.getElementById(id);
+  return !!(el && el.style.display !== 'none');
+}
+
 function switchTab(tab, btn) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   // btn 缺省时按 data-tab 兜底（程序化/CDP 调用不传事件按钮），找不到不阻断切换
-  const navBtn = btn || document.querySelector(`.nav-item[data-tab="${tab}"]`);
+  const navBtn = btn || document.querySelector(`.nav-item[data-tab="${NAV_ALIAS[tab] || tab}"]`);
   if (navBtn) navBtn.classList.add('active');
 
   const homePage = document.getElementById('homePage');
@@ -1050,8 +1065,7 @@ async function downloadSongFromList(s) {
     if (result && result.url) {
       showToast(`✅ 已获取下载链接`, 'success', 4000);
       document.getElementById('searchInput').value = `${s.title} ${s.artist}`;
-      const searchNav = document.querySelector('.nav-item[data-tab="search"]');
-      if (searchNav) switchTab('search', searchNav);
+      switchTab('search');
     } else {
       showToast('⚠️ 暂无法获取下载链接', 'warn', 3000);
     }
@@ -1153,6 +1167,7 @@ Object.defineProperty(window, 'api', {
 });
 window.init = init;
 window.switchTab = switchTab;
+window.isTabPageVisible = isTabPageVisible;
 window.switchDlSubTab = switchDlSubTab;
 window.changeSaveDir = changeSaveDir;
 window.openPlaylistModal = openPlaylistModal;
