@@ -129,13 +129,22 @@ async function batchRemoveDl() {
 }
 
 // ── 渲染 ──────────────────────────────────────────────
+/**
+ * 队列渲染。**只读** state.queueSnapshot，绝不回写。
+ *
+ * 曾经这里有一句 `state.set('queueSnapshot', queue)`：渲染函数持有源状态的写权限。
+ * 它在当时是多余的（唯一写入点 app.js:309 的队列事件已先写过，此处只是回声），
+ * 但把数据流方向搞反了 —— 切筛选/分组/展开详情这些**纯 UI 重绘**都调本函数，
+ * 一旦有人传进来的是子集（例如为了只渲染可见行），全局快照就被静默改掉，
+ * 而 search.js 的徽标、app.js:740 的下载状态、本文件十几处 getState 全读它。
+ * 渲染只读、事件写状态：方向定死后这类事故不可能发生。
+ */
 function renderQueue(queue) {
   if (!_dlDom.queueList || !_dlDom.queueBadge) return;
   const el = _dlDom.queueList;
   const badge = _dlDom.queueBadge;
   const active = queue.filter(s => s.status !== 'done');
   badge.textContent = active.length;
-  state.set('queueSnapshot', queue);
   if (typeof window.refreshQueueSummary === 'function') window.refreshQueueSummary();
 
   // 按筛选过滤（状态 × 关键词 × 平台，组合逻辑在 queueFilter.js 纯函数）

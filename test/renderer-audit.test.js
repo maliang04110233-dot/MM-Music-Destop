@@ -336,3 +336,68 @@ test('lang: zh/en 词条必须完全对齐（缺键或占位符不一致会让�
   assert.deepStrictEqual(bad, [],
     `以下词条中英占位符不一致（某语言下会原样显示 {n} 之类）：${bad.join(', ')}`);
 });
+
+// ── 增量135：渲染函数不得反向回写源状态 ──
+
+const RENDERER_DIR = path.join(__dirname, '..', 'src', 'renderer');
+
+/** 递归收集渲染层全部 .js（派生，不硬编码文件名——新增文件自动纳入扫描） */
+function walkRendererJs(dir) {
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...walkRendererJs(p));
+    else if (e.name.endsWith('.js')) out.push(p);
+  }
+  return out;
+}
+
+test('回归钉：render* 函数不得写 state（渲染只读；写状态属反向回写）', () => {
+  const files = walkRendererJs(RENDERER_DIR);
+  assert.ok(files.length >= 20, `只扫到 ${files.length} 个渲染层文件，本钉可能已失效`);
+
+  const offenders = [];
+  let scanned = 0;
+  for (const f of files) {
+    const code = stripComments(fs.readFileSync(f, 'utf8'));
+    const seen = new Set();
+    // 含 `_render*`（本仓库私有渲染器多用下划线前缀，漏掉它等于漏掉一半）
+    for (const m of code.matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+(_?render[A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[1];
+      if (seen.has(name)) continue;
+      seen.add(name);
+      scanned++;
+      const writes = [...fnBodyL(code, name).matchAll(/(?:state\.set|setState)\(/g)].length;
+      if (writes) {
+        offenders.push(`${path.relative(RENDERER_DIR, f).replace(/\\/g, '/')} :: ${name}() 内 ${writes} 处`);
+      }
+    }
+  }
+  assert.ok(scanned >= 40, `只扫到 ${scanned} 个 render* 函数，本钉可能已失效`);
+  assert.deepStrictEqual(offenders, [],
+    'render* 是渲染函数，只应读 state 并画 DOM。写 state 会让「一次纯 UI 重绘」'
+    + '静默改写全局状态，并掩盖真正的写入点（数据流方向被反转）。'
+    + `实际：${offenders.join(' | ')}`);
+});
+
+test('接线钉：queueSnapshot 的唯一写入点是队列事件回调（app.js onQueueUpdated）', () => {
+  const writers = [];
+  for (const f of walkRendererJs(RENDERER_DIR)) {
+    const n = (stripComments(fs.readFileSync(f, 'utf8')).match(/state\.set\(\s*'queueSnapshot'/g) || []).length;
+    if (n) writers.push(`${path.relative(RENDERER_DIR, f).replace(/\\/g, '/')}:${n}`);
+  }
+  assert.deepStrictEqual(writers, ['js/app.js:1'],
+    'queueSnapshot 是队列事件（app.js onQueueUpdated）的产物，应只有一个写入点。'
+    + '多一处就是一条「不来自队列事件」的路径 —— renderQueue 曾经就是（每次 UI 重绘回写一次），'
+    + `且它是全仓 render* 里唯一写 state 的。实际：${writers.join(', ') || '无'}`);
+});
+
+test('接线钉：renderQueue 必须只读 queueSnapshot，不得回写', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'download.js')), 'renderQueue');
+  assert.ok(body.includes('applyQueueFilter('),
+    'renderQueue 需按筛选条件渲染（哨兵缺失，钉可能已失效）');
+  assert.ok(!body.includes("state.set('queueSnapshot'"),
+    'renderQueue 不得写 queueSnapshot：唯一写入点是队列事件（app.js:309）。'
+    + '本函数同时被切筛选/分组/展开详情等纯 UI 路径调用，一旦传入子集就会静默改掉全局快照，'
+    + '而 search.js 的徽标、app.js:740、本文件十余处 getState 全读它');
+});
