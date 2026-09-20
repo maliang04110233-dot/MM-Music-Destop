@@ -498,6 +498,9 @@ const GENERAL_PREFS = {
   playProgressMemory: { key: 'playProgressMemory', default: true, el: 'settingPlayProgressMemory' },
   globalShortcuts: { key: 'globalShortcuts', default: true, el: 'settingGlobalShortcuts' },
   theme:         { key: 'theme',         default: 'default',     el: 'settingTheme' },
+  // 语言必须在表里：这张表同时是「打开设置页回填什么」与「恢复默认清什么」的唯一答案，
+  // 不在表里就等于它不是个设置（曾经的真实症状：界面已是 English，下拉仍显示中文）
+  language:      { key: 'language',      default: 'zh',          el: 'settingLanguage' },
   lyricFontSize: { key: 'lyricFontSize', default: 18,            el: 'settingLyricFontSize' },
   lyricOffset:   { key: 'lyricOffset',   default: 0,             el: 'settingLyricOffset' },
 };
@@ -729,7 +732,13 @@ function setupGeneralSettingListeners() {
     if (!el) continue;
     el.addEventListener('change', () => {
       const val = el.type === 'checkbox' ? el.checked : el.value;
-      api.setPref(cfg.key, val);
+      if (cfg.key === 'language') {
+        // 语言由 i18n 一家负责「写 pref + 换字典 + 重新翻译」，这里再补一笔 setPref
+        // 就是同一份值先后写两次（且第二笔可能覆盖掉刚生效的那份）
+        window.i18n.setLanguage(val);
+      } else {
+        api.setPref(cfg.key, val);
+      }
       if (cfg.key === 'quality') {
         const qs = document.getElementById('qualitySelect');
         if (qs) qs.value = val;
@@ -999,6 +1008,8 @@ async function resetAllSettings() {
     // 刷新 UI
     await loadGeneralSettings();
     applyTheme('default');
+    // 语言与主题同病：清完 pref 不重新换字典，界面还是原来那门语言（恢复默认=半兑现）
+    if (window.i18n) await window.i18n.setLanguage(GENERAL_PREFS.language.default);
     showToast('✅ 设置已恢复默认值', 'success');
   } catch (e) {
     showToast('恢复失败: ' + errBrief(e), 'error');
