@@ -12,6 +12,9 @@
  *   + window/self/globalThis 前缀变体，堵旧钉排除类漏掉 window.confirm 的点前缀洞），
  *   扫描面从 src/renderer/js 扩到 index.html 内联脚本。现网全族零命中，钉下即绿，
  *   非空转由三枚变异验证 + 族钉自测（命中/不误伤各一组）背书。
+ * 增量182 行为层：domStub 驱动真 askConfirm 的键盘/焦点契约——Enter 归聚焦钮、
+ *   Tab 两钮循环、Esc 取消且不外漏、关闭后焦点归还 opener、空格不漏背景。
+ *   五测先红（对着 176 的旧实现各验过失败原因）后绿，非事后补测。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -184,4 +187,164 @@ test('无障碍钉：确认/取消按钮都可被键盘触发，弹层带 role=d
   assert.ok(/aria-modal/.test(src), '需要 aria-modal');
   assert.ok(/\.focus\(\)/.test(src), '打开时必须把焦点放进弹层（原生窗抢不走键盘，弹层不能）');
   assert.ok(/Escape/.test(src) && /keydown/.test(src), 'Esc 必须等同取消');
+});
+
+// ── 行为层：domStub 驱动真 askConfirm（增量182，补 176 的行为级欠账）──
+// 181 把"窄窗溢出"钉成几何契约后，剩下的欠账全是行为级：Enter 劫持、
+// 焦点陷阱、焦点归还、键盘围堵。askConfirm 的 DOM 依赖只有
+// createElement/body.appendChild/addEventListener(capture)/focus/remove，
+// 一个 60 行的桩就能真跑（方法论同 179 的 eq-reset：桩只做被测代码真用到的部分）。
+
+function stubEl(tag, doc) {
+  return {
+    tag, parent: null, children: [], className: '', textContent: '', attrs: {}, _l: {},
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    appendChild(c) { c.parent = this; this.children.push(c); return c; },
+    remove() {
+      if (this.parent) this.parent.children = this.parent.children.filter((x) => x !== this);
+      this.parent = null;
+    },
+    addEventListener(type, fn) { (this._l[type] ||= []).push(fn); },
+    focus() { doc.activeElement = this; },
+    click() { (this._l.click || []).forEach((fn) => fn({ type: 'click', target: this })); },
+  };
+}
+
+function makeDomStub() {
+  const doc = {
+    activeElement: null, _cap: [], _bub: [],
+    createElement: (tag) => stubEl(tag, doc),
+    addEventListener(type, fn, capture) { (capture ? doc._cap : doc._bub).push({ type, fn }); },
+    removeEventListener(type, fn, capture) {
+      const arr = capture ? doc._cap : doc._bub;
+      const i = arr.findIndex((l) => l.type === type && l.fn === fn);
+      if (i >= 0) arr.splice(i, 1);
+    },
+  };
+  doc.body = stubEl('body', doc);
+  return doc;
+}
+
+function findClass(el, cls) {
+  if (el.className.split(/\s+/).includes(cls)) return el;
+  for (const c of el.children) {
+    const hit = findClass(c, cls);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// 键盘事件按真实 DOM 的相位语义派发：document 捕获 → 目标 → document 冒泡；
+// stopPropagation 掐断后续节点，stopImmediatePropagation 连同节点后续监听也掐断。
+function dispatchKey(doc, key, target) {
+  const ev = {
+    key, type: 'keydown', target,
+    defaultPrevented: false, propagationStopped: false, immediateStopped: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.propagationStopped = true; },
+    stopImmediatePropagation() { this.immediateStopped = true; this.propagationStopped = true; },
+  };
+  const run = (list) => {
+    for (const l of list) {
+      if (ev.immediateStopped) return;
+      if (l.type === 'keydown') l.fn(ev);
+    }
+  };
+  run([...doc._cap]);
+  if (!ev.propagationStopped) run((target && target._l.keydown) || []);
+  if (!ev.propagationStopped) run([...doc._bub]);
+  return ev;
+}
+
+const flush = () => new Promise((r) => setImmediate(r));
+
+async function openDialog(doc, opts) {
+  globalThis.document = doc;
+  const { askConfirm } = await load(); // ?tc= 随机数保证每次拿到新鲜的单例状态
+  const d = { doc, settled: 'pending', value: null };
+  askConfirm(opts == null ? '确认删除？' : opts).then((v) => { d.settled = true; d.value = v; });
+  d.overlay = doc.body.children[doc.body.children.length - 1];
+  d.okBtn = findClass(d.overlay, 'confirm-dialog-ok');
+  d.cancelBtn = findClass(d.overlay, 'confirm-dialog-cancel');
+  assert.ok(d.okBtn && d.cancelBtn, '桩没找到弹层按钮——弹层类名变了要同步这张寻址表');
+  return d;
+}
+
+test('行为：Enter 归属于当前聚焦按钮——焦点停在「取消」时绝不确认不可逆操作', async () => {
+  const doc = makeDomStub();
+  const d = await openDialog(doc, { title: '彻底删除？', okLabel: '彻底删除', danger: true });
+  assert.equal(doc.activeElement, d.cancelBtn, '初始焦点应在取消钮（回车即确认的另一条路是指边取消）');
+  dispatchKey(doc, 'Enter', d.cancelBtn);
+  await flush();
+  assert.equal(d.settled, 'pending',
+    '全局 Enter 不得越权代按确认钮——那会让"焦点在取消、按回车却执行了不可逆删除"');
+  d.cancelBtn.click(); // 浏览器原生激活：Enter 按下的是聚焦的那颗钮
+  await flush();
+  assert.equal(d.value, false, '聚焦取消钮后的激活应取消');
+});
+
+test('行为：Esc 取消弹层，且这次 Esc 被封在弹层内——后台快捷键监听看不见它', async () => {
+  const doc = makeDomStub();
+  const seen = [];
+  doc.addEventListener('keydown', (ev) => seen.push(ev.key)); // 冒泡相位，与 shortcuts.js 同层
+  const d = await openDialog(doc);
+  dispatchKey(doc, 'Escape', d.cancelBtn);
+  await flush();
+  assert.equal(d.value, false, 'Esc = 取消');
+  assert.deepEqual(seen, [], '模态打开时按键不得漏到背景监听');
+});
+
+test('行为：Tab 焦点陷阱——焦点只在取消/确认两钮间循环，且必须 preventDefault', async () => {
+  const doc = makeDomStub();
+  const d = await openDialog(doc);
+  const ev1 = dispatchKey(doc, 'Tab', d.cancelBtn);
+  assert.equal(doc.activeElement, d.okBtn, 'Tab 应把焦点从取消推到确认');
+  const ev2 = dispatchKey(doc, 'Tab', d.okBtn);
+  assert.equal(doc.activeElement, d.cancelBtn, '再 Tab 应回到取消而不是逃去背景元素');
+  assert.ok(ev1.defaultPrevented && ev2.defaultPrevented,
+    'Tab 必须 preventDefault——否则浏览器原生换焦点会走出弹层');
+});
+
+test('行为：关闭后焦点归还唤起它的元素——不回还则键盘用户每次确认完都丢了位置', async () => {
+  const doc = makeDomStub();
+  const trigger = doc.createElement('button');
+  trigger.focus();
+  const d = await openDialog(doc);
+  assert.equal(doc.activeElement, d.cancelBtn, '打开时焦点进弹层');
+  dispatchKey(doc, 'Escape', d.cancelBtn);
+  await flush();
+  assert.equal(doc.activeElement, trigger, '关闭后焦点必须回到打开前聚焦的元素');
+});
+
+test('行为：空格不漏背景——弹层开着时空格 keydown 不得漏给 player.js 的播放快捷键', async () => {
+  const doc = makeDomStub();
+  const seen = [];
+  doc.addEventListener('keydown', (ev) => seen.push(ev.key));
+  const d = await openDialog(doc);
+  dispatchKey(doc, ' ', d.okBtn);
+  await flush();
+  assert.equal(d.settled, 'pending', '空格 keydown 不该由我们代劳确认（原生按钮激活留给浏览器）');
+  assert.deepEqual(seen, [], '空格不得漏到背景的播放/暂停快捷键');
+});
+
+test('行为：点确认钮 resolve true / 点遮罩 resolve false（原生 confirm 语义等价面）', async () => {
+  const doc = makeDomStub();
+  const d1 = await openDialog(doc, '清空全部任务？');
+  d1.okBtn.click();
+  await flush();
+  assert.equal(d1.value, true);
+  const d2 = await openDialog(doc, '清空全部任务？');
+  (d2.overlay._l.click || []).forEach((fn) => fn({ type: 'click', target: d2.overlay }));
+  await flush();
+  assert.equal(d2.value, false, '点遮罩 = 取消');
+});
+
+test('行为：同一时刻只有一个确认框——第二个调用复用同一 Promise 且不开第二层', async () => {
+  const doc = makeDomStub();
+  globalThis.document = doc;
+  const { askConfirm } = await load();
+  const p1 = askConfirm('删A？');
+  const p2 = askConfirm('删B？');
+  assert.equal(p1, p2, '并发调用必须复用同一个 Promise（单例阻塞语义）');
+  assert.equal(doc.body.children.length, 1, '不得叠出第二层弹层');
 });

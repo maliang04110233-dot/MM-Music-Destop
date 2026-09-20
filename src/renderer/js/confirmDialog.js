@@ -11,6 +11,10 @@
  *
  * 同一时刻只有一个确认框：confirm 本来就是单例阻塞语义；
  * 双击/连按第二个调用复用同一个 Promise，不会出现两层弹层各等一次决定。
+ *
+ * 键盘围堵契约（182，aria-modal 的行为面）：弹层开着时 Enter 归聚焦的那颗钮
+ * （浏览器原生激活，我们不代劳）、Tab 只在取消/确认间循环、Esc 即取消，
+ * 其余按键一律封在弹层内不外漏给后台快捷键；关闭后焦点归还唤起弹层的元素。
  */
 
 export const CONFIRM_FALLBACK_TITLE = '确认执行该操作？';
@@ -51,6 +55,8 @@ let _current = null; // { el, promise, done }
 export function askConfirm(opts) {
   if (_current) return _current.promise;
   const model = confirmDetails(opts);
+  // 182 契约：关闭后焦点要还给唤起弹层的元素，键盘用户不丢位置
+  const opener = document.activeElement;
 
   const overlay = document.createElement('div');
   overlay.className = 'confirm-dialog-overlay';
@@ -95,16 +101,30 @@ export function askConfirm(opts) {
   const promise = new Promise((resolve) => { done = resolve; });
   _current = { el: overlay, promise, done };
 
+  const focusables = [cancelBtn, okBtn];
   const close = (val) => {
     if (!_current) return;
     document.removeEventListener('keydown', onKey, true);
     overlay.remove();
     _current = null;
+    if (opener && typeof opener.focus === 'function') opener.focus();
     done(val);
   };
+  // 182 契约（aria-modal 的行为面）：弹层开着，键盘事件就只属于弹层——
+  // ① 围堵：任何 keydown 都 stopImmediatePropagation，后台全局快捷键（空格播放、⌘K）
+  //    不得越过模态去动背后的页面；
+  // ② Enter 不再全局代按确认钮：Enter 的激活归浏览器原生"按下聚焦的那颗钮"，
+  //    我们代劳就会做出"焦点在取消、回车却执行不可逆删除"这种事；
+  // ③ Tab 在取消/确认间循环且 preventDefault——三键小键盘不出弹层就是完整的陷阱。
   const onKey = (ev) => {
+    ev.stopImmediatePropagation();
+    ev.stopPropagation();
     if (ev.key === 'Escape') { ev.preventDefault(); close(false); }
-    else if (ev.key === 'Enter') { ev.preventDefault(); close(true); }
+    else if (ev.key === 'Tab') {
+      ev.preventDefault();
+      const i = focusables.indexOf(document.activeElement);
+      focusables[(i + 1) % focusables.length].focus();
+    }
   };
   okBtn.addEventListener('click', () => close(true));
   cancelBtn.addEventListener('click', () => close(false));
