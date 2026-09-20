@@ -81,7 +81,10 @@ function register() {
         return { success: false, canceled: true };
       }
 
-      // 收集所有数据（键名与真实存储对齐：历史在 history.json，EQ 是 eqPreset/eqGains）
+      // 收集所有数据（键名与真实存储对齐：历史在 history.json）。
+      // EQ 三键（eqPreset/eqGains/eqBypass）不在此逐键手抄：它们都在
+      // ALLOWED_PREF_KEYS 白名单里，已随下面的 data.prefs 全量搬运——
+      // 手抄一份只会造出第二个家，且逐键手抄必漏键的坑已被验证过两次（148/151）。
       const historyStats = history.stats();
       // WebDAV 凭证、MCP 令牌、AI 计费密钥不进备份：密码/令牌是 safeStorage 密文
       // （跨机不可解），url/user 属本机同步配置，带走只会让另一台设备误连
@@ -98,9 +101,6 @@ function register() {
           // 真实下载/播放历史（history.json，此前导出的是永无人读的 prefs 废键）
           downloadHistory: history.query({ limit: history.MAX_ENTRIES }).items,
           historyTotal: historyStats.total,
-          // EQ 设置（真实键名）
-          eqPreset: prefs.get('eqPreset') || null,
-          eqGains: prefs.get('eqGains') || null,
         },
       };
 
@@ -169,7 +169,9 @@ function register() {
         results.push(`下载历史: 导入 ${imported} 条`);
       }
 
-      // 恢复 EQ 设置（真实键名 eqPreset/eqGains；兼容旧备份的 eqSettings 对象）
+      // 旧备份兼容分支：185 之前的备份把 EQ 抄在顶层（eqPreset/eqGains），
+      // 更早的版本还有 eqSettings 对象。新备份的 EQ 只走下面的 data.prefs
+      // 通用通道，此分支对 185 之后的备份是空转——但不能拆，拆了旧文件丢 EQ。
       if (data.eqPreset !== undefined || data.eqGains !== undefined) {
         if (data.eqPreset !== undefined) prefs.set('eqPreset', data.eqPreset);
         if (data.eqGains !== undefined) prefs.set('eqGains', data.eqGains);
