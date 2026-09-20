@@ -6,6 +6,8 @@
  * 空值一律不进 opts（避免 SQL 侧收到空串条件）。
  */
 
+import { normalizeSortParam } from './historySort.js';
+
 const HISTORY_STATUS_TABS = [
   { v: '', label: '全部' },
   { v: 'done', label: '成功' },
@@ -30,6 +32,8 @@ function buildHistoryQuery(src, page, pageSize) {
   if (f.keyword) opts.keyword = f.keyword;
   if (f.status) opts.status = f.status;
   if (f.source) opts.source = f.source;
+  const sort = normalizeSortParam(src && src.sort);
+  if (sort) opts.sort = sort;
   return opts;
 }
 

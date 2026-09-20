@@ -27,6 +27,7 @@ const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
 const logger = require('./logger');
 const { safeReadJson } = require('./atomicFile');
+const { resolveSortOrder } = require('../shared/historySort');
 
 const MAX_ENTRIES = 5000;
 
@@ -285,15 +286,16 @@ function _where(opts) {
 
 /**
  * 查询历史
- * @param {Object} opts - { limit, offset, source, status, keyword }
+ * @param {Object} opts - { limit, offset, source, status, keyword, sort }
  */
 function query(opts = {}) {
   _ensure();
   const { limit = 50, offset = 0 } = opts;
   const { ws, params } = _where(opts);
+  const orderBy = resolveSortOrder(opts.sort);
   const total = _db.prepare(`SELECT count(*) AS c FROM history${ws}`).get(...params).c;
   const rows = _db
-    .prepare(`SELECT data FROM history${ws} ORDER BY seq DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT data FROM history${ws} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
     .all(...params, Number(limit) || 50, Number(offset) || 0);
   return { items: rows.map(r => JSON.parse(r.data)), total };
 }

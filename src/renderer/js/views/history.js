@@ -8,11 +8,13 @@ import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
 import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary } from '../historyFilters.js';
+import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
 let historyPage = 0;
 let _historyTotalPages = 1; // 最近一次查询的总页数（翻页钳制用）
 let historyFilter = '';
 let _historyStatus = '';
 let _historySource = '';
+let _historySort = DEFAULT_SORT; // 服务端排序档位（ORDER BY 白名单键）
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _historyDom = {
@@ -30,7 +32,7 @@ function _cacheHistoryDom() {
 async function loadHistory() {
   try {
     const opts = buildHistoryQuery(
-      { keyword: historyFilter, status: _historyStatus, source: _historySource },
+      { keyword: historyFilter, status: _historyStatus, source: _historySource, sort: _historySort },
       historyPage, PAGE_SIZE,
     );
     
@@ -215,7 +217,7 @@ function setHistoryStatusFilter(v) {
   _historyStatus = String(v || '');
   const tabsEl = document.getElementById('historyStatusTabs');
   if (tabsEl) {
-    for (const b of tabsEl.querySelectorAll('button')) {
+    for (const b of tabsEl.querySelectorAll('button[data-hst]')) {
       b.classList.toggle('active', (b.dataset.hst || '') === _historyStatus);
     }
   }
@@ -229,12 +231,22 @@ function setHistorySourceFilter(v) {
   loadHistory();
 }
 
+/** 排序档位是服务端 ORDER BY 白名单键，换档等于换查询 ⇒ 必回第 0 页重查 */
+function cycleHistorySort() {
+  _historySort = nextSortMode(_historySort);
+  const btn = document.getElementById('historySortBtn');
+  if (btn) btn.textContent = sortLabel(_historySort);
+  historyPage = 0;
+  loadHistory();
+}
+
 function _initHistoryFilterBar() {
   const tabsEl = document.getElementById('historyStatusTabs');
   if (tabsEl && !tabsEl.childElementCount) {
     tabsEl.innerHTML = HISTORY_STATUS_TABS.map(t =>
       `<button class="filter-tab ${t.v === '' ? 'active' : ''}" data-hst="${esc(t.v)}" onclick="setHistoryStatusFilter('${esc(t.v)}')">${esc(t.label)}</button>`,
-    ).join('');
+    ).join('')
+      + `<button class="filter-tab" id="historySortBtn" onclick="cycleHistorySort()">${esc(sortLabel(_historySort))}</button>`;
   }
   const sel = document.getElementById('historySourceSel');
   if (sel && !sel.childElementCount) {
@@ -362,6 +374,7 @@ export {
   filterHistory,
   setHistoryStatusFilter,
   setHistorySourceFilter,
+  cycleHistorySort,
   historyPrevPage,
   historyNextPage,
   clearAllHistory,
@@ -377,6 +390,7 @@ window.loadHistory = loadHistory;
 window.filterHistory = filterHistory;
 window.setHistoryStatusFilter = setHistoryStatusFilter;
 window.setHistorySourceFilter = setHistorySourceFilter;
+window.cycleHistorySort = cycleHistorySort;
 window.historyPrevPage = historyPrevPage;
 window.historyNextPage = historyNextPage;
 window.clearAllHistory = clearAllHistory;
