@@ -24,6 +24,8 @@ const prefs = require('../../utils/prefs');
 const approvedDirs = require('../approvedDirs');
 const { convertAudioFile, normalizeFormat, formatExtension, normalizeClip, clipNameSuffix } = require('../../utils/audioConvert');
 const { bucketBySize, slicePlan, groupByHash, dupGroupView, wastedBytes } = require('../../utils/dupScan');
+const { relinkFileRefs } = require('../../utils/fileRelink');
+const { sidecarPathFor } = require('../../utils/relinkRefs');
 // 主进程即 UI 线程：所有 fs 操作必须异步，避免扫描/读写文件时窗口冻结
 const fsa = require('../../utils/fsAsync');
 
@@ -139,9 +141,7 @@ function register() {
       if (!isInAllowedDir(filePath)) return { lrc: '', error: '路径不可访问' };
 
       // 1) 同目录 .lrc 优先
-      const lrcPath = path.parse(filePath).ext
-        ? filePath.replace(/\.[^.]+$/, '.lrc')
-        : filePath + '.lrc';
+      const lrcPath = sidecarPathFor(filePath);
       if (await fsa.exists(lrcPath)) {
         const stat = await fsa.statOrNull(lrcPath);
         if (stat && stat.size > 0 && stat.size <= 1024 * 1024) {
@@ -207,9 +207,7 @@ function register() {
   handle('write-local-lrc', async (_, filePath, lrc) => {
     try {
       if (!isValidPath(filePath) || !isInAllowedDir(filePath)) return { success: false, error: '路径不可访问' };
-      const lrcPath = path.parse(filePath).ext
-        ? filePath.replace(/\.[^.]+$/, '.lrc')
-        : filePath + '.lrc';
+      const lrcPath = sidecarPathFor(filePath);
       const bom = Buffer.from([0xEF, 0xBB, 0xBF]);
       const body = Buffer.from(lrc, 'utf8');
       await fsa.fsp.writeFile(lrcPath, Buffer.concat([bom, body]));
@@ -268,7 +266,16 @@ function register() {
         return { success: false, error: '目标文件已存在' };
       }
       await fsa.fsp.rename(oldPath, newPath);
-      return { success: true };
+      // 名字一改，按路径记账的东西（历史/歌单/收藏/最近播放/进度/.lrc）会集体失联，
+      // 善后必须在 rename 成功之后、且在返回之前做完
+      let relink = null;
+      try {
+        relink = await relinkFileRefs(oldPath, newPath);
+      } catch (e) {
+        // 文件已经改成功了，回写失败不能报"重命名失败"（那会诱导用户再改一次）
+        logger.warn('[rename-file] 路径引用回写失败:', e.message);
+      }
+      return { success: true, relink };
     } catch (e) {
       logger.warn('[rename-file] 重命名失败:', e.message);
       return { success: false, error: e.message };

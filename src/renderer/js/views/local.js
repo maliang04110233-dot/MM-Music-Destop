@@ -1115,7 +1115,7 @@ async function executeBatchRename() {
 
   const localSongs = getState('localSongs');
   const localFiltered = getState('localFiltered');
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, relinkFailed = 0;
 
   const progressWrap = document.getElementById('localBatchProgressWrap');
   const progressBar = document.getElementById('localBatchProgressBar');
@@ -1148,6 +1148,9 @@ async function executeBatchRename() {
         if (s) s.filePath = newPath;
         const fi = localFiltered.findIndex(x => x.filePath === fp);
         if (fi >= 0) localFiltered[fi].filePath = newPath;
+        // relink 为空 = 主进程回写路径引用时出了岔子（它自己已记日志）。
+        // 不能让它被"重命名成功"盖过去：文件改名的同时引用没跟上，正是失联的起点
+        if (!result.relink) relinkFailed++;
         ok++;
       } else {
         fail++;
@@ -1171,7 +1174,12 @@ async function executeBatchRename() {
   const overlay = document.getElementById('renameModal');
   if (overlay) overlay.remove();
 
-  showToast(`重命名完成：✅ ${ok} 成功  ❌ ${fail} 失败`, ok > 0 ? 'success' : 'warn', 4000);
+  // 主进程改名时顺带回写了盘上的收藏/最近播放路径，但渲染层内存里还握着旧引用，
+  // 不重拉的话用户下次收藏就会把刚修好的路径覆盖回旧值
+  if (ok && typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
+
+  const relinkNote = relinkFailed ? `  ⚠ ${relinkFailed} 个文件的记录路径未同步（歌单/历史可能仍指向旧名）` : '';
+  showToast(`重命名完成：✅ ${ok} 成功  ❌ ${fail} 失败${relinkNote}`, ok > 0 ? 'success' : 'warn', 4000);
 }
 
 // ══════════════════════════════════════════════════════════

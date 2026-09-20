@@ -28,6 +28,7 @@ const { DatabaseSync } = require('node:sqlite');
 const logger = require('./logger');
 const { safeReadJson } = require('./atomicFile');
 const { resolveSortOrder } = require('../shared/historySort');
+const { pathsEqual } = require('./relinkRefs');
 
 const MAX_ENTRIES = 5000;
 
@@ -400,6 +401,47 @@ function remove(entries) {
   return removed;
 }
 
+/**
+ * 磁盘文件改名/移动后把路径引用回写（增量149）。
+ *
+ * 必须连 assets 一起修：findDownloaded 见到 save_path 指向的文件不在就顺手删掉
+ * 那行索引，于是「✔ 已下载」徽标消失、同一首歌下次会被重新下一遍。历史行本身
+ * 还在（_trim 只淘汰展示行），所以这里既补 save_path/data，也重建去重索引。
+ *
+ * 匹配用 REPLACE(save_path, '\', '/') 而不是等值比较：同一条记录可能由
+ * path.join（反斜杠）或渲染层字符串（正斜杠）写入，判等太严会漏掉一半。
+ * @returns {number} 改写的历史行数（未命中为 0）
+ */
+function relinkPath(oldPath, newPath) {
+  _ensure();
+  const like = typeof oldPath === 'string' ? oldPath.trim().replace(/\\/g, '/') : '';
+  if (!like || typeof newPath !== 'string' || !newPath.trim()) return 0;
+  const nocase = process.platform === 'win32' ? ' COLLATE NOCASE' : '';
+  const param = process.platform === 'win32' ? like.toLowerCase() : like;
+
+  const rows = _db.prepare(
+    `SELECT seq, key_id, key_source, data FROM history WHERE REPLACE(save_path, '\\', '/') = ?${nocase}`,
+  ).all(param);
+  const upd = _db.prepare('UPDATE history SET save_path=?, data=? WHERE seq=?');
+  let changed = 0;
+  for (const r of rows) {
+    let entry = null;
+    try { entry = JSON.parse(r.data); } catch (_e) { /* 坏 data：只改列，保住徽标 */ }
+    if (entry) {
+      for (const f of ['savePath', 'filePath']) {
+        if (pathsEqual(entry[f], oldPath)) entry[f] = newPath;
+      }
+    }
+    upd.run(newPath, entry ? JSON.stringify(entry) : r.data, r.seq);
+    if (entry) _syncAsset(_db, r.key_id, r.key_source, entry);
+    changed += 1;
+  }
+  // 展示行已被 _trim 淘汰、只剩去重索引的孤儿：单独扫一遍 assets
+  _db.prepare(`UPDATE assets SET save_path=? WHERE REPLACE(save_path, '\\', '/') = ?${nocase}`)
+    .run(newPath, param);
+  return changed;
+}
+
 function destroy() {
   if (_db) {
     try { _db.close(); } catch (_e) { /* 已关闭 */ }
@@ -411,5 +453,6 @@ function destroy() {
 
 module.exports = {
   init, add, query, stats, flush, clear, remove, destroy, importEntries, findDownloaded,
+  relinkPath,
   MAX_ENTRIES,
 };
