@@ -654,17 +654,43 @@ function editPlaylist(playlistId) {
 }
 
 async function deletePlaylist(playlistId) {
-  if (!confirm('确认删除该歌单？')) return;
+  // 增量156（审计 F2）：删除必见影响 —— 确认框点名歌单与歌数，
+  // 删后 5 秒撤销窗口（走 utils.showActionToast，回收站兜底见 main/ipc/playlist.js）
+  const pl = (getState('userPlaylists') || []).find(p => p && p.id === playlistId);
+  if (!pl) { showToast('歌单不存在或已刷新，请重试', 'warn'); return; }
+  const n = Array.isArray(pl.songs) ? pl.songs.length : 0;
+  if (!confirm(`确认删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌 —— 删的只是这份清单，歌曲文件与红心收藏都不受影响\n• 删除后 5 秒内可点「撤销」原样找回`)) return;
   try {
     const result = await api.deleteUserPlaylist(playlistId);
     if (result.success) {
       await loadUserPlaylists();
-      showToast('✅ 歌单已删除', 'success');
+      showActionToast({
+        text: `歌单「${pl.name}」已删除`,
+        btnLabel: '撤销',
+        ttl: 5000,
+        onConfirm: () => undoDeletePlaylist(pl),
+      });
     } else {
       showToast(result.error || '删除失败', 'error');
     }
   } catch (e) {
     showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+/** 撤销删除：攥着被删对象的完整副本走既有 save-user-playlist 原 id 保存，
+ *  主进程"带 id 却不在列表 ⇒ 查回收站放回"分支承接（零新 IPC 通道） */
+async function undoDeletePlaylist(pl) {
+  try {
+    const back = await api.saveUserPlaylist(pl);
+    if (back && back.success) {
+      await loadUserPlaylists();
+      showToast(`✅ 已撤销，歌单「${pl.name}」已找回`, 'success');
+    } else {
+      showToast((back && back.error) || '撤销失败', 'error');
+    }
+  } catch (e) {
+    showToast('撤销失败: ' + e.message, 'error');
   }
 }
 

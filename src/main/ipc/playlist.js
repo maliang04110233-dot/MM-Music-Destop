@@ -9,6 +9,15 @@
 
 const prefs = require('../../utils/prefs');
 const { handle } = require('./register');
+const { trashRemove, trashRestore, purgeExpired } = require('../../utils/playlistTrash');
+
+// 回收站单独一个 prefs 键，不掺进 userPlaylists（见 utils/playlistTrash.js 头注）。
+// 主进程内部键，与 userPlaylists 同待遇：不进 set-pref 白名单、不进云同步。
+const TRASH_KEY = 'playlistTrash';
+
+function _trash() {
+  return prefs.get(TRASH_KEY) || [];
+}
 
 // ── 收藏歌单（红心）──────────────────────────────────────
 // 收藏不是独立的存储，而是 userPlaylists 里 id 固定的系统歌单：
@@ -41,6 +50,11 @@ function ensureFavorites() {
 }
 
 function register() {
+  // 启动即清过期回收站条目（30 天 TTL，规则在 utils/playlistTrash.js 一家管）
+  const trashNow = _trash();
+  const { trash: alive, purged } = purgeExpired(trashNow, Date.now());
+  if (purged.length) prefs.set(TRASH_KEY, alive);
+
   // 获取所有用户歌单
   handle('get-user-playlists', () => {
     return ensureFavorites();
@@ -58,7 +72,20 @@ function register() {
       if (idx >= 0) {
         playlists[idx] = { ...playlists[idx], ...playlist, updatedAt: now };
         prefs.set('userPlaylists', playlists);
+        // 歌单已在列表中（撤销成功过 / 云端把它带回来了）⇒ 回收站里那份
+        // 陈旧条目顺手清掉，不然同一歌单会"既在列表又在回收站"地挂着
+        const tr0 = _trash();
+        const rr0 = trashRestore(playlists, tr0, playlist);
+        if (rr0.trash.length !== tr0.length) prefs.set(TRASH_KEY, rr0.trash);
         return { success: true, playlist: playlists[idx] };
+      }
+      // 带 id 却不在列表 —— 可能是"撤销删除"：渲染层攥着被删歌单的完整副本
+      // 走这条既有通道原 id 保存回来（零新 IPC 通道，契约 args 形状未动）。
+      const rr = trashRestore(playlists, _trash(), playlist);
+      if (rr.restored) {
+        prefs.set(TRASH_KEY, rr.trash);
+        prefs.set('userPlaylists', rr.playlists);
+        return { success: true, playlist: rr.restored, restored: true };
       }
     }
 
@@ -77,14 +104,17 @@ function register() {
     return { success: true, playlist: newPlaylist };
   });
 
-  // 删除歌单
+  // 删除歌单（增量155：硬删改挪回收站，5 秒内可撤销、30 天内可恢复）
   handle('delete-user-playlist', (_, playlistId) => {
     if (!playlistId) return { success: false, error: '缺少歌单ID' };
     const playlists = ensureFavorites();
     const pl = playlists.find(p => p.id === playlistId);
     if (!pl) return { success: false, error: '歌单不存在' };
     if (pl.system) return { success: false, error: '收藏歌单不能删除' };
-    prefs.set('userPlaylists', playlists.filter(p => p.id !== playlistId));
+    const res = trashRemove(playlists, _trash(), playlistId, Date.now());
+    if (!res.removed) return { success: false, error: '歌单不存在' };
+    prefs.set('userPlaylists', res.playlists);
+    prefs.set(TRASH_KEY, res.trash);
     return { success: true };
   });
 
