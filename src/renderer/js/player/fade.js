@@ -153,6 +153,20 @@ export function cycleFadeOut() {
   showToast('淡出：' + fadeStageLabel(_fadeOutMs), 'info', 1800);
 }
 
+/**
+ * 淡入/淡出的「默认态」（增量184）：设置页「恢复所有设置」叫这一家，
+ * 而不是把 fadeInMs/fadeOutMs 抄进重置清单（158 的规矩：替别人写默认值必然漏项或漂移）。
+ * 档位表第一档就是「关」，默认值取 FADE_STEPS[0] —— 不再抄一份 0。
+ */
+export function resetFadeSettings() {
+  _fadeMs = FADE_STEPS[0];
+  _fadeOutMs = FADE_STEPS[0];
+  _setBadge();
+  _setOutBadge();
+  try { api.setPref('fadeInMs', _fadeMs); } catch (_e) { /* 持久化失败不挡本次 */ }
+  try { api.setPref('fadeOutMs', _fadeOutMs); } catch (_e) { /* 同上 */ }
+}
+
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _wire, { once: true });
@@ -162,4 +176,5 @@ if (typeof document !== 'undefined') {
   window.cycleFadeIn = cycleFadeIn;
   window.cycleFadeOut = cycleFadeOut;
   window.fadeOutPause = fadeOutPause;
+  window.resetFadeSettings = resetFadeSettings;
 }

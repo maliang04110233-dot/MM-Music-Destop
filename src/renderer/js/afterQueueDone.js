@@ -184,9 +184,23 @@ function afterQueueObserve(queue) {
   _act().observe(queue);
 }
 
+/**
+ * 默认态（增量184）：设置页「恢复所有设置」叫这一家。
+ * 必须连内存里的 _action 一起归零 —— 只清 pref 的话，本次会话下一次队列跑完
+ * 照样按旧动作关机；倒计时已经在跑时更要当场掐掉。
+ */
+function resetAfterQueueAction() {
+  cancelAfterQueueCountdown();
+  _action = 'none';
+  _renderLabel();
+  window.api.setPref('afterQueueDone', 'none')
+    .catch(e => logger.warn('[afterQueueDone] 恢复默认失败:', e && e.message));
+}
+
 // ── window 桥接 ───────────────────────────────────────
 window.openAfterQueueMenu = openAfterQueueMenu;
 window.afterQueueObserve = afterQueueObserve;
 window.cancelAfterQueueCountdown = cancelAfterQueueCountdown;
+window.resetAfterQueueAction = resetAfterQueueAction;
 
-export { createAfterQueueMachine, isQueueFinished, hasActiveTasks, openAfterQueueMenu, afterQueueObserve, ACTIONS, COUNTDOWN_SECONDS };
+export { createAfterQueueMachine, isQueueFinished, hasActiveTasks, openAfterQueueMenu, afterQueueObserve, resetAfterQueueAction, ACTIONS, COUNTDOWN_SECONDS };

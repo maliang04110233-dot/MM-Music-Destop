@@ -678,6 +678,10 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ── 音量控制 ──────────────────────────────────────────
+// 出厂音量只许有一个字面量：初始化、静音回退、「恢复所有设置」三处都读它
+const DEFAULT_VOLUME = 0.8;
+const DEFAULT_PLAYBACK_RATE = 1.0;
+
 export function setVolume(value) {
   const vol = Math.max(0, Math.min(100, parseInt(value) || 0));
   audio.volume = vol / 100;
@@ -704,14 +708,14 @@ export function toggleMute() {
     audio._prevVolume = audio.volume;
     setVolume(0);
   } else {
-    setVolume(Math.round((audio._prevVolume || 0.8) * 100));
+    setVolume(Math.round((audio._prevVolume || DEFAULT_VOLUME) * 100));
   }
 }
 
 // 初始化音量：恢复上次记住的音量（prefs.playerVolume），无记录则 80%。
 // 注意恢复逻辑须等 window.api 就绪——player.js 被 app.js import 时 api getter
 // 可能尚未挂上（模块体先于 app.js 执行），故挂 DOMContentLoaded 而非模块加载时执行
-audio.volume = 0.8;
+audio.volume = DEFAULT_VOLUME;
 (function scheduleVolumeRestore() {
   const restore = () => {
     if (typeof window.api !== 'undefined' && typeof window.api.getPref === 'function') {
@@ -728,18 +732,20 @@ audio.volume = 0.8;
 })();
 // 音量记忆：变更后防抖写 prefs（拖动滑条时 setVolume 高频触发，不能每步都写盘）
 let _volPersistTimer = null;
+/** playerVolume 的唯一落笔口：掐掉未执行的防抖，立刻写当前值 */
+function _flushVolumePersist() {
+  if (_volPersistTimer) { clearTimeout(_volPersistTimer); _volPersistTimer = null; }
+  try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 持久化失败不影响音量本身 */ }
+}
 function _persistVolume() {
   if (_volPersistTimer) clearTimeout(_volPersistTimer);
-  _volPersistTimer = setTimeout(() => {
-    _volPersistTimer = null;
-    try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 持久化失败不影响音量本身 */ }
-  }, 600);
+  _volPersistTimer = setTimeout(() => { _volPersistTimer = null; _flushVolumePersist(); }, 600);
 }
 
 // ── 倍速播放 ──────────────────────────────────────────
 // preservesPitch=true 时变速不变调（Chromium 默认支持），关掉会像磁带快进
 const PLAYBACK_RATES = [0.75, 1.0, 1.25, 1.5, 2.0];
-let _playbackRate = 1.0;
+let _playbackRate = DEFAULT_PLAYBACK_RATE;
 
 function _applyPlaybackRate() {
   audio.playbackRate = _playbackRate;
@@ -758,6 +764,20 @@ export function cyclePlaybackRate() {
   _applyPlaybackRate();
   showToast(`倍速：${_playbackRate}x`, 'info', 1500);
   try { api.setPref('playbackRate', _playbackRate); } catch (_e) { /* 持久化失败不影响本次 */ }
+}
+
+/**
+ * 音量与倍速的「默认态」（增量184）：设置页「恢复所有设置」叫这一家。
+ * 这两个旋钮住在播放器上（音量滑条、倍速按钮），不在 GENERAL_PREFS 表里 —— 表管不着它们，
+ * 于是过去的"恢复默认"漏掉了它们：滑条仍停在用户上次拖到的 15%、倍速仍是 2x，重启照旧。
+ * 委派既有的 setVolume / _applyPlaybackRate：滑条、百分比、按钮图标、aria 各只有一家会改。
+ */
+export function resetPlaybackPrefs() {
+  setVolume(DEFAULT_VOLUME * 100);
+  _flushVolumePersist(); // 音量平时靠 600ms 防抖写盘，恢复默认必须当场落盘（按完就关窗也不能丢）
+  _playbackRate = DEFAULT_PLAYBACK_RATE;
+  _applyPlaybackRate();
+  try { api.setPref('playbackRate', DEFAULT_PLAYBACK_RATE); } catch (_e) { /* 持久化失败不影响本次 */ }
 }
 
 // 启动恢复上次倍速（同 volume 模式：等 window.api 就绪）
@@ -810,10 +830,7 @@ function _initVolumeUX() {
     if (next !== cur) setVolume(next);
   }, { passive: false });
 }
-window.addEventListener('beforeunload', () => {
-  if (_volPersistTimer) { clearTimeout(_volPersistTimer); _volPersistTimer = null; }
-  try { if (typeof api !== 'undefined' && typeof api.setPref === 'function') api.setPref('playerVolume', audio.volume); } catch (_e) { /* 同上：尽力写盘 */ }
-});
+window.addEventListener('beforeunload', () => { _flushVolumePersist(); });
 
 // ── 进度条 ───────────────────────────────────────────
 let _lastProgressSave = 0;
@@ -1015,6 +1032,7 @@ window.restoreEqPresetSetting = restoreEqPresetSetting;
 window.setVolume = setVolume;
 window.toggleMute = toggleMute;
 window.cyclePlaybackRate = cyclePlaybackRate;
+window.resetPlaybackPrefs = resetPlaybackPrefs;
 window.getRecentlyPlayed = getRecentlyPlayed;
 window.clearRecentlyPlayed = clearRecentlyPlayed;
 window.loadRecentlyPlayed = loadRecentlyPlayed;
