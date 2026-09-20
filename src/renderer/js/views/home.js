@@ -1,11 +1,13 @@
 /**
  * MusicDL 首页
  *
- * 架构（重构后）：
- *   1. 分区注册表 HOME_PLATFORMS 是唯一数据源，驱动 DOM 生成、锚点导航、懒加载
- *   2. 三平台纵向堆叠成「聚合长页」——打开首页即能看到各平台内容，
- *      不再靠 tab 互斥切换；顶部锚点条平滑滚动定位
- *   3. 平台块进入视口才加载（IntersectionObserver），每块独立成功/失败/重试
+ * 架构（增量125 后）：
+ *   1. 分区注册表 HOME_PLATFORMS 是唯一数据源，驱动 DOM 生成、平台 tab、按需加载
+ *   2. 顶部平台条是 **tab（互斥切换）**，不是锚点滚动条：点哪个平台就只显示
+ *      那个平台，其余整块 hidden。此前四平台纵向堆叠成聚合长页，看酷狗要
+ *      先滚过网易云 + QQ 的三千像素 —— 平台之间是并列选择关系，不是阅读顺序
+ *   3. 平台数据在 tab 首次激活时才加载（loadPlatform 自身幂等），
+ *      每块独立成功/失败/重试；←/→ 在平台间循环
  *   4. 单一状态源 homeState：window / global state 共享同一对象引用，
  *      永不整体替换（旧实现有模块变量 + state + window 三份副本，会漂移）
  *
@@ -20,6 +22,7 @@ import { heartBtnHtml } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { filterHomeSection } from '../homeFilter.js';
+import { platIdsOf, normalizePlatTab, nextPlatTab, HOME_PLAT_LS_KEY } from '../homePlatTabs.js';
 
 // 首页榜单过滤词（会话级；小写化在 filterHomeSection 内统一处理）
 let _homeFilterStr = '';
@@ -82,9 +85,10 @@ const HOME_PLATFORMS = [
  *
  * 从 20 降到 8 的依据（实测，非审美偏好）：
  *   改版前 netease 块高 1156px，其中 980px 是单一分区的前 20 行 ——
- *   整页滚动比 2.23（内容 3140px / 视口 1408px），第二个平台被推到
- *   1600px 以下，「打开首页就看到各平台内容」的设计意图没有兑现。
- *   收到 8 行后单块约 350px，三个平台可同屏出现。
+ *   一个分区就吃掉一整屏，同平台其它分区被推出视野。
+ *   收到 8 行后单块约 350px，一屏能看完当前平台的分区头 + 榜单主体。
+ *   （增量125 起一次只显示一个平台，「块太高会把后面的平台推走」这条
+ *    动机已不存在，折叠仍然保留 —— 理由换成下面那句。）
  *   完整榜单不再原地展开，而是弹窗查看 —— 首页负责「发现」，
  *   完整列表不是首页该承担的信息量。
  */
@@ -113,8 +117,20 @@ const homeState = { plat: {}, _booted: false };
 try { setState('homeRecommendations', homeState); } catch (_e) { /* ignore */ }
 window.homeRecommendations = homeState;
 
+// ── 平台 tab 状态 ─────────────────────────────────────────
+const _platIds = platIdsOf(HOME_PLATFORMS);
+
+/** 上次所选平台：localStorage 尽力而为，禁用/隐私模式下静默降级到首个平台 */
+function _storedPlat() {
+  try { return localStorage.getItem(HOME_PLAT_LS_KEY); } catch (_e) { return null; }
+}
+function _rememberPlat(plat) {
+  try { localStorage.setItem(HOME_PLAT_LS_KEY, plat); } catch (_e) { /* ignore */ }
+}
+
+let _activePlat = normalizePlatTab(_platIds, _storedPlat());
+
 let _shellRendered = false;
-let _observer = null;
 /** 完整榜单弹窗的 Esc 监听器（关闭时必须移除，否则重复打开会累积） */
 let _chartEscHandler = null;
 
@@ -200,8 +216,9 @@ function renderHomeShell() {
 
   wrap.innerHTML = HOME_PLATFORMS.map(p => {
     const label = platformName(p.plat);
+    const on = p.plat === _activePlat;
     return `
-    <section class="plat-block" id="${_blockId(p.plat)}" data-plat="${p.plat}">
+    <section class="plat-block" id="${_blockId(p.plat)}" data-plat="${p.plat}"${on ? '' : ' hidden'}>
       <div class="plat-block-head">
         <span class="plat-dot" data-plat="${escAttr(p.plat)}"></span>
         <span class="plat-block-name">${esc(label)}</span>
@@ -217,53 +234,78 @@ function renderHomeShell() {
 
   const anchors = document.getElementById('homeAnchors');
   if (anchors) {
-    anchors.innerHTML = HOME_PLATFORMS.map(p =>
-      `<button class="anchor-chip" data-anchor="${_blockId(p.plat)}" onclick="scrollToHomeBlock('${_blockId(p.plat)}',this)"><span class="plat-dot" data-plat="${escAttr(p.plat)}"></span>${esc(platformName(p.plat))}</button>`
-    ).join('');
+    anchors.setAttribute('role', 'tablist');
+    anchors.innerHTML = HOME_PLATFORMS.map(p => {
+      const on = p.plat === _activePlat;
+      return `<button class="anchor-chip${on ? ' active' : ''}" role="tab" aria-selected="${on}" data-plat="${escAttr(p.plat)}" title="${escAttr(platformName(p.plat))}（←/→ 可循环切换平台）" onclick="showHomePlatform('${escQ(p.plat)}',this)"><span class="plat-dot" data-plat="${escAttr(p.plat)}"></span>${esc(platformName(p.plat))}</button>`;
+    }).join('');
   }
 
   _shellRendered = true;
 }
 
-// ── 锚点导航 / 分区切换 ───────────────────────────────────
-function scrollToHomeBlock(blockId, btn) {
-  const el = document.getElementById(blockId);
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  _setActiveAnchor(blockId);
+// ── 平台 tab 切换 / 平台内分区切换 ────────────────────────
+/**
+ * 切到某个平台：只保留该平台的块，其余整块 hidden。
+ *
+ * 与旧版「锚点 + scrollIntoView」的区别是实质的：旧版四个平台始终在同一
+ * 条滚动流里，点 tab 只是把视口挪过去；现在一次只有一个平台在场，
+ * 滚动条长度由当前平台决定，切平台时回到顶部（否则新平台会停在半屏位置）。
+ */
+function showHomePlatform(plat, btn) {
+  const target = normalizePlatTab(_platIds, plat);
+  if (!target) return;
+  _activePlat = target;
+  _rememberPlat(target);
+
+  const bar = document.getElementById('homeAnchors');
+  if (bar) {
+    bar.querySelectorAll('.anchor-chip').forEach(c => {
+      const on = c.dataset.plat === target;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  document.querySelectorAll('#homeBlocks .plat-block').forEach(el => {
+    el.hidden = el.dataset.plat !== target;
+  });
+
+  const root = document.getElementById('homePage');
+  if (root) root.scrollTop = 0;
+
+  loadPlatform(target); // 幂等：loading/done 直接返回
   if (btn) btn.blur();
 }
 
-function _setActiveAnchor(blockId) {
-  const bar = document.getElementById('homeAnchors');
-  if (!bar) return;
-  bar.querySelectorAll('.anchor-chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.anchor === blockId));
+/**
+ * ←/→ 循环切平台。
+ * 只在首页、且焦点不在输入框、且没有弹窗在场时接管 ——
+ * 榜单弹窗/歌单弹窗开着时方向键属于弹窗内容滚动。
+ */
+
+/**
+ * 是否有弹窗真的开着。
+ * ⚠️ 不能写 querySelector('.playlist-modal-overlay') 就完事：index.html 里有六个
+ * 弹层是常驻 DOM 的（用 .hidden 类控制显隐），那样判定永远为真，
+ * 方向键切平台会静默失效（浏览器实测踩过）。故只看「没有 hidden 类」的那些。
+ */
+function _homeModalOpen() {
+  return [...document.querySelectorAll('.playlist-modal-overlay')]
+    .some(el => !el.classList.contains('hidden'));
 }
 
-/** 手动滚动时同步锚点高亮（否则高亮会一直停在最后点击的那个平台） */
-function _syncActiveAnchor() {
-  const root = document.getElementById('homePage');
-  if (!root) return;
-  const threshold = root.getBoundingClientRect().top + 64;
-  let current = _blockId(HOME_PLATFORMS[0].plat);
-  for (const p of HOME_PLATFORMS) {
-    const el = document.getElementById(_blockId(p.plat));
-    if (el && el.getBoundingClientRect().top <= threshold) current = _blockId(p.plat);
-  }
-  _setActiveAnchor(current);
-}
-
-function _bindAnchorSpy() {
-  const root = document.getElementById('homePage');
-  if (!root) return;
-  let raf = 0;
-  root.addEventListener('scroll', () => {
-    if (raf) return;
-    raf = requestAnimationFrame(() => { raf = 0; _syncActiveAnchor(); });
-  }, { passive: true });
-  _syncActiveAnchor();
-}
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (!document.querySelector('.nav-item.active[data-tab="home"]')) return;
+  if (_homeModalOpen()) return;
+  const next = nextPlatTab(_platIds, _activePlat, e.key === 'ArrowRight' ? 1 : -1);
+  if (!next || next === _activePlat) return;
+  e.preventDefault();
+  showHomePlatform(next, null);
+});
 
 /** 平台内切换分区：显式比对 data-sec，不再用 id.includes(type) 的子串匹配 */
 function showHomeSection(plat, sec, btn) {
@@ -272,28 +314,6 @@ function showHomeSection(plat, sec, btn) {
   block.querySelectorAll('.plat-chip').forEach(c => c.classList.toggle('active', c.dataset.sec === sec));
   block.querySelectorAll('.home-sec').forEach(el => { el.hidden = el.dataset.sec !== sec; });
   if (btn) btn.blur();
-}
-
-// ── 懒加载 ────────────────────────────────────────────────
-function observeBlocks() {
-  if (_observer) { _observer.disconnect(); _observer = null; }
-
-  // 无 IntersectionObserver（老运行时）：降级为一次性全量加载
-  if (typeof IntersectionObserver !== 'function') {
-    HOME_PLATFORMS.forEach(p => loadPlatform(p.plat));
-    return;
-  }
-
-  const root = document.getElementById('homePage');
-  _observer = new IntersectionObserver((entries) => {
-    for (const en of entries) {
-      if (!en.isIntersecting) continue;
-      _observer.unobserve(en.target);
-      loadPlatform(en.target.dataset.plat);
-    }
-  }, { root: root || null, rootMargin: '240px 0px' });
-
-  document.querySelectorAll('.plat-block').forEach(el => _observer.observe(el));
 }
 
 // ── 平台状态徽标 ──────────────────────────────────────────
@@ -402,7 +422,7 @@ async function fetchSection(meta) {
 
 /**
  * 首页入口（app.js init / router switchTab('home') 调用）
- * 幂等：重复调用不重复加载。window._forceHomeRefresh = true 可强制重载全部平台。
+ * 幂等：重复调用不重复加载。window._forceHomeRefresh = true 强制重载当前平台的分区。
  */
 async function loadHomeRecommendations() {
   const force = !!window._forceHomeRefresh;
@@ -411,16 +431,14 @@ async function loadHomeRecommendations() {
   if (!_shellRendered) {
     renderHeroTags();
     renderHomeShell();
-    observeBlocks();
-    _bindAnchorSpy();
+    // 只加载当前 tab：其余平台等用户切过去再按需加载
+    showHomePlatform(_activePlat);
   }
 
   if (homeState._booted && !force) return;
   homeState._booted = true;
 
-  if (force) {
-    HOME_PLATFORMS.forEach(p => reloadPlatform(p.plat));
-  }
+  if (force) reloadPlatform(_activePlat);
 }
 
 // ── 渲染 ──────────────────────────────────────────────────
@@ -921,11 +939,10 @@ export {
   reloadPlatform,
   renderSection,
   renderHomeShell,
-  scrollToHomeBlock,
+  showHomePlatform,
   showHomeSection,
   openHomeChartModal,
   closeHomeChartModal,
-  observeBlocks,
   playRecommendById,
   playRecommendSong,
   addRecommendDownload,
@@ -941,7 +958,7 @@ export {
 // ── 全局桥接（HTML onclick 兼容） ─────────────────────────
 window.loadHomeRecommendations = loadHomeRecommendations;
 window.reloadHomePlatform = reloadPlatform;
-window.scrollToHomeBlock = scrollToHomeBlock;
+window.showHomePlatform = showHomePlatform;
 window.showHomeSection = showHomeSection;
 window.openHomeChartModal = openHomeChartModal;
 window.closeHomeChartModal = closeHomeChartModal;
@@ -957,4 +974,4 @@ window.playRecentSong = playRecentSong;
 window.renderRecentlyPlayed = renderRecentlyPlayed;
 
 // ── 兼容旧调用名（外部自动化/CDP 可能仍在用） ──────────────
-window.switchPlatTab = (plat) => scrollToHomeBlock(_blockId(plat));
+window.switchPlatTab = (plat) => showHomePlatform(plat);

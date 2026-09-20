@@ -163,7 +163,10 @@
 .tip-desc { font-size: 11.5px; color: var(--neon-dim); line-height: 1.5; }
 
 /* ══════════════════════════════════════════════════════════
-   首页 · 平台聚合导航（吸顶锚点条）
+   首页 · 平台 tab 条（吸顶）
+   ──────────────────────────────────────────────────────────
+   增量125 起这是**互斥切换的 tab**，不是锚点跳转条：点一个平台，
+   其余平台块整体 hidden，页面里同时只有一个平台的内容在滚动。
    ══════════════════════════════════════════════════════════ */
 .home-anchors {
   position: sticky; top: 0; z-index: var(--z-sticky);
@@ -172,7 +175,7 @@
   background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--stroke-1);
-  /* 锚点条自身横向可滚，窄窗口下不换行撑高吸顶条 */
+  /* tab 条自身横向可滚，窄窗口下不换行撑高吸顶条 */
   overflow-x: auto; scrollbar-width: none;
 }
 .home-anchors::-webkit-scrollbar { display: none; }
@@ -189,13 +192,6 @@
 .anchor-chip.active {
   background: var(--accent-ui); border-color: var(--accent-ui); color: var(--on-accent);
 }
-/* 当前视口所在平台的锚点：左侧竖条提示，与 .active（点击态）区分开 ——
-   「点了哪个」和「正在看哪个」是两件事，滚动时二者会分离。 */
-.anchor-chip.in-view::before {
-  content: ''; width: 2px; height: 12px; border-radius: 1px;
-  background: var(--accent-ui); margin-right: -2px;
-}
-
 /* 平台圆点 —— 颜色来自 manifest.badge.fg（utils.js 注入的 --plat-c）。
    兜底用 --fg-3：平台清单未就绪时是可见的中性灰点，而不是透明（等于没画）。
 
@@ -217,8 +213,9 @@
    ──────────────────────────────────────────────────────────
    改版前：三平台纵向堆叠成长页，单块 1156px，滚动比 2.23
            （内容 3140px / 视口 1408px），第二个平台被推到 1600px 以下。
-   改版后：每块自身紧凑（榜单 8 行 ≈ 350px），块内分区以横向 rail 组织，
-           目标是三个平台的首屏可同时进入视野。
+   改版后：每块自身紧凑（榜单 8 行 ≈ 350px），块内分区以横向 rail 组织。
+   增量125：一次只有一块在场（平台 tab 互斥切换），块高不再是滚动深度问题，
+           8 行折叠的理由换成「首页负责发现，完整榜单交给弹窗」。
    ══════════════════════════════════════════════════════════ */
 .home-blocks { display: flex; flex-direction: column; gap: var(--sp-3); }
 .plat-block {
@@ -227,9 +224,10 @@
   background: var(--elev-1);
   border: 1px solid var(--stroke-1);
   border-radius: var(--r-lg);
-  /* 锚点跳转时给吸顶导航条留出高度（锚点条高约 45px + 8px 呼吸） */
-  scroll-margin-top: 56px;
 }
+/* 作者样式 display 会盖掉 UA 的 [hidden]{display:none} —— 不写这条，
+   切平台时非当前平台只是被压到下面，根本没消失（同 .home-sec[hidden]）。 */
+.plat-block[hidden] { display: none !important; }
 
 /* 平台头：色点 + 名称 + 状态 + [弹性空隙] + 分区 chips rail */
 .plat-block-head {
