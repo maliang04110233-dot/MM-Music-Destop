@@ -1,5 +1,5 @@
 /**
- * 增量174：不可逆操作确认弹层 confirmDialog 的契约测试。
+ * 增量176（起工时记 174，落库时让号两次后为 176）：不可逆操作确认弹层 confirmDialog 的契约测试。
  *
  * 现状缺口：全渲染层 15 处不可逆操作用的是浏览器原生 confirm()——
  *   ① 外观是操作系统的灰白小窗，与霓虹深色主题当面割裂（QA 维度"组件使用"）；
@@ -7,7 +7,11 @@
  *   ③ 最要命：159/157 特意写好的多行点名文案（「\n\n• 影响A\n• 影响B」），
  *      原生对话框会把换行压平成一行——诚实点名的 F2 纪律文案被浏览器吃掉。
  * 立法（沿用 168「同一个规则只许有一个家」）：确认弹层只有 confirmDialog.js 一个家；
- *   反向钉按形状扫（裸 confirm( 调用），新代码再写原生 confirm 即红。
+ *   反向钉按形状扫，新代码再写原生弹窗即红。
+ * 增量178 修法升级：钉从"裸 confirm("泛化为原生弹窗全族（alert/prompt/confirm 裸调用
+ *   + window/self/globalThis 前缀变体，堵旧钉排除类漏掉 window.confirm 的点前缀洞），
+ *   扫描面从 src/renderer/js 扩到 index.html 内联脚本。现网全族零命中，钉下即绿，
+ *   非空转由三枚变异验证 + 族钉自测（命中/不误伤各一组）背书。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -67,25 +71,60 @@ test('confirmDetails：入参宽容——null/undefined/数字都不炸，回落
   assert.equal(confirmDetails(42).title, '42');
 });
 
-// ── 反向钉：原生 confirm 全仓绝迹（按形状扫，168 立法第三次应用）──
+// ── 反向钉：原生弹窗家族全仓绝迹（176 只钉了裸 confirm(，178 把立法升为全族）──
+// 按形状扫两支：① 裸 alert(/prompt(/confirm( 调用；② window./self./globalThis. 前缀变体。
+// ②是补 176 的洞：旧钉排除类 [^A-Za-z0-9_.$] 把点前缀一并排除，window.confirm( 恰好漏网。
+// 派生名不误伤：askConfirm(/showAlert(/buildPrompt( 前置字母不匹配①；ui.confirmDialog( 非全局前缀不匹配②。
 
-test('渲染层不得再出现裸 confirm( 调用（弹层唯一家是 confirmDialog.js）', () => {
+const BARE_NATIVE_DIALOG = /(^|[^A-Za-z0-9_.$])(alert|prompt|confirm)\s*\(/;
+const QUALIFIED_NATIVE_DIALOG = /(^|[^A-Za-z0-9_$])(window|self|globalThis)\s*\.\s*(alert|prompt|confirm)\s*\(/;
+const isNativeDialog = (line) => BARE_NATIVE_DIALOG.test(line) || QUALIFIED_NATIVE_DIALOG.test(line);
+
+function nativeDialogOffenders() {
   const offenders = [];
+  const check = (abs, src) => {
+    src.split('\n').forEach((line, i) => {
+      if (isNativeDialog(line)) offenders.push(`${path.relative(ROOT, abs)}:${i + 1}: ${line.trim().slice(0, 80)}`);
+    });
+  };
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, ent.name);
       if (ent.isDirectory()) { walk(p); continue; }
-      if (!ent.name.endsWith('.js')) continue;
-      const src = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-      src.split('\n').forEach((line, i) => {
-        // 前置字符不为字母/$/_/. —— askConfirm(、deadConfirmText( 等派生名不误伤
-        if (/(^|[^A-Za-z0-9_.$])confirm\s*\(/.test(line)) {          offenders.push(`${path.relative(ROOT, p)}:${i + 1}: ${line.trim().slice(0, 80)}`);
-        }
-      });
+      if (!/\.(js|html)$/.test(ent.name)) continue;
+      check(p, fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n'));
     }
   };
-  walk(R('js'));
-  assert.deepEqual(offenders, [], '仍有原生 confirm 调用:\n' + offenders.join('\n'));
+  walk(R()); // src/renderer 全量：js 子目录 + index.html 内联脚本
+  return offenders;
+}
+
+test('渲染层源码与 index.html 原生弹窗家族（alert/prompt/confirm 及 window/self/globalThis 前缀）绝迹——弹层唯一家是应用内模块', () => {
+  assert.deepEqual(nativeDialogOffenders(), [], '仍有原生弹窗调用:\n' + nativeDialogOffenders().join('\n'));
+});
+
+test('族钉本身非空转：三族裸调用与三种全局前缀全命中，派生名与属性名零误伤', () => {
+  for (const s of [
+    'alert(1)',
+    'if (confirm("删?"))',
+    'const v = prompt("名字");',
+    'window.alert(msg)',
+    'self.prompt(x)',
+    'globalThis.confirm && globalThis.confirm(1)',
+  ]) {
+    assert.ok(isNativeDialog(s), `应命中: ${s}`);
+  }
+  for (const s of [
+    'await askConfirm("确认删除？")',
+    'showAlert(msg)',
+    'uiConfirm(x)',
+    'buildPrompt(q)',
+    'deadConfirmText(n)',
+    'this.promptCount(1)',
+    'ui.confirmDialog.render()',
+  ]) {
+    assert.ok(!isNativeDialog(s), `应不误伤: ${s}`);
+  }
 });
 
 // ── 接线钉：15 个调用点全部改走 askConfirm ──────────────────
