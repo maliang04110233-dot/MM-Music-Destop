@@ -213,12 +213,15 @@ function fmtHistoryTime(ts) {
  * @param {string}   opts.btnLabel   按钮文字
  * @param {function} opts.onConfirm  点按钮后的回调（点击即关掉这条 toast）
  * @param {number}   [opts.ttl=6000] 停留时长 ms
+ * @param {string}   [opts.tone=warn] 色族：'warn' | 'success'（增量177 为首次下载庆祝开的
+ *                                   可选项）。只认这两族、类名走 base.css 既有 token 类，
+ *                                   不传照旧 warn —— 撤销/仍要下载两处零改动。
  */
-function showActionToast({ text, btnLabel, onConfirm, ttl = 6000 } = {}) {
+function showActionToast({ text, btnLabel, onConfirm, ttl = 6000, tone = 'warn' } = {}) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
   const el = document.createElement('div');
-  el.className = 'toast toast-warn toast-action';
+  el.className = tone === 'success' ? 'toast toast-success toast-action' : 'toast toast-warn toast-action';
   const span = document.createElement('span');
   span.className = 'toast-action-text';
   span.textContent = String(text || '');

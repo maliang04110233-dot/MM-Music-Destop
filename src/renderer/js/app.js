@@ -65,6 +65,7 @@ import { defaultQueuePlaylistName, pickPlSavableRows } from './queuePlaylist.js'
 import './afterQueueDone.js';
 import './autoLyricOnDone.js';
 import './autoCoverOnDone.js';
+import './firstDownloadCelebration.js';
 import './m3uToPlaylist.js';
 import { sanitizeSavedQueue } from './dropPlay.js';
 import { pickCheckedSongs, toPlaylistRows, buildSavedPlaylist } from './plModalSave.js';
@@ -322,6 +323,7 @@ async function init() {
       if (typeof window.afterQueueObserve === 'function') window.afterQueueObserve(queue); // 完成后动作检测
       if (typeof window.autoLyricObserve === 'function') window.autoLyricObserve(queue); // 自动补歌词存 .lrc（autoLyric 开关）
       if (typeof window.autoCoverObserve === 'function') window.autoCoverObserve(queue); // 自动嵌封面（autoCover 开关，探测不覆写）
+      if (typeof window.firstDownloadCelebrateObserve === 'function') window.firstDownloadCelebrateObserve(queue); // 首次下载成功一次性庆祝引导
     });
 
     // 托盘切换暂停 → 同步下载页按钮（views/download.js 提供 UI 钩子）
