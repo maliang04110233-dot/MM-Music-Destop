@@ -218,11 +218,12 @@ const RENDERER_JS = path.join(ROOT, 'src', 'renderer', 'js');
 
 // 8a) EQ 簇 → player/eq.js
 //     两类导出要分开证，混在一起必然恒假（v1.0.27 发布时踩到：增量82 加了
-//     ensureAudioGraph / getAnalyser 两个 ESM-only 导出，本检查要求「全部导出都挂 window」，
-//     于是门禁从那天起一直是红的）：
-//     ① HTML 里 onclick/oninput 真会调到的 —— 只认 window，必须仍挂载；
-//     ② ESM-only 的内部导出（被其它渲染模块 import）—— 压缩后必然改名，按 8b 的教训
-//        不能用标识符断言，改为「源码里确实有人 import 它」+「消费方的字符串字面量仍在 bundle」。
+//     ensureAudioGraph / getAnalyser 两个 ESM-only 导出，旧写法要求「eq.js 的全部导出都挂
+//     window」，于是门禁从那天起一直是红的）：
+//     ① 桥接面 —— player.js 从 eq.js import 的那几个，HTML onclick 只认 window，
+//        必须仍在 bundle 里挂上（这才会被 tree-shake / re-export 断链弄丢）；
+//     ② ESM-only —— 其余导出被别的渲染模块 import，压缩后必然改名，按 8b 的教训
+//        不能用标识符断言，改为「确实有人 import 它」+「消费方的字符串字面量仍在 bundle」。
 const eqNames = exportedNamesOf(path.join(RENDERER_JS, 'player', 'eq.js'));
 if (eqNames) {
   const readJsDir = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -230,33 +231,32 @@ if (eqNames) {
     if (e.isDirectory()) return readJsDir(full);
     return /\.js$/.test(e.name) ? [full] : [];
   });
-  const htmlSrc = ['index.html', 'mini-player.html', 'desktop-lyric.html']
-    .map((f) => path.join(ROOT, 'src', 'renderer', f))
-    .filter((p) => fs.existsSync(p))
-    .map((p) => fs.readFileSync(p, 'utf8'))
-    .join('\n');
+  const playerSrc = fs.readFileSync(path.join(RENDERER_JS, 'player.js'), 'utf8');
+  const bridgeM = playerSrc.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/player\/eq\.js'/);
+  const bridgeNames = bridgeM
+    ? bridgeM[1].split(',').map((s) => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)
+    : [];
   const otherSrc = readJsDir(RENDERER_JS)
     .filter((p) => path.basename(p) !== 'eq.js')
     .map((p) => fs.readFileSync(p, 'utf8'))
     .join('\n');
-  const htmlRefd = eqNames.filter((n) => new RegExp(`\\b${n}\\s*\\(`).test(htmlSrc));
-  const missingMount = htmlRefd.filter((n) => !new RegExp(`window\\.${n}\\s*=`).test(bundleNoComments));
-  const esmOnly = eqNames.filter((n) => !htmlRefd.includes(n));
+  const missingMount = bridgeNames.filter((n) => !new RegExp(`window\\.${n}\\s*=`).test(bundleNoComments));
+  const esmOnly = eqNames.filter((n) => !bridgeNames.includes(n));
   const orphans = esmOnly.filter((n) => !new RegExp(`\\b${n}\\b`).test(otherSrc));
   const VIZ_ANCHORS = ['音频图初始化失败，频谱不可用'];
   const missingAnchor = VIZ_ANCHORS.filter((s) => !bundle.includes(s));
-  const ok = htmlRefd.length >= 6
+  const ok = bridgeNames.length === 6
     && missingMount.length === 0
     && orphans.length === 0
-    && (esmOnly.length === 0 || missingAnchor.length === 0);
+    && missingAnchor.length === 0;
   const detail = [
-    `HTML 引用 ${htmlRefd.length} 个`,
+    `桥接 ${bridgeNames.length} 个`,
     esmOnly.length ? `ESM-only: ${esmOnly.join(', ')}` : '无 ESM-only 导出',
     missingMount.length ? '缺 window 挂载: ' + missingMount.join(', ') : '',
     orphans.length ? '无人 import: ' + orphans.join(', ') : '',
     missingAnchor.length ? 'bundle 缺消费方锚: ' + missingAnchor.join(' / ') : '',
   ].filter(Boolean).join(' — ');
-  check('渲染层 bundle：EQ 的 HTML 入口全挂 window、ESM-only 导出仍被消费', ok, detail);
+  check('渲染层 bundle：EQ 桥接函数全挂 window、ESM-only 导出仍被消费', ok, detail);
 }
 
 // 8b) syncTo* / 队列恢复 → player-sync.js：**不挂 window**，只被 app.js 内部调用。
