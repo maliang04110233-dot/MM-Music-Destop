@@ -2,6 +2,7 @@
  * MusicDL 下载管理视图
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { showContextMenu } from '../contextMenu.js';
@@ -398,7 +399,7 @@ async function retryQueueItem(taskId) {
     if (r && r.ok) { showToast('已加入重试队列', 'info', 2000); }
     else { showToast('重试失败：' + (r?.error || '未知错误'), 'error', 3000); }
   } catch (e) {
-    showToast('重试失败：' + e.message, 'error', 3000);
+    showToast('重试失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -439,7 +440,7 @@ async function removeQueueItem(taskId) {
   try {
     await api.removeQueueItem(taskId);
   } catch (e) {
-    showToast('删除失败：' + e.message, 'error', 3000);
+    showToast('删除失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -466,7 +467,7 @@ async function reorderQueueItem(taskId, action) {
     const r = await api.reorderQueueItem(taskId, action);
     if (r && !r.ok) showToast(r.error || '无法移动该任务', 'info', 1800);
   } catch (e) {
-    showToast('移动失败：' + e.message, 'error', 3000);
+    showToast('移动失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -494,7 +495,7 @@ async function toggleQueuePause() {
     applyQueuePausedUi(r.paused);
     showToast(r.paused ? '⏸ 已暂停下载（在途任务继续完成）' : '▶ 已继续下载', 'info', 2200);
   } catch (e) {
-    showToast('切换失败：' + e.message, 'error', 3000);
+    showToast('切换失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -503,7 +504,7 @@ async function clearFinishedDownloads() {
     const r = await api.clearFinishedQueue();
     showToast(`已清空 ${r.removed} 个已完成任务`, 'success');
   } catch (e) {
-    showToast('清空失败：' + e.message, 'error', 3000);
+    showToast('清空失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -513,7 +514,7 @@ async function clearAllDownloads() {
     const r = await api.clearAllQueue();
     showToast(`已清空 ${r.removed} 个任务`, 'success');
   } catch (e) {
-    showToast('清空失败：' + e.message, 'error', 3000);
+    showToast('清空失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -535,7 +536,7 @@ async function playDownloadedFile(s) {
     await loadAndPlay(song, 'file://' + String(path).replace(/\\/g, '/'));
   } catch (e) {
     logger.error('[playDownloadedFile]', e);
-    showToast('播放失败: ' + (e.message || e), 'error');
+    showToast('播放失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -581,7 +582,7 @@ async function exportCurrentPlaylist() {
 
     showToast(`✅ 已导出 ${completedSongs.length} 首歌曲`, 'success');
   } catch (e) {
-    showToast('导出失败: ' + e.message, 'error');
+    showToast('导出失败: ' + errBrief(e), 'error');
   }
 }
 

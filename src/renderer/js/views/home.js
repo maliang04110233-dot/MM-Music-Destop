@@ -17,6 +17,7 @@
  *   window.renderRecentlyPlayed()     —— app.js init / router 调用
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import { heartBtnHtml } from '../favorites.js';
 import { resolveQuality } from '../quality.js';
@@ -841,7 +842,7 @@ async function playRecommendSong(song) {
     showToast('▶ 正在播放：' + song.title, 'success', 2500);
   } catch (e) {
     logger.warn('播放推荐歌曲失败:', e);
-    showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+    showToast('⚠️ 播放失败：' + errBrief(e), 'error', 4000);
   }
 }
 
@@ -866,13 +867,13 @@ async function addRecommendDownload(sec, idx, songId, qualityOverride) {
       showRedownloadToast(song.title, r.finishedAt, () => {
         api.addToQueue({ ...song, saveDir, quality, forceRedownload: true })
           .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入下载失败：' + (e.message || e), 'error', 4000));
+          .catch(e => showToast('加入下载失败：' + errBrief(e), 'error', 4000));
       });
       return;
     }
     showToast(`「${song.title}」已加入下载队列`, 'success');
   } catch (e) {
-    showToast('加入下载失败：' + (e.message || e), 'error', 4000);
+    showToast('加入下载失败：' + errBrief(e), 'error', 4000);
   }
 }
 
@@ -1026,7 +1027,7 @@ async function playAllRecent() {
     showToast(`▶ 正在播放最近播放（共 ${songs.length} 首）`, 'success', 2500);
   } catch (e) {
     logger.warn('[playAllRecent] error:', e);
-    showToast('播放失败：' + (e.message || e), 'error', 3000);
+    showToast('播放失败：' + errBrief(e), 'error', 3000);
   }
 }
 
@@ -1052,7 +1053,7 @@ async function playAllHomeChart(sec) {
     showToast(playAllToastText(_tr(meta.i18n, meta.title), songs.length, total, truncated), 'success', 2500);
   } catch (e) {
     logger.warn('[playAllHomeChart] error:', e);
-    showToast('播放失败：' + (e.message || e), 'error', 3000);
+    showToast('播放失败：' + errBrief(e), 'error', 3000);
   }
 }
 

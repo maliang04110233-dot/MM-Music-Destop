@@ -7,6 +7,7 @@
  * 以及入队后按主进程的回话如实说什么 —— 一首都没进队列时不许报成功。
  */
 
+import { errBrief } from './errBrief.js';
 import { logger } from './logger.js';
 import { enqueuePayloadFor, classifyRetryResult } from './enqueuePayload.js';
 
@@ -21,7 +22,7 @@ async function retryAfterPlayFailure(row) {
     res = await api.addToQueue(payload);
   } catch (e) {
     logger.warn('[playRetry] 重新下载入队失败:', e.message);
-    showToast('⬇ 重新下载失败：' + e.message, 'error');
+    showToast('⬇ 重新下载失败：' + errBrief(e), 'error');
     return;
   }
   const kind = classifyRetryResult(res);

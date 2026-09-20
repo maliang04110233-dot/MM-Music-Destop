@@ -9,6 +9,7 @@
 
 'use strict';
 
+import { errBrief } from './errBrief.js';
 import { normalizeLrcText, overridePatch, parseOverrideMap } from './lyricEdit.js';
 import { parseLrc, showNoLyrics } from './player/lyrics.js';
 import { favKey } from './state.js';
@@ -88,7 +89,7 @@ async function _save() {
     _close();
     showToast(ta.value.trim() ? '歌词已保存并生效' : '歌词已清除', 'success');
   } catch (e) {
-    showToast('保存失败：' + e.message, 'error');
+    showToast('保存失败：' + errBrief(e), 'error');
   }
 }
 

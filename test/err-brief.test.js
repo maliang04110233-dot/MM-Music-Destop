@@ -11,8 +11,9 @@
  * 1. errBrief 只有 errBrief.js 一个家，且是零依赖纯函数（同 skeleton 纪律）；
  * 2. 已知错误族必须翻成人话、且措辞与 diagnose.js 码表同族（同一概念同一词）；
  *    未知错误保留原文但压成单行、超长截断——人话层不许吞诊断线索；
- * 3. 四视图（playlist/history/subscriptions/ai-music）的用户可见拼接全部改走
- *    errBrief；logger.warn 里的原始 e.message 一个不许动（开发日志要留真话）。
+ * 3. 全渲染层的用户可见拼接全部改走 errBrief（toast/行内文本/innerHTML 占位），
+ *    并用目录级反向钉罩住新代码；logger.warn 里的原始 e.message 一个不许动
+ *    （开发日志要留真话）。
  */
 
 const test = require('node:test');
@@ -96,17 +97,29 @@ test('errBrief.js 零依赖：不 import、不碰 api/window/document（纯函�
   assert.ok(!/\b(api|window|document)\b/.test(src), '禁止触碰宿主对象');
 });
 
-// ── 接线钉：四视图的用户可见拼接全部改走 errBrief ──────
+// ── 接线钉：全渲染层的用户可见拼接全部改走 errBrief ──────
 
-const WIRED = ['views/playlist.js', 'views/history.js', 'views/subscriptions.js', 'views/ai-music.js'];
+const WIRED_VIEWS = ['playlist.js', 'history.js', 'subscriptions.js', 'ai-music.js',
+  'download.js', 'settings.js', 'local.js', 'home.js', 'search.js',
+  'local-stats.js', 'nameBatch.js'];
+const WIRED_JS = ['abClip.js', 'app.js', 'artistGroups.js', 'converter-core.js', 'favorites.js',
+  'folderGroups.js', 'historyTrend.js', 'lyricEditor.js', 'm3uToPlaylist.js', 'playRetry.js'];
+
+test('全部接线视图各自 import errBrief（views 走 ../、js 走 ./）', () => {
+  for (const f of WIRED_VIEWS) {
+    assert.ok(read('js', 'views', f).includes("import { errBrief } from '../errBrief.js';"),
+      `views/${f} 需从公共模块引入 errBrief`);
+  }
+  for (const f of WIRED_JS) {
+    assert.ok(read('js', f).includes("import { errBrief } from './errBrief.js';"),
+      `js/${f} 需从公共模块引入 errBrief`);
+  }
+});
 
 test('四视图各自 import errBrief，且 showToast 拼接里不再出现裸 e.message', () => {
+  const WIRED = WIRED_VIEWS.map(f => 'views/' + f).concat(WIRED_JS);
   for (const f of WIRED) {
     const src = read('js', ...f.split('/'));
-    assert.ok(
-      src.includes("import { errBrief } from '../errBrief.js';"),
-      `${f} 需从公共模块引入 errBrief`,
-    );
     assert.ok(
       !/showToast\([^\n]*\+ *(\(e\.message \|\| e\)|e\.message)/.test(src),
       `${f} 仍有 toast 直拼原始 e.message`,
@@ -114,12 +127,32 @@ test('四视图各自 import errBrief，且 showToast 拼接里不再出现裸 e
   }
 });
 
+test('全局反向钉：整个渲染层任何 showToast 行不得再直拼 e.message（新代码同样受辖）', () => {
+  const offenders = [];
+  const walk = (dir) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) { walk(p); continue; }
+      if (!ent.name.endsWith('.js')) continue;
+      const src = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+      for (const line of src.split('\n')) {
+        if (/showToast\(/.test(line) && /\+ *(\(e\.message \|\| e\)|e\.message)/.test(line)) {
+          offenders.push(path.relative(R(), p));
+        }
+      }
+    }
+  };
+  walk(R('js'));
+  assert.deepEqual([...new Set(offenders)], [], '仍有 toast 直拼原始 e.message');
+});
+
 test('渲染进列表区的错误文案也走 errBrief（esc 包的是人话不是栈文本）', () => {
-  const pl = read('js', 'views', 'playlist.js');
-  const hi = read('js', 'views', 'history.js');
-  assert.ok(!/esc\(e\.message/.test(pl + hi), 'innerHTML 错误占位不得再裸插 e.message');
-  assert.ok(pl.includes('errBrief(e)'), 'playlist 接线证明');
-  assert.ok(hi.includes('errBrief(e)'), 'history 接线证明');
+  const all = WIRED_VIEWS.map(f => read('js', 'views', f)).join('\n')
+    + WIRED_JS.map(f => read('js', f)).join('\n');
+  assert.ok(!/esc\(\(?\(e\.message \|\| e\)?\)?/.test(all), 'innerHTML 错误占位不得再裸插 e.message');
+  assert.ok(!/textContent = '[^']*' \+ e\.message/.test(all), '行内错误文本不得再裸拼 e.message');
+  assert.ok(read('js', 'views', 'playlist.js').includes('errBrief(e)'), 'playlist 接线证明');
+  assert.ok(read('js', 'app.js').includes('errBrief(e)'), 'app 接线证明');
 });
 
 test('开发日志反向钉：logger.warn 里的原始 e.message 必须还在（防无差别替换）', () => {

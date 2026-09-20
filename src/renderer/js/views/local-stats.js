@@ -5,6 +5,7 @@
  * 依赖全局：api、getState、setState、showToast、esc、confirm、document
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 
 // 库变更回调由 local.js 注入（删重后需要重刷列表，避免循环 import）。
@@ -397,6 +398,6 @@ export async function detectContentDuplicates() {
     renderDuplicateModal();
     showToast(`🧬 发现 ${groups.length} 组内容完全相同，最多可释放 ${formatBytes(r.wasted || 0)}`, 'info', 4500);
   } catch (e) {
-    showToast('内容查重失败: ' + e.message, 'error');
+    showToast('内容查重失败: ' + errBrief(e), 'error');
   }
 }

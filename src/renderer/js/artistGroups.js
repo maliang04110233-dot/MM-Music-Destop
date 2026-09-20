@@ -6,6 +6,8 @@
  * 点击分组行 = 把名称写进本地过滤框并应用（过滤框本就匹配 artist/album 子串）。
  */
 
+import { errBrief } from './errBrief.js';
+
 export const UNKNOWN_ARTIST = '未知歌手';
 export const UNKNOWN_ALBUM = '未知专辑';
 
@@ -164,7 +166,7 @@ async function _exportGroup(songs, label) {
     if (r && r.error) throw new Error(r.error);
     showToast(`已导出 ${songs.length} 首：${label}`, 'success', 2500);
   } catch (e) {
-    showToast('导出失败：' + (e.message || e), 'error');
+    showToast('导出失败：' + errBrief(e), 'error');
   }
 }
 
@@ -180,7 +182,7 @@ function _showGroups(opts) {
     const songsOf = (label) => songs.filter((s) => s && normalizeGroupKey(s[opts.field], opts.unknownLabel) === label);
     _renderPanel({ ...opts, groups, songsOf });
   } catch (e) {
-    showToast('分组统计失败：' + (e.message || e), 'error');
+    showToast('分组统计失败：' + errBrief(e), 'error');
   }
 }
 

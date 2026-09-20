@@ -8,6 +8,7 @@
 // ══════════════════════════════════════════════════════════
 // ES Module 导入 — 确保所有模块被 Vite 包含
 // ══════════════════════════════════════════════════════════
+import { errBrief } from './errBrief.js';
 import { logger } from './logger.js';
 // 基础工具模块
 import './state.js';
@@ -593,7 +594,7 @@ async function init() {
   } catch (e) {
     logger.error('[init] FATAL:', e);
     if (typeof showToast === 'function') {
-      showToast('❌ init 失败 step: ' + (e.message || e), 'error', 8000);
+      showToast('❌ init 失败 step: ' + errBrief(e), 'error', 8000);
     }
     throw e;
   }
@@ -752,7 +753,7 @@ async function openPlaylistModal(platform, id, name) {
       }).catch(e => logger.warn('检测本地已下载失败:', e.message));
     }
   } catch (e) {
-    body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(e.message) + '</div>';
+    body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(errBrief(e)) + '</div>';
   }
 }
 
@@ -864,7 +865,7 @@ async function playPlaylistModalSong(idx) {
   } catch (e) {
     if (reqId === _plModalPlayRequestId) {
       logger.warn('弹层播放失败:', e);
-      showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+      showToast('⚠️ 播放失败：' + errBrief(e), 'error', 4000);
     }
   }
 }
@@ -971,13 +972,13 @@ async function addSingleToQueue(idx) {
       showRedownloadToast(s.title, r.finishedAt, () => {
         api.addToQueue({ ...task, forceRedownload: true })
           .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
       });
       return;
     }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
-    showToast('加入失败: ' + e.message, 'error');
+    showToast('加入失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1020,7 +1021,7 @@ async function addPlaylistToQueueClick(skipExisting) {
     renderPlaylistModal(state.getPlaylistSongs());
   } catch (e) {
     logger.error('[addPlaylistToQueue] 失败:', e);
-    showToast('批量加入失败: ' + (e.message || e), 'error');
+    showToast('批量加入失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1049,7 +1050,7 @@ async function savePlModalAsPlaylist() {
     }
   } catch (e) {
     logger.error('[savePlModalAsPlaylist] 失败:', e);
-    showToast('保存失败: ' + (e.message || e), 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1133,7 +1134,7 @@ async function openAlbumView(albumMid, source, albumName) {
       }).catch(e => logger.warn('检测本地已下载失败:', e.message));
     }
   } catch (e) {
-    body.innerHTML = `<div style="color:var(--accent);font-size:12px;padding:16px;text-align:center;">⚠️ 加载失败: ${esc(e.message)}</div>`;
+    body.innerHTML = `<div style="color:var(--accent);font-size:12px;padding:16px;text-align:center;">⚠️ 加载失败: ${esc(errBrief(e))}</div>`;
   }
 }
 
@@ -1419,7 +1420,7 @@ window.saveQueueAsPlaylist = async () => {
       showToast((r && r.error) || '保存歌单失败', 'error');
     }
   } catch (e) {
-    showToast('保存失败: ' + (e.message || e), 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 };
 
@@ -1435,13 +1436,13 @@ async function downloadPqSong(s) {
       showRedownloadToast(s.title, r.finishedAt, () => {
         api.addToQueue({ ...task, forceRedownload: true })
           .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
       });
       return;
     }
     showToast(`「${s.title}」已加入下载队列`, 'success');
   } catch (e) {
-    showToast('加入失败: ' + e.message, 'error');
+    showToast('加入失败: ' + errBrief(e), 'error');
   }
 }
 

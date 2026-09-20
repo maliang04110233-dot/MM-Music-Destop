@@ -3,6 +3,7 @@
  */
 
 /* @module */
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import {
   accountPlatforms,
@@ -317,7 +318,7 @@ async function probeSourcesUI(btn) {
     const okCount = (r.probes || []).filter(p => p.ok).length;
     showToast(`探测完成：${okCount}/${r.probes.length} 个源可用`, okCount > 0 ? 'success' : 'warn');
   } catch (e) {
-    showToast('探测失败: ' + e.message, 'error');
+    showToast('探测失败: ' + errBrief(e), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
@@ -338,7 +339,7 @@ async function saveCookie(platform) {
       dom.textarea.value = '';
     }
   } catch (e) {
-    showToast('保存失败: ' + e.message, 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -346,7 +347,7 @@ async function clearCookie(platform) {
   try {
     await api.clearCookie(platform);
   } catch (e) {
-    showToast('清除失败：' + e.message, 'error');
+    showToast('清除失败：' + errBrief(e), 'error');
     return;
   }
   clearVerifyResult(platform);
@@ -367,7 +368,7 @@ async function verifyCookieUI(platform) {
     const result = await api.verifyCookie(platform, val);
     showVerifyResult(platform, result);
   } catch (e) {
-    dom.verifyEl.textContent = '验证出错: ' + e.message;
+    dom.verifyEl.textContent = '验证出错: ' + errBrief(e);
     dom.verifyEl.className = 'cookie-verify-result err';
   }
 }
@@ -475,7 +476,7 @@ async function openLoginWindowUI(platformId, btn) {
       showToast('登录失败: ' + (result.error || '未知错误'), 'error');
     }
   } catch (e) {
-    showToast('登录失败: ' + e.message, 'error');
+    showToast('登录失败: ' + errBrief(e), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = originalText; }
   }
@@ -877,7 +878,7 @@ async function saveDlTemplate() {
       showToast(editId ? '✅ 模板已更新' : '✅ 模板已创建', 'success');
     }
   } catch (e) {
-    showToast('保存失败: ' + e.message, 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -890,7 +891,7 @@ async function deleteDlTemplate(templateId) {
       showToast('✅ 模板已删除', 'success');
     }
   } catch (e) {
-    showToast('删除失败: ' + e.message, 'error');
+    showToast('删除失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -918,7 +919,7 @@ async function clearPlayCache() {
     showToast('✅ 播放缓存已清理', 'success');
     updateCacheSize();
   } catch (e) {
-    showToast('清理缓存失败: ' + e.message, 'error');
+    showToast('清理缓存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -939,7 +940,7 @@ async function resetAllSettings() {
     applyTheme('default');
     showToast('✅ 设置已恢复默认值', 'success');
   } catch (e) {
-    showToast('恢复失败: ' + e.message, 'error');
+    showToast('恢复失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -966,7 +967,7 @@ async function exportConfig() {
       showToast('❌ 导出失败: ' + result.error, 'error');
     }
   } catch (e) {
-    showToast('导出失败: ' + e.message, 'error');
+    showToast('导出失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -980,7 +981,7 @@ async function importConfig() {
       showToast('❌ ' + result.error, 'error');
     }
   } catch (e) {
-    showToast('导入失败: ' + e.message, 'error');
+    showToast('导入失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1028,7 +1029,7 @@ async function saveWebdavConfig() {
       showToast('保存失败: ' + r.error, 'error');
     }
   } catch (e) {
-    showToast('保存失败: ' + e.message, 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1046,7 +1047,7 @@ async function runWebdavSync() {
     }
     loadWebdavConfig();
   } catch (e) {
-    showToast('同步失败: ' + e.message, 'error');
+    showToast('同步失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1081,7 +1082,7 @@ async function _applyMcpConfig(patch) {
     if (!r.success) { showToast('MCP: ' + r.error, 'error', 5000); loadMcpConfig(); return; }
     loadMcpConfig();
   } catch (e) {
-    showToast('MCP 操作失败: ' + e.message, 'error');
+    showToast('MCP 操作失败: ' + errBrief(e), 'error');
   }
 }
 

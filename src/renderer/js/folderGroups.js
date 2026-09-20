@@ -7,6 +7,7 @@
  * 弹层沿用 artistGroups 的 edit-overlay + createElement 模式（无 innerHTML）。
  */
 
+import { errBrief } from './errBrief.js';
 import { groupBarPct, sanitizeFileBase } from './artistGroups.js';
 
 export const UNKNOWN_FOLDER = '(未知位置)';
@@ -113,7 +114,7 @@ async function _exportFolder(songs, label) {
     if (r && r.error) throw new Error(r.error);
     showToast(`已导出 ${songs.length} 首：${label}`, 'success', 2500);
   } catch (e) {
-    showToast('导出失败：' + (e.message || e), 'error');
+    showToast('导出失败：' + errBrief(e), 'error');
   }
 }
 
@@ -206,7 +207,7 @@ function showFolderGroups() {
     if (!groups.length) { showToast('暂无可分组的歌曲', 'info'); return; }
     _renderPanel(groups, songs);
   } catch (e) {
-    showToast('文件夹分组失败：' + (e.message || e), 'error');
+    showToast('文件夹分组失败：' + errBrief(e), 'error');
   }
 }
 

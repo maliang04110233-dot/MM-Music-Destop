@@ -9,6 +9,7 @@
  * 递增避让命名，源文件永不受影响。
  */
 
+import { errBrief } from './errBrief.js';
 import { mmss, getAbRegion } from './abLoop.js';
 
 /** 与主进程 normalizeClip 同口径：短于这个长度的片段多半是误点 */
@@ -93,7 +94,7 @@ async function exportAbClip() {
     showToast(msg.text, msg.kind, 3500);
   } catch (e) {
     if (typeof logger !== 'undefined') logger.warn('[exportAbClip] error:', e);
-    showToast('导出失败：' + (e.message || e), 'error', 3000);
+    showToast('导出失败：' + errBrief(e), 'error', 3000);
   } finally {
     _running = false;
   }

@@ -8,6 +8,7 @@
  * 全部本地编排、无新增 IPC —— 复用 searchMusic / addToQueue / resolveQuality。
  */
 
+import { errBrief } from '../errBrief.js';
 import { normKey } from '../songGroups.js';
 import { parseM3u } from '../m3uImport.js';
 // resolveQuality 走 quality.js 挂载的 window 全局（同 batchImport.js 约定），
@@ -106,7 +107,7 @@ async function _onM3uFilePicked(input) {
     showToast(`📁 「${file.name}」解析出 ${names.length} 首，开始匹配`, 'info', 2200);
     runNameBatchSearch();
   } catch (e) {
-    showToast('读取歌单文件失败: ' + e.message, 'error');
+    showToast('读取歌单文件失败: ' + errBrief(e), 'error');
   }
 }
 

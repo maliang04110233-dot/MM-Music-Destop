@@ -9,6 +9,7 @@
  * 未匹配行只在描述/播报里报数，不静默丢。
  */
 
+import { errBrief } from './errBrief.js';
 import { logger } from './logger.js';
 
 export const AUDIO_EXT_RE = /\.(flac|mp3|m4a|wav|ogg|ape|wma|aac|opus)$/i;
@@ -133,7 +134,7 @@ export async function importM3uAsPlaylist(fileName, text) {
     }
   } catch (e) {
     logger.warn('[m3uToPlaylist] 建单失败:', e && e.message);
-    showToast('导入失败: ' + (e.message || e), 'error');
+    showToast('导入失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -149,7 +150,7 @@ export function pickM3uForPlaylist() {
       await importM3uAsPlaylist(file.name, await file.text());
     } catch (e) {
       logger.warn('[m3uToPlaylist] 读文件失败:', e && e.message);
-      showToast('读取 m3u 文件失败: ' + (e.message || e), 'error');
+      showToast('读取 m3u 文件失败: ' + errBrief(e), 'error');
     }
   });
   input.click();

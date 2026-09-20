@@ -2,6 +2,7 @@
  * MusicDL 搜索视图 - 单曲/专辑/歌手搜索 + 批量操作
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import { heartBtnHtml, registerFavSong, toggleFavoriteByKey } from '../favorites.js';
 import { planBatchFav, favSkipSuffix } from '../favBatch.js';
@@ -613,7 +614,7 @@ async function openAlbumSongsModal(platform, albumId) {
     state.setPlaylistLocalExists(new Map());
     renderPlaylistModal(songs);
   } catch (e) {
-    body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(e.message || e) + '</div>';
+    body.innerHTML = '<div style="color:var(--red);font-size:12px;padding:16px;text-align:center;">加载失败: ' + esc(errBrief(e)) + '</div>';
   }
 }
 
@@ -850,7 +851,7 @@ async function downloadAlbum(albumMid, source) {
     if (dlSkipped) msg += `，跳过 ${dlSkipped} 首已下载过`;
     showToast(msg, 'success');
   } catch (e) {
-    showToast('下载专辑失败: ' + (e.message || e), 'error');
+    showToast('下载专辑失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -925,7 +926,7 @@ async function loadSingerDetail(singerMid, tab) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">⚠️</div>
       <div class="empty-text">加载失败</div>
-      <div class="empty-hint">${esc(e.message || '')}</div>
+      <div class="empty-hint">${esc(errBrief(e))}</div>
     </div>`;
   }
 }
@@ -1236,7 +1237,7 @@ async function addDownload(idx, qualityOverride) {
       showRedownloadToast(s.title, r.finishedAt, () => {
         api.addToQueue({ ...s, saveDir, quality, forceRedownload: true })
           .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + e.message, 'error'));
+          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
       });
       return;
     }
@@ -1294,7 +1295,7 @@ async function playSong(idx, queueOverride = null) {
   } catch (e) {
     if (reqId === _searchPlayRequestId) {
       logger.warn('播放失败:', e);
-      showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+      showToast('⚠️ 播放失败：' + errBrief(e), 'error', 4000);
     }
   }
 }

@@ -4,6 +4,7 @@
  * v2: 集成虚拟滚动 + 响应式状态
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 
 // 批量重命名的 extname/dirname/join 用。渲染层不能 import node:path
@@ -175,7 +176,7 @@ async function _doScanLocalDir() {
     const note = await _relinkNote(result);
     showToast(`扫描完成，发现 ${localSongs.length} 首歌曲${note}`, 'success');
   } catch (e) {
-    showToast('扫描失败: ' + e.message, 'error');
+    showToast('扫描失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -369,7 +370,7 @@ async function exportLocalM3u() {
     showToast(`✅ 已导出${scope}视图 ${songs.length} 首`, 'success');
   } catch (e) {
     logger.warn('[local] 导出 m3u 失败:', e.message);
-    showToast('导出失败：' + e.message, 'error');
+    showToast('导出失败：' + errBrief(e), 'error');
   }
 }
 
@@ -562,7 +563,7 @@ async function saveEdit() {
       showToast('保存失败: ' + (result.error || '未知错误'), 'error');
     }
   } catch (e) {
-    showToast('保存出错: ' + e.message, 'error');
+    showToast('保存出错: ' + errBrief(e), 'error');
   }
 }
 
@@ -764,7 +765,7 @@ async function revealLocalFile(s) {
     const r = await api.openFolder(s.filePath);
     if (r && r.ok === false) showToast('无法打开文件夹：' + (r.error || '路径非法'), 'warn');
   } catch (e) {
-    showToast('打开文件夹失败: ' + (e.message || e), 'error');
+    showToast('打开文件夹失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -875,7 +876,7 @@ async function batchFetchLyrics() {
       progressLabel.textContent = `正在补全歌词 (${done}/${total})`;
     }
   } catch (e) {
-    showToast('批量歌词获取失败: ' + e.message, 'error');
+    showToast('批量歌词获取失败: ' + errBrief(e), 'error');
   }
 
   _batchCancelled = false;
@@ -912,7 +913,7 @@ async function refetchCover(idx) {
       showToast('❌ 未找到匹配的封面：' + (result?.error || '请检查歌名/歌手'), 'warn', 3500);
     }
   } catch (e) {
-    showToast('拉取失败: ' + e.message, 'error');
+    showToast('拉取失败: ' + errBrief(e), 'error');
   }
 }
 

@@ -14,6 +14,7 @@
  * 现在三条入口都渲染同一个静态 #convertModal。
  */
 
+import { errBrief } from './errBrief.js';
 import { logger } from './logger.js';
 
 // ── 常量 ─────────────────────────────────────────────────
@@ -347,7 +348,7 @@ export async function doConvertAudio(outputFormat, bitrate = DEFAULT_BITRATE) {
       showToast('❌ 转换失败：' + (result?.error || '未知错误'), 'error', 5000);
     }
   } catch (e) {
-    showToast('❌ 转换异常：' + e.message, 'error', 5000);
+    showToast('❌ 转换异常：' + errBrief(e), 'error', 5000);
   }
 }
 

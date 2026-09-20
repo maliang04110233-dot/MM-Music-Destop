@@ -12,6 +12,7 @@
  * 避免把用户可控的歌曲字段拼进 onclick。
 */
 
+import { errBrief } from './errBrief.js';
 import { logger } from './logger.js';
 import { FAVORITES_PLAYLIST_ID, favKey } from './state.js';
 
@@ -133,7 +134,7 @@ export async function toggleFavoriteByKey(key, silent) {
     return true;
   } catch (e) {
     logger.warn('收藏失败:', e);
-    _toast('收藏失败: ' + (e.message || e), 'error');
+    _toast('收藏失败: ' + errBrief(e), 'error');
     return false;
   }
 }

@@ -6,6 +6,8 @@
  * batchProbe 的报告弹窗同一 edit-overlay 模式），不新增 CSS。
  */
 
+import { errBrief } from './errBrief.js';
+
 const DAY_MS = 86400000;
 export const TREND_DAYS = 14;
 export const TREND_SCAN_LIMIT = 300;
@@ -152,7 +154,7 @@ async function showTrendPanel() {
     }
     _renderTrendModal(buckets, r && r.total);
   } catch (e) {
-    showToast('趋势加载失败：' + (e.message || e), 'error');
+    showToast('趋势加载失败：' + errBrief(e), 'error');
   }
 }
 
