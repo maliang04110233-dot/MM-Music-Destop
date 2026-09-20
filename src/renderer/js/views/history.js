@@ -3,6 +3,7 @@
  */
 
 const PAGE_SIZE = 50;
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
@@ -61,7 +62,7 @@ async function loadHistory() {
   } catch (e) {
     logger.warn('加载历史失败:', e);
     if (_historyDom.list) {
-      _historyDom.list.innerHTML = '<div class="empty-state">加载失败: ' + esc(e.message) + '</div>';
+      _historyDom.list.innerHTML = '<div class="empty-state">加载失败: ' + esc(errBrief(e)) + '</div>';
     }
   }
 }
@@ -148,7 +149,7 @@ async function exportHistoryM3u() {
     const skipped = _historyItems.filter(s => s.status === 'done' && s.savePath && s.missing).length;
     showToast(`✅ 已导出 ${done.length} 首歌曲${pageNote}${skipped ? `，跳过 ${skipped} 首文件已不在的` : ''}`, 'success');
   } catch (e) {
-    showToast('导出失败: ' + e.message, 'error');
+    showToast('导出失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -171,7 +172,7 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
           saveDir, quality: quality || 'standard',
           cover: '', duration: 0, forceRedownload: true,
         }).then(() => showToast(`「${title}」已重新加入下载队列`, 'success'))
-          .catch(e => showToast('重试失败: ' + e.message, 'error'));
+          .catch(e => showToast('重试失败: ' + errBrief(e), 'error'));
       });
     } else {
       showToast(`「${title}」已重新加入下载队列`, 'success');
@@ -183,7 +184,7 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
       if (dlNav) switchTab('download', dlNav);
     }
   } catch (e) {
-    showToast('重试失败: ' + e.message, 'error');
+    showToast('重试失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -237,7 +238,7 @@ async function retryFailedFromHistory() {
     if (tally.added && typeof switchDlSubTab === 'function') switchDlSubTab('queue');
   } catch (e) {
     logger.warn('[history] 批量重试失败:', e.message);
-    showToast('批量重试失败：' + e.message, 'error');
+    showToast('批量重试失败：' + errBrief(e), 'error');
   } finally {
     _retryAllBusy = false;
     if (btn) btn.disabled = false;
@@ -280,7 +281,7 @@ async function cleanDeadHistory() {
     showToast(deadSummary(res.removed, checked), res.removed ? 'success' : 'info', 5000);
   } catch (e) {
     logger.warn('[history] 清理失效记录失败:', e.message);
-    showToast('清理失败：' + e.message, 'error');
+    showToast('清理失败：' + errBrief(e), 'error');
   } finally {
     _cleanDeadBusy = false;
     if (btn) btn.disabled = false;
@@ -323,7 +324,7 @@ async function redownloadDeadHistory() {
     if (tally.added && typeof switchDlSubTab === 'function') switchDlSubTab('queue');
   } catch (e) {
     logger.warn('[history] 失效项重新下载失败:', e.message);
-    showToast('失效项重新下载失败：' + e.message, 'error');
+    showToast('失效项重新下载失败：' + errBrief(e), 'error');
   } finally {
     _redlDeadBusy = false;
   }
@@ -400,7 +401,7 @@ async function clearAllHistory() {
   try {
     await api.clearHistory();
   } catch (e) {
-    showToast('清空失败：' + e.message, 'error');
+    showToast('清空失败：' + errBrief(e), 'error');
     return;
   }
   historyPage = 0;
@@ -447,7 +448,7 @@ async function deleteHistoryItem(idx) {
     showToast('记录已删除（不影响已下载的文件）', 'success');
   } catch (e) {
     logger.warn('[history] 删除失败:', e.message);
-    showToast('删除失败：' + e.message, 'error');
+    showToast('删除失败：' + errBrief(e), 'error');
   }
 }
 

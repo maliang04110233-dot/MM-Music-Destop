@@ -8,6 +8,7 @@
  * （5 个 handler，prefs 持久化）完整接通。
  */
 
+import { errBrief } from '../errBrief.js';
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { HEART_ON, heartBtnHtml } from '../favorites.js';
@@ -53,7 +54,7 @@ async function loadUserPlaylists() {
     renderPlaylistList(playlists || []);
   } catch (e) {
     logger.error('加载歌单失败:', e);
-    showToast('加载歌单失败: ' + e.message, 'error');
+    showToast('加载歌单失败: ' + errBrief(e), 'error');
   }
   // 回收站徽标跟着列表一起刷新（删除/撤销/恢复都经过这里；自身带 try/catch，不打扰主流程）
   refreshPlTrash();
@@ -333,7 +334,7 @@ async function _playFrom(list, idx) {
   } catch (e) {
     if (reqId === _playlistPlayRequestId) {
       logger.warn('播放失败:', e);
-      showToast('⚠️ 播放失败：' + (e.message || e), 'error', 4000);
+      showToast('⚠️ 播放失败：' + errBrief(e), 'error', 4000);
     }
   }
 }
@@ -364,14 +365,14 @@ async function downloadPlaylistSong(idx, qualityOverride) {
       showRedownloadToast(song.title, r.finishedAt, () => {
         api.addToQueue({ ...song, saveDir, quality, forceRedownload: true })
           .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + (e.message || e), 'error'));
+          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
       });
       return;
     }
     if (r && r.queued) showToast(`「${song.title}」已加入下载队列`, 'success');
     else showToast((r && r.error) || '加入下载队列失败', 'error');
   } catch (e) {
-    showToast('加入下载队列失败: ' + (e.message || e), 'error');
+    showToast('加入下载队列失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -429,7 +430,7 @@ async function removeSongFromPlaylist(songId, source) {
       }
     }
   } catch (e) {
-    showToast('移除失败: ' + e.message, 'error');
+    showToast('移除失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -518,7 +519,7 @@ async function removeCheckedFromPlaylist() {
     }
   } catch (e) {
     logger.error('[removeCheckedFromPlaylist] 失败:', e);
-    showToast('移除失败: ' + e.message, 'error');
+    showToast('移除失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -646,7 +647,7 @@ async function savePlaylist() {
       showToast(result.error || '保存失败', 'error');
     }
   } catch (e) {
-    showToast('保存失败: ' + e.message, 'error');
+    showToast('保存失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -676,7 +677,7 @@ async function deletePlaylist(playlistId) {
       showToast(result.error || '删除失败', 'error');
     }
   } catch (e) {
-    showToast('删除失败: ' + e.message, 'error');
+    showToast('删除失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -692,7 +693,7 @@ async function undoDeletePlaylist(pl) {
       showToast((back && back.error) || '撤销失败', 'error');
     }
   } catch (e) {
-    showToast('撤销失败: ' + e.message, 'error');
+    showToast('撤销失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -903,7 +904,7 @@ async function addToPlaylistAndNotify(playlistId, song) {
       }
     }
   } catch (e) {
-    showToast('添加失败: ' + e.message, 'error');
+    showToast('添加失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1020,7 +1021,7 @@ async function doPlAddSearch() {
     _renderPlAddList();
   } catch (e) {
     if (reqId === _plAddReqId) {
-      box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">搜索失败：${esc(e.message || e)}</div>`;
+      box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">搜索失败：${esc(errBrief(e))}</div>`;
     }
   }
 }
@@ -1068,7 +1069,7 @@ async function plAddPick(i) {
     }
     _renderPlAddList(); // 该行刷成 ✓，可继续加下一首
   } catch (e) {
-    showToast('添加失败: ' + (e.message || e), 'error');
+    showToast('添加失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1098,7 +1099,7 @@ async function exportCurrentPlaylistM3u() {
     if (r && r.success) showToast(`⤴ 已导出 ${songs.length} 首：${r.path}`, 'success', 3500);
     else showToast((r && r.error) || '导出失败', 'error');
   } catch (e) {
-    showToast('导出失败: ' + (e.message || e), 'error');
+    showToast('导出失败: ' + errBrief(e), 'error');
   } finally {
     _plExportBusy = false;
   }
@@ -1152,7 +1153,7 @@ async function openPlaylistMergePicker() {
         </div>
       </div>`).join('');
   } catch (e) {
-    box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">加载失败：${esc(e.message || e)}</div>`;
+    box.innerHTML = `<div class="empty-hint" style="text-align:center;padding:20px;">加载失败：${esc(errBrief(e))}</div>`;
   }
 }
 
@@ -1182,7 +1183,7 @@ async function mergePlaylistIntoCurrent(srcId) {
     closePlaylistMergePicker();
     showToast(`📥 已把「${src.name}」的 ${merged.added} 首合入本歌单（跳过重复 ${merged.dup} 首）`, 'success', 3500);
   } catch (e) {
-    showToast('合并失败: ' + (e.message || e), 'error');
+    showToast('合并失败: ' + errBrief(e), 'error');
   } finally {
     _plMerging = false;
   }
@@ -1208,7 +1209,7 @@ async function dedupeCurrentPlaylist() {
     loadUserPlaylists(); // 卡片曲数同步
     showToast(`🧹 已移除 ${removed} 首重复歌曲，保留 ${merged.songs.length} 首`, 'success', 3000);
   } catch (e) {
-    showToast('清理失败: ' + (e.message || e), 'error');
+    showToast('清理失败: ' + errBrief(e), 'error');
   } finally {
     _plDedupeBusy = false;
   }
@@ -1231,7 +1232,7 @@ async function duplicateCurrentPlaylist() {
     loadUserPlaylists(); // 卡片列表随新副本刷新
     showToast(`📋 已另存副本「${newName}」（${(pl.songs || []).length} 首）`, 'success', 3000);
   } catch (e) {
-    showToast('复制失败: ' + (e.message || e), 'error');
+    showToast('复制失败: ' + errBrief(e), 'error');
   } finally {
     _plDupBusy = false;
   }
@@ -1321,7 +1322,7 @@ async function consolidateDup(i) {
     if (rest.length) showDedupeModal(rest); else closeDedupeScanModal();
   } catch (e) {
     logger.error('[consolidateDup] 失败:', e);
-    showToast('收拢失败: ' + (e.message || e), 'error');
+    showToast('收拢失败: ' + errBrief(e), 'error');
   }
 }
 

@@ -8,6 +8,8 @@
  *   - 更好的空状态和加载状态
  */
 
+import { errBrief } from '../errBrief.js';
+
 // ══════════════════════════════════════════════════════════
 // 状态
 // ══════════════════════════════════════════════════════════
@@ -535,7 +537,7 @@ async function generateAiLyrics() {
     }
 
     showToast('歌词已生成', 'success');
-  } catch (e) { showToast('生成失败: ' + e.message, 'error'); }
+  } catch (e) { showToast('生成失败: ' + errBrief(e), 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '🎼 生成歌词'; } }
 }
 
@@ -723,7 +725,7 @@ async function generateAiMusic() {
     invalidateAiHistory();
   } catch (e) {
     clearInterval(timer);
-    showToast('生成失败: ' + e.message, 'error');
+    showToast('生成失败: ' + errBrief(e), 'error');
     setProgressWidth('0%');
   }
   finally { aiState.generating = false; aiState.abortCtrl = null; setButtonsDisabled(false); showProgress(false); }
@@ -885,7 +887,7 @@ async function generateAiPlaylist() {
 
     showToast(`已生成 ${songs.length} 首推荐歌曲`, 'success');
   } catch (e) {
-    showToast('生成失败: ' + e.message, 'error');
+    showToast('生成失败: ' + errBrief(e), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '📋 生成歌单'; }
   }
@@ -921,7 +923,7 @@ async function searchAndAddSong(title, artist) {
       showToast(`未找到「${title}」`, 'warn');
     }
   } catch (e) {
-    showToast('添加失败: ' + e.message, 'error');
+    showToast('添加失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -991,7 +993,7 @@ async function executeTranslate() {
       showToast('翻译完成', 'success');
     }
   } catch (e) {
-    showToast('翻译失败: ' + e.message, 'error');
+    showToast('翻译失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -1012,7 +1014,7 @@ async function clearAiHistory() {
   try {
     await api.aiClearHistory();
   } catch (e) {
-    showToast('清空失败：' + e.message, 'error');
+    showToast('清空失败：' + errBrief(e), 'error');
     return;
   }
   aiState.historyCache = null;

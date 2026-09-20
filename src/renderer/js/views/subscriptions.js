@@ -10,6 +10,7 @@
  * 与 playlist.js 同风格：挂在 window 上供 HTML onclick / app.js 调用。
  */
 
+import { errBrief } from '../errBrief.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { subDlPayload, subDlPayloadList, subNewSongById, subActiveQueueDup } from '../subNewDl.js';
 
@@ -127,7 +128,7 @@ async function subscriptionAdd(type, platform, targetId, name) {
     }
     showToast((r && r.error) || '订阅失败', 'error');
   } catch (e) {
-    showToast('订阅失败: ' + (e.message || e), 'error');
+    showToast('订阅失败: ' + errBrief(e), 'error');
   }
   return false;
 }
@@ -156,7 +157,7 @@ async function subscriptionCheckNow() {
     await loadSubscriptions();
     showToast(r && r.newTotal ? `检查完成，发现 ${r.newTotal} 首新歌` : '检查完成，暂无新歌', 'success');
   } catch (e) {
-    showToast('检查失败: ' + (e.message || e), 'error');
+    showToast('检查失败: ' + errBrief(e), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '立即检查'; }
   }
@@ -176,7 +177,7 @@ async function subscriptionQueueNew(key) {
     const r = await api.addPlaylistToQueue(payload);
     showToast(`已加入 ${r.queued} 首${r.skippedDownloaded ? `，跳过 ${r.skippedDownloaded} 首已下载` : ''}`, 'success');
   } catch (e) {
-    showToast('批量加入失败: ' + (e.message || e), 'error');
+    showToast('批量加入失败: ' + errBrief(e), 'error');
   }
 }
 
@@ -196,14 +197,14 @@ async function subscriptionDownloadNew(key, songId) {
       showRedownloadToast(song.title, r.finishedAt, () => {
         api.addToQueue({ ...payload, forceRedownload: true })
           .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + (e.message || e), 'error'));
+          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
       });
       return;
     }
     if (r && r.queued) showToast(`「${song.title}」已加入下载队列`, 'success');
     else showToast((r && r.error) || '加入下载队列失败', 'error');
   } catch (e) {
-    showToast('加入下载队列失败: ' + (e.message || e), 'error');
+    showToast('加入下载队列失败: ' + errBrief(e), 'error');
   }
 }
 
