@@ -235,3 +235,59 @@ test('local.js: localFiltered 只允许由 filterLocalSongs 写入（多一处�
   const writes = (code.match(/setState\('localFiltered'/g) || []).length;
   assert.strictEqual(writes, 1, `local.js 里应只有 filterLocalSongs 一处写 localFiltered，实际 ${writes} 处`);
 });
+
+// ── 增量133：删重后的库变更必须重跑管线（回调注入管线入口，不是裸渲染器）──
+
+/** 用花括号配平抽函数体（含首尾大括号）；扫描前请先 stripComments */
+function fnBodyL(src, name) {
+  const re = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`);
+  const m = re.exec(src);
+  if (!m) return '';
+  const open = src.indexOf('{', m.index);
+  if (open < 0) return '';
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(open, i + 1); }
+  }
+  return '';
+}
+
+/** 渲染层全部视图模块（派生，不硬编码文件名——新增视图自动纳入扫描） */
+const VIEW_FILES = fs.readdirSync(R('js', 'views')).filter((f) => f.endsWith('.js'));
+
+test('回归钉：localFiltered 只允许由 filterLocalSongs 写入（扫全部视图文件，不只看 local.js）', () => {
+  const counts = {};
+  for (const f of VIEW_FILES) {
+    const n = (stripComments(read('js', 'views', f)).match(/setState\('localFiltered'/g) || []).length;
+    if (n) counts[f] = n;
+  }
+  assert.deepStrictEqual(counts, { 'local.js': 1 },
+    'localFiltered 是 filterLocalSongs 算出的派生状态，只允许 local.js 写一次。'
+    + '别的视图模块写它 = 绕过收藏/格式/音质/完整度/关键词全部过滤轴，'
+    + `且只写一个容器（网格视图下不重绘）。实际写入分布：${JSON.stringify(counts)}`);
+});
+
+test('回归钉：库变更回调必须注入过滤管线入口，不得注入裸渲染器', () => {
+  const src = stripComments(read('js', 'views', 'local.js'));
+  const m = /setLibraryChangeHandler\(\s*([A-Za-z_$][\w$]*)\s*\)/.exec(src);
+  assert.ok(m, 'local.js 必须注册库变更回调 —— local-stats 删重后靠它刷新界面');
+  const fn = m[1];
+  assert.ok(!/^render/.test(fn),
+    `注入的是裸渲染器 ${fn}()：它只写一个容器，网格视图下删重后界面毫无变化`
+    + '（歌曲已删、格子还在），且不重套过滤轴与排序。必须注入 filterLocalSongs()。');
+  const body = fnBodyL(src, fn);
+  assert.ok(body.includes('renderLocalGrid(') && body.includes('renderLocalSongs('),
+    `注入的 ${fn}() 必须同时兼顾网格与列表两种视图（它是管线入口，不是单容器渲染器）`);
+});
+
+test('回归钉：删重只改源数据，不得就地改派生状态 localFiltered', () => {
+  const body = fnBodyL(stripComments(read('js', 'views', 'local-stats.js')), 'deleteSelectedDups');
+  assert.ok(body.includes('deleteFile'),
+    'deleteSelectedDups 需调用 api.deleteFile（哨兵缺失，钉可能已失效）');
+  assert.ok(!body.includes('localFiltered'),
+    'deleteSelectedDups 不得碰 localFiltered：它是 filterLocalSongs 由五个过滤轴 + 排序算出的派生状态，'
+    + '就地 splice 既绕过全部过滤轴，又让网格视图完全不重绘（删了歌、格子还在）');
+  assert.match(body, /_onLibraryChanged\(\)/,
+    'deleteSelectedDups 删除成功后必须触发库变更回调，否则列表/网格不会刷新');
+});

@@ -7,10 +7,12 @@
 
 import { logger } from '../logger.js';
 
-// 列表刷新回调由 local.js 注入（删重后需要重渲染列表，避免循环 import）
+// 库变更回调由 local.js 注入（删重后需要重刷列表，避免循环 import）。
+// 注入的是**过滤管线入口** filterLocalSongs（不是裸渲染器）：
+// 它既会重套全部过滤轴与排序，也会按当前视图重绘网格或列表。
 let _onLibraryChanged = () => {};
 
-/** 由 local.js 在模块加载时注册 renderLocalSongs */
+/** 由 local.js 在模块加载时注册 filterLocalSongs */
 export function setLibraryChangeHandler(fn) {
   if (typeof fn === 'function') _onLibraryChanged = fn;
 }
@@ -315,18 +317,17 @@ export async function deleteSelectedDups() {
   let deleted = 0;
   let failed = 0;
   const localSongs = getState('localSongs');
-  const localFiltered = getState('localFiltered');
+  // 只收集「删成功」的路径，最后一次性从源数据里剔除。
+  // 不在这里碰 localFiltered：它是派生状态（filterLocalSongs 由五个过滤轴 + 排序算出），
+  // 就地 splice 等于绕过全部过滤轴，且网格视图下界面根本不会重绘 —— 交给回调重算。
+  const removed = new Set();
 
   for (const filePath of selected) {
     try {
       // 调用主进程删除文件
       const result = await api.deleteFile(filePath);
       if (result && result.success) {
-        // 从状态中移除
-        const idx = localSongs.findIndex(s => s.filePath === filePath);
-        if (idx >= 0) localSongs.splice(idx, 1);
-        const fidx = localFiltered.findIndex(s => s.filePath === filePath);
-        if (fidx >= 0) localFiltered.splice(fidx, 1);
+        removed.add(filePath);
         deleted++;
       } else {
         failed++;
@@ -338,10 +339,11 @@ export async function deleteSelectedDups() {
     }
   }
 
-  // 更新状态
-  setState('localSongs', localSongs);
-  setState('localFiltered', localFiltered);
-  _onLibraryChanged();
+  // 更新状态：只写「源数据」localSongs，然后走库变更回调重跑过滤管线
+  if (removed.size) {
+    setState('localSongs', localSongs.filter(s => !removed.has(s.filePath)));
+    _onLibraryChanged();
+  }
 
   // 关闭弹窗并刷新检测
   const overlay = document.getElementById('dupModal');

@@ -1288,8 +1288,13 @@ function localCleanup() {
   teardownDragCover();
 }
 
-// 注入列表刷新回调：统计/查重模块删歌后需要重渲染列表
-setLibraryChangeHandler(renderLocalSongs);
+// 注入库变更回调：统计/查重模块删歌后需要刷新列表。
+// 必须注入**过滤管线入口** filterLocalSongs 而不是裸渲染器 renderLocalSongs：
+//   · 网格视图渲染进 #localGrid，而 renderLocalSongs 只写 #localList
+//     → 网格视图下删重后界面毫无变化（歌曲删了、格子还在）；
+//   · 裸渲染器不重套收藏/格式/音质/完整度/关键词五个过滤轴与排序。
+// 与 :151/:158/:270 三条换库路径同一约定。
+setLibraryChangeHandler(filterLocalSongs);
 
 // ── ES Module 导出 ──────────────────────────────────────
 export {
