@@ -400,10 +400,21 @@ function hideSearchHistory() {
 // fmtHistoryTime 已由 utils.js 全局导出
 
 // ── 搜索类型切换 ─────────────────────────────────────
+/**
+ * 页签高亮单源（对应 index.html:188-190 的 data-type）。
+ * 传 btn 时以「被点按钮」为准，否则按 _searchType 派生 ——
+ * 非点击路径（searchArtistSongs / doNaturalSearch）改完 _searchType 必须调它，
+ * 否则列表已是单曲、页签却停在「专辑」，用户会以为结果错了。
+ */
+function _syncSearchTypeTabs(btn) {
+  document.querySelectorAll('.search-type-tabs .tab').forEach(t => {
+    t.classList.toggle('active', btn ? t === btn : t.getAttribute('data-type') === _searchType);
+  });
+}
+
 function switchSearchType(type, btn) {
   _searchType = type;
-  document.querySelectorAll('.search-type-tabs .tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
+  _syncSearchTypeTabs(btn);
   if (_dom.searchInput?.value?.trim()) doSearch(1);
 }
 
@@ -414,8 +425,7 @@ async function searchArtistSongs(artistName) {
   const name = raw.split(/[/&、,，]|feat\.?/i)[0].trim() || raw;
   if (typeof window.switchTab === 'function') window.switchTab('search');
   _searchType = 'singer';
-  document.querySelectorAll('.search-type-tabs .tab').forEach(t =>
-    t.classList.toggle('active', t.getAttribute('data-type') === 'singer'));
+  _syncSearchTypeTabs();
   const input = document.getElementById('searchInput') || _dom.searchInput;
   if (input) input.value = name;
   await doSearch(1);
@@ -451,8 +461,12 @@ function _searchCacheSet(key, data) {
 }
 
 let _typeSearchReqId = 0;
-async function doSearchByType(type, page, keyword, source) {
-  const reqId = ++_typeSearchReqId;
+/**
+ * @param {number} [reqId] 请求序号。doSearch 会把「发起时占的号」传进来，
+ *   使整次搜索（链接识别 + 类型搜索）共用一个序号；独立调用则自动占新号。
+ *   这样并发的两次搜索由「谁后发起」决定谁赢，而不是「谁的响应先回来」。
+ */
+async function doSearchByType(type, page, keyword, source, reqId = ++_typeSearchReqId) {
   const cacheKey = _searchCacheKey(type, page, keyword, source);
   const cached = _searchCacheGet(cacheKey);
   if (cached) {
@@ -507,27 +521,35 @@ async function doSearchByType(type, page, keyword, source) {
 
 // ── 主搜索入口 ───────────────────────────────────────
 // ── 粘贴链接智能识别 ─────────────────────────────────
-// doSearch 先走这里：输入是平台链接时直接拉歌/开歌单弹窗，置 _linkHandled
-// 让 doSearch 跳过常规搜索流程
-let _linkHandled = false;
-
-async function handleLinkInput(text) {
+// doSearch 先走这里：输入是平台链接时直接拉歌/开歌单弹窗。
+// 返回 true = 已接管本次输入（已渲染或已开弹窗），调用方不必再做关键词搜索；
+// 返回 false = 未接管，按普通关键词继续。
+// 早前用模块级 _linkHandled 传递这个结果，但剪贴板识别条（clipboard.js:69）会
+// 绕开 doSearch 直接调本函数，把标志留在 true —— 用户下一次搜索会被 doSearch 里
+// 那句 `if (_linkHandled) return` 静默吞掉（点搜索没反应，再点一次才行）。
+// 改成返回值即无悬挂状态。
+/**
+ * @param {string} text 输入原文（可能是分享文案，链接夹在其中）
+ * @param {number} [reqId] 本次识别所属的请求序号：doSearch 传入自己发起时占的号
+ *   （同一次搜索共用一个号），独立调用（剪贴板识别条）则自动占新号。
+ */
+async function handleLinkInput(text, reqId = ++_typeSearchReqId) {
   let r;
   try {
     r = await api.getSongByLink(text);
   } catch (e) {
     logger.warn('[linkInput] 识别请求失败:', e);
-    return; // 网络失败按普通关键词继续搜索
+    return false; // 网络失败按普通关键词继续搜索
   }
+  // 迟到的识别结果：期间已发起更新的搜索，本次既不渲染也不接管输入
+  if (reqId !== _typeSearchReqId) return false;
   if (!r || !r.matched) {
     // 平台短链无法本地解析：给出明确指引，同样回退普通搜索
     if (r && r.shortLink) {
       showToast('检测到短链，请先在浏览器打开后复制完整链接', 'info', 4000);
     }
-    return;
+    return false;
   }
-
-  _linkHandled = true;
 
   // 单曲：直接渲染进搜索结果列表（复用现有单曲卡片，播放/下载/加队列全可用）
   if (r.song) {
@@ -540,7 +562,7 @@ async function handleLinkInput(text) {
     if (_dom.pagination) _dom.pagination.style.display = 'none';
     renderSongList([r.song]);
     showToast(`🔗 已识别 ${srcLabel(r.song.source)}链接：${r.song.title}`, 'success', 3000);
-    return;
+    return true;
   }
 
   // 专辑/歌单链接：解析出 { type, id }，复用歌单弹窗展示曲目
@@ -550,20 +572,21 @@ async function handleLinkInput(text) {
     // 专辑链接 → 同弹窗但走 getAlbumSongs（专辑接口；两者的后端 API 不同）
     if (link.type === 'playlist' && link.platform === 'netease') {
       openPlaylistModal('netease', link.id, '网易云歌单');
-    } else if (link.type === 'album') {
-      openAlbumSongsModal(link.platform, link.id);
-    } else {
-      showToast('暂不支持该平台的歌单链接', 'warn', 3000);
-      _linkHandled = false; // 回退普通搜索
+      return true;
     }
-    return;
+    if (link.type === 'album') {
+      openAlbumSongsModal(link.platform, link.id);
+      return true;
+    }
+    showToast('暂不支持该平台的歌单链接', 'warn', 3000);
+    return false; // 回退普通搜索
   }
 
   // matched 但既无 song 又非专辑/歌单（拉详情失败）
   if (r.error) {
     showToast('链接识别：' + r.error, 'error', 4000);
   }
-  _linkHandled = false; // 回退普通搜索，用户至少还能搜歌名
+  return false; // 回退普通搜索，用户至少还能搜歌名
 }
 
 /**
@@ -603,10 +626,15 @@ async function doSearch(page = 1) {
     return;
   }
 
+  // 发起即占号，并把同一个号交给链接识别与类型搜索（同一次搜索共用一个序号）。
+  // 若等 handleLinkInput 返回后再占号，并发的两次搜索就会由「谁先返回」决定谁赢：
+  // 先发起的那次若后返回，会用陈旧结果覆盖新视图（输入框是新词、列表是旧词）。
+  const reqId = ++_typeSearchReqId;
   // 粘贴链接智能识别：输入是平台链接（含分享文案）→ 直接拉歌，不走关键词搜索
-  // 必须 await：handleLinkInput 首个语句就是网络请求，同步读 _linkHandled 恒 false
-  await handleLinkInput(keyword);
-  if (_linkHandled) { _linkHandled = false; return; }
+  // 必须 await：handleLinkInput 首个语句就是网络请求，同步读返回值恒 false
+  if (await handleLinkInput(keyword, reqId)) return;
+  // 识别未接管，但期间已有更新的搜索发起 → 本次整体作废，不做关键词搜索
+  if (reqId !== _typeSearchReqId) return;
 
   addSearchHistory(keyword);
   setState('currentKeyword', keyword);
@@ -622,7 +650,7 @@ async function doSearch(page = 1) {
   if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
   if (_dom.pagination) _dom.pagination.style.display = 'none';
 
-  doSearchByType(_searchType, page, keyword, getState('currentSource'));
+  doSearchByType(_searchType, page, keyword, getState('currentSource'), reqId);
 }
 
 // ── AI 自然语言搜索（P0-A）────────────────────────────
@@ -651,8 +679,15 @@ async function doNaturalSearch() {
   if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
   if (_dom.pagination) _dom.pagination.style.display = 'none';
 
+  // AI 搜索同样是一次单曲搜索：必须占请求序号 + 声明视图类型。
+  // 不占号 → 在途的普通搜索返回时序号仍相等，会把 AI 结果覆盖掉（:489 是同一守卫）；
+  // 不声明 → _hideDownloaded 过滤与「播放全部」的 _searchType === 'song' 判断都不生效。
+  const reqId = ++_typeSearchReqId;
+  _searchType = 'song';
+  _syncSearchTypeTabs();
   try {
     const r = await api.nlSearchMusic(keyword);
+    if (reqId !== _typeSearchReqId) return; // 迟到的旧结果直接丢弃，不覆盖更新的视图
     if (r && r.error) {
       clearLoading();
       showLoadError(r.error);
@@ -762,8 +797,11 @@ function renderAlbumPagination(page, count, total) {
 async function openAlbumDetail(albumMid, source) {
   const el = document.getElementById('songList');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> 加载专辑中...</div>';
+  // 与搜索共享请求序号域：迟到的旧专辑结果不得覆盖更新的视图（连点两张专辑时）
+  const reqId = ++_typeSearchReqId;
   try {
     const songs = await api.getAlbumSongs(source || 'qq', albumMid, 999);
+    if (reqId !== _typeSearchReqId) return;
     setState('songs', songs);
     _searchType = 'song';
     renderSongList(songs);
@@ -845,9 +883,12 @@ async function loadSingerDetail(singerMid, tab) {
   el.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
   const singer = state.get('currentSinger');
   const source = singer ? singer.source : 'qq';
+  // 与搜索共享请求序号域：快速连点歌手/切页签时，迟到的旧结果不得覆盖新视图
+  const reqId = ++_typeSearchReqId;
   try {
     if (tab === 'songs') {
       const songs = await api.getSingerSongs(singerMid, 50);
+      if (reqId !== _typeSearchReqId) return;
       setState('songs', songs);
       _searchType = 'song';
       renderSongList(songs);
@@ -855,6 +896,7 @@ async function loadSingerDetail(singerMid, tab) {
       updateBatchInfo();
     } else {
       const result = await api.getSingerAlbums(singerMid, source, 1, 99);
+      if (reqId !== _typeSearchReqId) return;
       const albums = (result && result.albums) || [];
       setState('albums', albums);
       renderAlbumList(albums);

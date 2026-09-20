@@ -14,10 +14,12 @@ const path = require('node:path');
 const R = (...p) => path.join(__dirname, '..', 'src', 'renderer', ...p);
 const read = (...p) => fs.readFileSync(R(...p), 'utf8').replace(/\r\n/g, '\n');
 
-test('search.js: doSearch 必须 await handleLinkInput（否则 _linkHandled 恒 false，链接搜索永不生效）', () => {
+test('search.js: doSearch 必须 await handleLinkInput 并以返回值为准（返回值即「已接管」信号）', () => {
   const src = read('js', 'views', 'search.js');
   assert.match(src, /async function doSearch\(/, 'doSearch 需为 async');
-  assert.match(src, /await handleLinkInput\(/, '必须先 await 链接识别再读 _linkHandled');
+  // 识别首个语句就是网络请求 → 必须 await；接管与否以返回值为准。
+  // 早前用模块级 _linkHandled 传递，被剪贴板识别条留在 true 后会把下一次搜索静默吞掉。
+  assert.match(src, /if \(await handleLinkInput\(/, '必须先 await 链接识别并消费返回值');
 });
 
 test('app.js: mockApi 只允许在浏览器预览(http)上下文兜底，打包 file:// 环境禁止假成功', () => {
