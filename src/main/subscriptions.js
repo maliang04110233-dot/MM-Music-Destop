@@ -13,6 +13,10 @@
  *     只进不出。
  *   - 首次检查静默播种（seed）：只记快照不产新增，避免订阅瞬间刷屏 +
  *     autoDownload 把整个歌单灌进队列。
+ *   - 「空清单」不等于「检查成功」（增量188）：gateway 对缺能力/需登录/VIP
+ *     歌单一律静默返回 []，若照单全收就会把首次播种播成空快照（下一次真数据
+ *     到达时整单变「新增」，正是本文件头一条要防的刷屏）。判定收成
+ *     applyCheckToEntry 一家：空/非数组只记账，不碰快照与未读。
  *   - 调度器与 playCache GC 同风格：unref 定时器，不阻止进程退出。
  */
 
@@ -29,6 +33,8 @@ const SINGER_LIMIT = 50;
 const DEFAULT_CHECK_INTERVAL_HOURS = 6;
 const INITIAL_CHECK_DELAY_MS = 30 * 1000;
 const CHECK_TICK_MS = 60 * 1000;    // 调度器醒来的粒度
+/** 一次"什么都没取到"的检查对用户说的那句话（渲染层直接显示，与 main 侧其它中文文案同源） */
+const EMPTY_CHECK_ERROR = '未取到任何曲目（可能需要登录，或该歌单/歌手页受限）';
 
 const TYPES = new Set(['playlist', 'singer']);
 
@@ -82,6 +88,31 @@ function diffSongs(songs, lastSeenIds, cap = MAX_NEW_SONGS) {
   for (const id of lastSeenIds.map(String)) if (!merged.includes(id)) merged.push(id);
   for (const id of currentIds) if (!merged.includes(id)) merged.push(id);
   return { fresh: fresh.slice(0, cap), seenIds: merged, seeded: false };
+}
+
+/**
+ * 一次检查的写回（纯函数，无 I/O）：把「拿到了但没新歌」与「根本没拿到清单」分开记账。
+ * 空数组 / 非数组 = 这次没取到数据 —— 只写 lastCheckError 并推进 lastCheckedAt
+ * （不推进就会因为 _isDue 立刻到期，从每 6 小时退化成每 60s 打一次平台），
+ * 快照与未读红点一字不动：前者不能被空播成"已播种"，后者归用户"看过了"管。
+ * @param {number} now 本次写回的时间戳（由调用方给，测试可确定）
+ * @returns {{entry: object, freshCount: number, toEnqueue: Array<object>, empty: boolean}}
+ */
+function applyCheckToEntry(entry, songs, now) {
+  const next = { ...entry };
+  if (!Array.isArray(songs) || songs.length === 0) {
+    next.lastCheckError = EMPTY_CHECK_ERROR;
+    next.lastCheckedAt = now;
+    return { entry: next, freshCount: 0, toEnqueue: [], empty: true };
+  }
+  const { fresh, seenIds, seeded } = diffSongs(songs, entry.lastSeenIds);
+  next.lastSeenIds = seenIds;
+  next.lastCheckedAt = now;
+  next.lastCheckError = '';
+  if (seeded) return { entry: next, freshCount: 0, toEnqueue: [], empty: false };
+  next.newSongs = fresh.slice(-MAX_NEW_SONGS).reverse();   // 新的在前
+  const toEnqueue = entry.autoDownload ? fresh : [];
+  return { entry: next, freshCount: fresh.length, toEnqueue, empty: false };
 }
 
 function makeEntry(type, platform, targetId, name) {
@@ -208,17 +239,14 @@ async function runCheck(force = false) {
       checked++;
       try {
         const songs = await _fetchSongs(entry);
-        const { fresh, seenIds, seeded } = diffSongs(songs, entry.lastSeenIds);
-        entry.lastSeenIds = seenIds;
-        entry.lastCheckedAt = Date.now();
-        entry.lastCheckError = '';
-        if (!seeded) {
-          entry.newSongs = fresh.slice(-MAX_NEW_SONGS).reverse(); // 新的在前
-          newTotal += fresh.length;
-          if (fresh.length > 0 && entry.autoDownload) _autoEnqueue(entry, fresh);
-        }
+        const r = applyCheckToEntry(entry, songs, Date.now());
+        Object.assign(entry, r.entry);
+        if (r.toEnqueue.length) _autoEnqueue(entry, r.toEnqueue);
+        newTotal += r.freshCount;
         changed = true;
       } catch (e) {
+        // 抛错当瞬时故障：不动 lastCheckedAt（从未成功过的项下个 tick 即重试，成功过的按原间隔再来）。
+        // 空清单则是稳定状态（受限歌单/未登录），重试再快也拿不到东西，故按检查间隔退避。
         entry.lastCheckError = (e && e.message) || '检查失败';
         changed = true;
         logger.warn(`[subscriptions] ${entry.key} 检查失败:`, e.message);
@@ -332,5 +360,5 @@ function unreadCount() {
 module.exports = {
   list, add, remove, update, markSeen, checkNow, unreadCount,
   startScheduler, stopScheduler, runCheck,
-  _internal: { buildKey, validateAdd, diffSongs, makeEntry, _isDue, _intervalMs, MAX_NEW_SONGS },
+  _internal: { buildKey, validateAdd, diffSongs, applyCheckToEntry, makeEntry, _isDue, _intervalMs, MAX_NEW_SONGS, EMPTY_CHECK_ERROR },
 };
