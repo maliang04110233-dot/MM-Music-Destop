@@ -463,3 +463,57 @@ test('接线钉：renderSection 成功路径必须清除 is-unavailable（否则
   assert.ok(clear < body.indexOf('filterHomeSection('),
     '清除必须发生在渲染分支之前 —— 塞进某一个分支里会漏掉另一条路径（grid / list）');
 });
+
+// ── 增量160（IA 收敛第一步）：侧边栏聚为五组，条目零增删、路由零改动 ──
+
+test('侧边栏分组：五个分区标题按序就位，旧「导航」单段头与孤儿 i18n 键一并退场', () => {
+  const html = read('index.html');
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  assert.ok(sb.length > 200, '侧边栏区块截取失败（锚点改名时同步本测试）');
+  const titles = [...sb.matchAll(/class="sidebar-title"[^>]*>([^<]+)</g)].map(m => m[1].trim());
+  assert.deepStrictEqual(titles, ['搜歌', '下载', '曲库', '工具', '操作'],
+    '侧边栏必须恰好这五个分区标题且按此序 —— 对齐 redesign sitemap 的分组语义（总览是原型新增页，真 app 暂无对应，不硬凑）');
+  assert.ok(!sb.includes('nav.sidebar.title'),
+    '「导航」单段旧头已退役：分组标题是纯中文硬写（改版决议：收缩为纯中文），不许再挂 i18n');
+  assert.ok(sb.includes('data-i18n="nav.operations.title"'), '「操作」段沿用既有 i18n 键，不动');
+  // 孤儿键清扫必须 zh/en 成对（增量93 教训），否则「键集合一致」钉会红
+  for (const f of ['js/lang/zh.json', 'js/lang/en.json']) {
+    assert.ok(!read(...f.split('/')).includes('nav.sidebar.title'), `${f} 残留 nav.sidebar.title`);
+  }
+});
+
+test('侧边栏分组：八个 data-tab 条目次序不变且各自落在正确的组里（纯导航层搬家，零路由改动）', () => {
+  const html = read('index.html');
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  const tabs = [...sb.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]);
+  assert.deepStrictEqual(tabs, ['home', 'search', 'download', 'local', 'playlist', 'subscription', 'ai-music', 'converter'],
+    '条目增删/换序会破坏 switchTab 兜底查询与 ⌘K/快捷键的 data-tab 反查 —— 本增量只许搬家，不许动账');
+  for (const t of tabs) {
+    assert.ok(sb.includes(`onclick="switchTab('${t}',this)"`), `${t} 的 onclick 形状被改，切换链路可能断`);
+  }
+  // 按标题切段做归属核对
+  const seg = {};
+  const parts = sb.split(/class="sidebar-title"[^>]*>/);
+  for (let i = 1; i < parts.length; i++) {
+    const name = parts[i].slice(0, parts[i].indexOf('<'));
+    seg[name] = parts[i];
+  }
+  assert.deepStrictEqual([...seg['搜歌'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['home', 'search']);
+  assert.deepStrictEqual([...seg['下载'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['download']);
+  assert.deepStrictEqual([...seg['曲库'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['local', 'playlist', 'subscription']);
+  assert.deepStrictEqual([...seg['工具'].matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]), ['ai-music', 'converter']);
+  assert.ok(!seg['操作'].includes('data-tab'), '「操作」两项是动作按钮不是页面，挂上 data-tab 会被 switchTab 兜底误高亮');
+  assert.ok(seg['操作'].includes('api.openFolder(') && seg['操作'].includes('openSettings()'));
+  assert.ok(seg['曲库'].includes('id="subBadge"'), '订阅未读徽标必须仍长在订阅条目上，挪丢=红点静默消失');
+});
+
+test('侧边栏条目叫法统一：本地曲库 / 歌单（与首页统计、⌘K、快捷键浮层同一词汇）', () => {
+  const html = read('index.html');
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  assert.ok(sb.includes('本地曲库'), '侧栏本地条目应与全站通用叫法「本地曲库」一致');
+  assert.ok(!sb.includes('本地歌曲'), '「本地歌曲」是第二套叫法（首页统计标签/排序按钮/⌘K 都叫本地曲库），不许复活');
+  assert.ok(!sb.includes('我的歌单'), '侧栏条目精简为「歌单」（页面内大标题保留「我的歌单」不在此段）');
+  const sc = read('js', 'shortcuts.js');
+  assert.ok(sc.includes('跳到本地曲库'), '快捷键浮层文案跟着统一');
+  assert.ok(!sc.includes('跳到本地歌曲'), '浮层旧叫法不许复活');
+});

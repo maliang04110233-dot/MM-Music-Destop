@@ -58,7 +58,7 @@ function handleKey(e) {
       focusTab('download');
       return;
     }
-    // Ctrl+L 跳到本地歌曲
+    // Ctrl+L 跳到本地曲库
     if (key === 'l') {
       e.preventDefault();
       focusTab('local');
@@ -215,7 +215,7 @@ export function showShortcutsHelp() {
           <div class="shortcut-row"><span>聚焦搜索</span><kbd>Ctrl</kbd>+<kbd>F</kbd></div>
           <div class="shortcut-row"><span>跳到首页</span><kbd>Ctrl</kbd>+<kbd>G</kbd></div>
           <div class="shortcut-row"><span>跳到下载队列</span><kbd>Ctrl</kbd>+<kbd>D</kbd></div>
-          <div class="shortcut-row"><span>跳到本地歌曲</span><kbd>Ctrl</kbd>+<kbd>L</kbd></div>
+          <div class="shortcut-row"><span>跳到本地曲库</span><kbd>Ctrl</kbd>+<kbd>L</kbd></div>
           <div class="shortcut-row"><span>跳到下载历史</span><kbd>Ctrl</kbd>+<kbd>H</kbd></div>
         </div>
         <div class="shortcut-group">

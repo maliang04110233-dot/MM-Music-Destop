@@ -62,25 +62,28 @@
 
   <!-- 侧边栏 -->
   <div class="sidebar">
-    <div class="sidebar-title" data-i18n="nav.sidebar.title">导航</div>
+    <div class="sidebar-title">搜歌</div>
     <button class="nav-item active" data-tab="home" onclick="switchTab('home',this)">
       <span class="icon">🏠</span> 首页
     </button>
     <button class="nav-item" data-tab="search" onclick="switchTab('search',this)">
       <span class="icon">🔍</span> 搜索
     </button>
+    <div class="sidebar-title">下载</div>
     <button class="nav-item" data-tab="download" onclick="switchTab('download',this)">
       <span class="icon">⬇</span> 下载
     </button>
+    <div class="sidebar-title">曲库</div>
     <button class="nav-item" data-tab="local" onclick="switchTab('local',this)">
-      <span class="icon">📂</span> 本地歌曲
+      <span class="icon">📂</span> 本地曲库
     </button>
     <button class="nav-item" data-tab="playlist" onclick="switchTab('playlist',this)">
-      <span class="icon">🎼</span> 我的歌单
+      <span class="icon">🎼</span> 歌单
     </button>
     <button class="nav-item" data-tab="subscription" onclick="switchTab('subscription',this)">
       <span class="icon">📡</span> 订阅更新 <span class="nav-badge" id="subBadge" style="display:none;"></span>
     </button>
+    <div class="sidebar-title">工具</div>
     <button class="nav-item" data-tab="ai-music" onclick="switchTab('ai-music',this)">
       <span class="icon">🤖</span> AI 创作
     </button>
