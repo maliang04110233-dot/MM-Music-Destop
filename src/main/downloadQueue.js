@@ -33,6 +33,7 @@ const historyDefault = require('../utils/history');
 const fsaDefault = require('../utils/fsAsync');
 const downloaderDefault = require('../utils/downloader');
 const { renderFileName, DEFAULT_TEMPLATE } = require('../utils/naming');
+const { planDownloadDir, activePathTemplate } = require('../utils/downloadPath');
 const { MUSIC_DIR_NAME } = require('../shared/downloadDefaults');
 const speedMeter = require('./speedMeter');
 const diskSpace = require('./diskSpace');
@@ -323,10 +324,19 @@ function createDownloadQueueEngine({
         const saveDir = songSaveDir || prefs.get('saveDir')
           || (typeof getDefaultDownloadDir === 'function' ? getDefaultDownloadDir()
             : path.join(userDataDirSafe(), MUSIC_DIR_NAME));
-        const savePath = path.join(saveDir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
+        // 路径模板：设置页那个「使用中」的下载模板决定这首歌落在根目录的哪一层。
+        // 它曾经只写不读（死开关），现在由 planDownloadDir 规划 —— 规划不出来时
+        // 一律落回根目录，绝不让「目录没算好」变成「下载失败」。
+        const dirPlan = planDownloadDir(
+          activePathTemplate(prefs.get('downloadTemplates'), prefs.get('activeDownloadTemplate')),
+          saveDir, song);
+        if (!dirPlan.applied && dirPlan.reason && dirPlan.reason !== 'no-template') {
+          logger.warn('[processOneSong] 路径模板未生效，落回根目录:', dirPlan.reason);
+        }
+        const savePath = path.join(dirPlan.dir, sanitizeFilename(renderFileName(namingTemplate, song, ext)));
 
-        await fs.promises.mkdir(saveDir, { recursive: true }).catch(e => {
-          logger.warn('[processOneSong] 创建下载目录失败:', saveDir, e.message);
+        await fs.promises.mkdir(dirPlan.dir, { recursive: true }).catch(e => {
+          logger.warn('[processOneSong] 创建下载目录失败:', dirPlan.dir, e.message);
         });
 
         // 容量预检：磁盘快满时提前给出人话错误（否则写出半截文件才 ENOSPC）。
@@ -334,7 +344,7 @@ function createDownloadQueueEngine({
         if (typeof fs.promises.statfs === 'function') {
           try {
             const verdict = diskSpace.diskVerdict(
-              diskSpace.availFromStatfs(await fs.promises.statfs(saveDir)), song.quality);
+              diskSpace.availFromStatfs(await fs.promises.statfs(dirPlan.dir)), song.quality);
             if (!verdict.ok) {
               throw Object.assign(
                 new Error(diskSpace.diskShortageMessage(

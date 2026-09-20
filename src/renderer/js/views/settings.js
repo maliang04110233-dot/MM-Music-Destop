@@ -780,6 +780,10 @@ function renderDownloadTemplates() {
     const isActive = tpl.id === _dlActiveTemplate;
     // id 可能是云同步/导入的外部数据 —— 与账号卡片同一约定：实参走 escQ、属性走 escAttr
     const idArg = "'" + escQ(tpl.id) + "'";
+    // 落盘真正用的是 subpath（相对下载目录的片段，增量169 起才存在）；
+    // 老模板、以及从别的下载目录同步来的模板没这个字段，只能显示绝对路径
+    const hasSub = typeof tpl.subpath === 'string' && !!tpl.subpath;
+    const shown = hasSub ? tpl.subpath : tpl.path;
     return `
       <div class="dl-template-item ${isActive ? 'active' : ''}" data-id="${escAttr(tpl.id)}">
         <div class="dl-template-info" tabindex="0" role="button" onclick="setActiveTemplate(${idArg})">
@@ -787,7 +791,7 @@ function renderDownloadTemplates() {
             ${isActive ? '✅ ' : ''}${escHtml(tpl.name)}
             ${isActive ? '<span class="dl-template-badge">使用中</span>' : ''}
           </div>
-          <div class="dl-template-path">${escHtml(tpl.path)}</div>
+          <div class="dl-template-path">${escHtml(shown)}${hasSub ? '（相对下载目录）' : '（绝对路径）'}</div>
         </div>
         <div class="dl-template-actions">
           <button class="btn-icon" onclick="openDlTemplateEditor(${idArg})" title="编辑">✏️</button>
@@ -820,7 +824,9 @@ function openDlTemplateEditor(templateId) {
     if (tpl) {
       titleEl.textContent = '✏️ 编辑路径模板';
       nameInput.value = tpl.name;
-      pathInput.value = tpl.path;
+      // 预填真正生效的那份（相对片段），否则用户看到绝对路径、照着改完存回去，
+      // 换下载目录时又变成一份绑死在旧目录上的模板
+      pathInput.value = tpl.subpath || tpl.path;
       modal.dataset.editId = templateId;
     }
   } else {
@@ -842,7 +848,8 @@ function closeDlTemplateEditor() {
 function updateTemplateVarHints() {
   const el = document.getElementById('dlTemplateVarHints');
   if (el) {
-    el.innerHTML = '可用变量: {artist} {album} {title} {source} {year} {track}，如: <code>D:/音乐/{artist}/{album}/{title}</code>';
+    el.innerHTML = '可用变量: {artist} {album} {title} {source} {year} {track}，'
+      + '路径按「相对下载目录」写，如: <code>{artist}/{album}</code>（绝对路径也可，但必须落在下载目录内）';
   }
 }
 

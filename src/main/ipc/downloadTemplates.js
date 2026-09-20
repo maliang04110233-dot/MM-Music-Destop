@@ -4,16 +4,30 @@
  * 注册: get-download-templates / save-download-template /
  *       delete-download-template / set-active-template
  *
- * 模板格式: { artist } / { album } / { title } / { source } / { year }
+ * 模板存两份路径：path 是校验过的绝对路径（展示用），subpath 是「相对下载目录」
+ * 的片段（真正参与落盘，可由 {artist} {album} {title} {source} {year} {track}
+ * 等变量组成）。目录怎么算的见 utils/downloadPath，队列在哪用它见 main/downloadQueue。
  */
 
 const { handle } = require('./register');
 const path = require('path');
 const prefs = require('../../utils/prefs');
 const { defaultDownloadDir } = require('../../shared/downloadDefaults');
+const { subpathFromAbsolute } = require('../../utils/downloadPath');
 
 const TEMPLATE_KEY = 'downloadTemplates';
 const ACTIVE_KEY = 'activeDownloadTemplate';
+
+/**
+ * 当前下载根目录 —— 校验模板路径与推导 subpath 必须用同一个根，
+ * 否则「校验说你在目录内、推导说你在目录外」，模板会被静默当成不可用。
+ */
+function currentSaveDir() {
+  // 兜底必须与真实落盘/展示默认目录同源，否则未设 saveDir 时
+  // 默认目录下的模板路径会被误判越界（曾经的 home/Music 是第三套默认）
+  return prefs.get('saveDir')
+    || defaultDownloadDir(require('electron').app.getPath('music'));
+}
 
 function register() {
   handle('get-download-templates', () => {
@@ -27,11 +41,15 @@ function register() {
       return { success: false, error: '名称和路径不能为空' };
     }
     // M10: 校验路径在安全目录内
-    const safePath = sanitizeDownloadPath(template.path.trim());
+    const root = currentSaveDir();
+    const safePath = sanitizeDownloadPath(template.path.trim(), root);
     if (!safePath) {
       return { success: false, error: '路径不在允许的下载目录内' };
     }
-    template = { ...template, path: safePath };
+    // 存下「相对下载目录」的片段：下载时按它建子目录（增量169 之前模板只存不用，
+    // 设置页的「使用中」是句空话）。相对而不是绝对，用户换下载目录时模板才跟得上。
+    const subpath = subpathFromAbsolute(safePath, root);
+    template = { ...template, path: safePath, subpath: subpath === null ? '' : subpath };
     const templates = prefs.get(TEMPLATE_KEY) || [];
     const now = Date.now();
 
@@ -48,6 +66,7 @@ function register() {
       id: 'tpl_' + now + '_' + Math.random().toString(36).slice(2, 6),
       name: template.name.trim(),
       path: safePath,
+      subpath: template.subpath,
       createdAt: now,
       updatedAt: now,
     };
@@ -93,19 +112,20 @@ function register() {
 /**
  * M10: 校验路径在用户配置的下载目录内，防止路径穿越
  * 返回安全解析后的绝对路径；不在允许范围内则返回 null（拒绝）。
+ * @param {string} templatePath 用户写的模板路径（可含 {artist} 之类占位符）
+ * @param {string} root 当前下载根目录（由 currentSaveDir() 取，与 subpath 推导同源）
  */
-function sanitizeDownloadPath(templatePath) {
+function sanitizeDownloadPath(templatePath, root) {
   if (!templatePath || typeof templatePath !== 'string') return null;
   const raw = templatePath.trim();
   // 拒绝含协议处理器 / 明显 traversal 的输入（兜底，path.resolve 后还会再校验）
   if (/^(file|https?|data|javascript|ftp|smb|ms-|mailto):/i.test(raw)) return null;
   try {
-    // 兜底必须与真实落盘/展示默认目录同源，否则未设 saveDir 时
-    // 默认目录下的模板路径会被误判越界（曾经的 home/Music 是第三套默认）
-    const saveDir = prefs.get('saveDir')
-      || defaultDownloadDir(require('electron').app.getPath('music'));
-    const resolved = path.resolve(raw);
-    const base = path.resolve(saveDir);
+    const base = path.resolve(root);
+    // 相对写法一律按「相对下载目录」解释（设置页的提示就是这个口径）。
+    // 早先走 path.resolve(raw) 是相对进程 CWD —— 打包后那是程序安装目录，
+    // 用户照提示写 {artist}/{album} 会被判「不在允许的下载目录内」。
+    const resolved = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(base, raw);
     // 允许 saveDir 本身或其子目录
     if (resolved === base || resolved.startsWith(base + path.sep)) {
       return resolved;

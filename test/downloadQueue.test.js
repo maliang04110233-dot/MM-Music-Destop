@@ -842,3 +842,121 @@ test('取流无码失败时不往历史塞空 errorCode（宁可缺键，也不�
     assert.ok(!('errorCode' in JSON.parse(JSON.stringify(rec))), '落盘 JSON 里不该出现 errorCode 键');
   } finally { restore(); }
 });
+
+// ══════════════════════════════════════════════════════════
+// 下载路径模板（增量169：设置页那个「使用中」必须是真话）
+// ══════════════════════════════════════════════════════════
+
+const SONG_T = { id: '1', source: 'netease', title: '晴天', artist: '周杰伦', album: '叶惠美', taskId: 'x', status: 'pending' };
+
+/** 跑一首歌，返回它实际要写入的路径 */
+async function oneSongPath(engine) {
+  engine.getQueue().push({ ...SONG_T });
+  await engine.processQueue();
+  await waitFor(() => ['done', 'error'].includes(engine.getQueue()[0].status));
+  return engine.getQueue()[0];
+}
+
+test('路径模板: 活动模板的子目录真实建出来（漏 mkdir 就是 ENOENT）', async () => {
+  const dir = tmpDir();
+  const { engine, downloaded, restore } = buildEngine({
+    dir,
+    prefs: {
+      saveDir: dir,
+      downloadTemplates: [{ id: 't1', name: '按专辑', subpath: '{artist}/{album}' }],
+      activeDownloadTemplate: 't1',
+    },
+  });
+  try {
+    await oneSongPath(engine);
+    assert.strictEqual(downloaded[0].savePath,
+      path.join(dir, '周杰伦', '叶惠美', '周杰伦 - 晴天.mp3'));
+    assert.ok(fs.existsSync(path.join(dir, '周杰伦', '叶惠美')),
+      '子目录必须被 mkdir 真建出来 —— 规划了目录却不建，下载直接 ENOENT');
+    assert.strictEqual(engine.getQueue()[0].status, 'done');
+  } finally { restore(); }
+});
+
+test('路径模板: 没有活动模板时保持平铺（别把默认行为顺手改了）', async () => {
+  const dir = tmpDir();
+  const { engine, downloaded, restore } = buildEngine({
+    dir,
+    prefs: {
+      saveDir: dir,
+      downloadTemplates: [{ id: 't1', subpath: '{artist}' }],
+      activeDownloadTemplate: null,
+    },
+  });
+  try {
+    await oneSongPath(engine);
+    assert.strictEqual(downloaded[0].savePath, path.join(dir, '周杰伦 - 晴天.mp3'));
+  } finally { restore(); }
+});
+
+test('路径模板: 穿越写法只能在根目录里打转', async () => {
+  const dir = tmpDir();
+  const { engine, downloaded, restore } = buildEngine({
+    dir,
+    prefs: {
+      saveDir: dir,
+      downloadTemplates: [{ id: 'evil', subpath: '..' + path.sep + '..' + path.sep + '{artist}' }],
+      activeDownloadTemplate: 'evil',
+    },
+  });
+  try {
+    await oneSongPath(engine);
+    const p = downloaded[0].savePath;
+    // 只按「相对根目录还出不出得去」判定 —— 拿 tmpdir 的父目录比是错的，
+    // 临时目录本身就长在 Temp 里（这条在写测试时坑过我一次）。
+    const rel = path.relative(dir, p);
+    assert.ok(rel && !rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel),
+      '逃出下载根目录: ' + p);
+    assert.strictEqual(rel.split(path.sep).length, 2,
+      '点号段被丢弃后只剩一层子目录，不该更多');
+  } finally { restore(); }
+});
+
+test('路径模板: 老模板只有绝对路径也能用；换根目录后自动失效回落', async () => {
+  const dir = tmpDir();
+  const legacy = [{ id: 'old', path: path.join(dir, 'Old') }];
+  const { engine, downloaded, restore } = buildEngine({
+    dir,
+    prefs: { saveDir: dir, downloadTemplates: legacy, activeDownloadTemplate: 'old' },
+  });
+  try {
+    await oneSongPath(engine);
+    assert.strictEqual(downloaded[0].savePath, path.join(dir, 'Old', '周杰伦 - 晴天.mp3'));
+  } finally { restore(); }
+
+  const dir2 = tmpDir();
+  const moved = buildEngine({
+    dir: dir2,
+    prefs: { saveDir: dir2, downloadTemplates: legacy, activeDownloadTemplate: 'old' },
+  });
+  try {
+    await oneSongPath(moved.engine);
+    assert.strictEqual(moved.downloaded[0].savePath, path.join(dir2, '周杰伦 - 晴天.mp3'),
+      '绝对路径已不属于当前根目录 ⇒ 回落，绝不写到别人家里');
+  } finally { moved.restore(); }
+});
+
+test('路径模板: 逐曲 saveDir 是根，模板子路径长在它下面', async () => {
+  const dir = tmpDir();
+  const perSong = path.join(dir, 'per-song');
+  const { engine, downloaded, restore } = buildEngine({
+    dir,
+    prefs: {
+      saveDir: dir,
+      downloadTemplates: [{ id: 't1', subpath: '{artist}' }],
+      activeDownloadTemplate: 't1',
+    },
+  });
+  try {
+    engine.getQueue().push({ ...SONG_T, saveDir: perSong });
+    await engine.processQueue();
+    await waitFor(() => ['done', 'error'].includes(engine.getQueue()[0].status));
+    assert.strictEqual(downloaded[0].savePath, path.join(perSong, '周杰伦', '周杰伦 - 晴天.mp3'));
+    assert.ok(fs.existsSync(path.join(perSong, '周杰伦')));
+  } finally { restore(); }
+});
+

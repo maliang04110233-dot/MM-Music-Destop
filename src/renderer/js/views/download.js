@@ -217,7 +217,7 @@ function _queueRowHtml(s) {
       ${(!_dlSelectionMode && s.status === 'pending') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消">✕</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'downloading') ? `<button class="queue-cancel" onclick="event.stopPropagation();api.cancelDownload('${escQ(s.taskId)}')" title="取消下载（中断传输并清理临时文件）">✕</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done' && s.savePath) ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="本地播放（下载完直接听）" onclick="event.stopPropagation();playQueueItem('${escQ(s.taskId)}')">▶</button>` : ''}
-      ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(getState('saveDir') || '')}')">📂</button>` : ''}
+      ${(!_dlSelectionMode && s.status === 'done' && s.savePath) ? `<button class="queue-cancel" style="color:var(--neon-green)" title="打开文件夹" onclick="event.stopPropagation();api.openFolder('${escQ(s.savePath)}')">📂</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'done') ? `<button class="queue-cancel" style="color:var(--neon-cyan)" title="转换格式" onclick="event.stopPropagation();showConvertModal('${escQ(s.savePath || '')}', '${escQ(s.title || '')}')">🔄</button>` : ''}
       ${(!_dlSelectionMode && s.status === 'error') ? `
         <button class="queue-cancel" style="color:var(--neon-yellow)" title="诊断失败原因" onclick="event.stopPropagation();window.diagnoseFailure('${escQ(s.taskId)}')">🆘</button>
@@ -323,7 +323,7 @@ function queueRowContext(e) {
     items.push({ icon: '✕', label: '取消下载', danger: true, onClick: () => api.cancelDownload(taskId) });
   } else if (s.status === 'done') {
     if (s.savePath) items.push({ icon: '▶', label: '本地播放', onClick: () => playQueueItem(taskId) });
-    items.push({ icon: '📂', label: '打开文件夹', onClick: () => api.openFolder(getState('saveDir') || '') });
+    if (s.savePath) items.push({ icon: '📂', label: '打开文件夹', onClick: () => api.openFolder(s.savePath) });
     if (s.savePath && typeof window.showConvertModal === 'function') {
       items.push({ icon: '🔄', label: '转换格式', onClick: () => window.showConvertModal(s.savePath, s.title || '') });
     }

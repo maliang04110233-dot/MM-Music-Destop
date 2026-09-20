@@ -9,7 +9,8 @@
  *        「周杰伦 - 晴天 []」或「周杰伦 -  - 晴天」这类噪音文件名
  *
  * 模板只产出扁平文件名：模板字面量里的 / 和 \ 会被换成下划线，
- * 防止模板逃逸到下载目录之外。需要按目录组织走「下载路径模板」功能。
+ * 防止模板逃逸到下载目录之外。需要按目录组织走「下载路径模板」功能
+ * —— 那是下面的 renderPathSegments，两套模板共用本文件的同一张变量表。
  *
  * 示例：
  *   {artist} - {title}                → 周杰伦 - 晴天.mp3
@@ -53,18 +54,20 @@ const TEMPLATE_VARS = [
   { key: 'date', desc: '下载日期 YYYYMMDD' },
 ];
 
-/** 基础变量：缺值回退「未知」（历史行为，不改） */
-function required(v) {
-  const s = (v == null || v === '') ? '未知' : String(v)
+/**
+ * 单个变量值：清洗 + 缺值回退
+ * @param {*} v
+ * @param {string} missingAs 缺值时填的东西（文件名用「未知」，目录段用空洞哨兵）
+ */
+function fieldValue(v, missingAs) {
+  const s = (v == null || v === '') ? '' : String(v)
     .replace(CONTROL_RE, ' ').replace(ILLEGAL_RE, '_').trim();
-  return s || '未知';
+  return s || missingAs;
 }
 
 /** 扩展变量：缺值回退空洞哨兵 */
 function optional(v) {
-  const s = (v == null ? '' : String(v))
-    .replace(CONTROL_RE, ' ').replace(ILLEGAL_RE, '_').trim();
-  return s || HOLE;
+  return fieldValue(v, HOLE);
 }
 
 /** 码率：优先 quality 档位名，其次平台直接给的 bitrate（bps 按十进制折算，与音乐软件标注一致） */
@@ -100,6 +103,35 @@ function trackNoField(song) {
   return String(n).padStart(width, '0');
 }
 
+/** 下载日期 YYYYMMDD */
+function dateField(now) {
+  const pad2 = (n) => String(n).padStart(2, '0');
+  return '' + now.getFullYear() + pad2(now.getMonth() + 1) + pad2(now.getDate());
+}
+
+/**
+ * 变量表：文件名模板与目录路径模板共用这一份，两处各写一份必然漂移
+ * @param {object} s 歌曲信息
+ * @param {Date} now
+ * @param {string} baseMissing 基础五项缺值时填的东西
+ */
+function buildFields(s, now, baseMissing) {
+  const base = (v) => fieldValue(v, baseMissing);
+  return {
+    title: base(s.title),
+    artist: base(s.artist),
+    album: base(s.album),
+    source: base(s.source),
+    id: base(s.id),
+    quality: optional(s.quality),
+    bitrate: bitrateField(s),
+    trackNo: trackNoField(s),
+    playlist: optional(s.playlistName),
+    year: yearField(s),
+    date: dateField(now),
+  };
+}
+
 /**
  * 根据模板生成文件名
  * @param {string} template - 模板字符串
@@ -112,22 +144,8 @@ function trackNoField(song) {
 function renderFileName(template, song, ext, opts) {
   const s = song || {};
   const now = (opts && opts.now instanceof Date) ? opts.now : new Date();
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const date = '' + now.getFullYear() + pad2(now.getMonth() + 1) + pad2(now.getDate());
 
-  const fields = {
-    title: required(s.title),
-    artist: required(s.artist),
-    album: required(s.album),
-    source: required(s.source),
-    id: required(s.id),
-    quality: optional(s.quality),
-    bitrate: bitrateField(s),
-    trackNo: trackNoField(s),
-    playlist: optional(s.playlistName),
-    year: yearField(s),
-    date,
-  };
+  const fields = buildFields(s, now, '未知');
 
   // 用函数替换：避免歌名里的 $& / $' 被当作替换模式解释；
   // 未识别的变量原样保留，方便用户看出拼错
@@ -170,6 +188,53 @@ function renderFileName(template, song, ext, opts) {
   return (base || '未知') + '.' + (ext || 'mp3').replace(/[^a-zA-Z0-9]/g, '').substring(0, 10);
 }
 
+// 目录段边界：两种分隔符都算（模板可能是 Windows 写法也可能是 POSIX 写法）
+const DIR_SEP_RE = /[\u002f\u005c]+/;
+// Windows 目录名不许以点或空格收尾；「以点结尾」顺带把 '.' 与 '..' 变成空段
+const TRAILING_JUNK_RE = /[. ]+$/;
+const DIR_SEG_MAX = 100;
+
+/**
+ * 按目录模板渲染出「相对下载根目录」的层级
+ *
+ * 与文件名模板同一张变量表（buildFields），但对「没有值」的处置正好相反：
+ * 文件名缺值补「未知」（总得有个名字），目录缺值整段丢掉 —— 一首没有专辑的
+ * 歌不该凭空多出一层 未知/，拼错的变量名（{fo}）更不配生成一个叫 {fo} 的目录。
+ *
+ * 只负责“段”的干净，不负责“落在哪”：根目录与越界回落归 utils/downloadPath。
+ *
+ * @param {string} pattern 相对片段模板，如 '{artist}/{album}'
+ * @param {object} song 歌曲信息（字段同 renderFileName）
+ * @param {object} [opts] { now: Date } 固定渲染时间，供测试用
+ * @returns {string[]} 可直接 path.join 的目录段（可能为空数组）
+ */
+function renderPathSegments(pattern, song, opts) {
+  const raw = (pattern == null ? '' : String(pattern)).trim();
+  if (!raw) return [];
+  const now = (opts && opts.now instanceof Date) ? opts.now : new Date();
+  const fields = buildFields(song || {}, now, HOLE);
+
+  const out = [];
+  for (const piece of raw.split(DIR_SEP_RE)) {
+    let drop = false;
+    const rendered = piece.replace(PLACEHOLDER_RE, (_, name) => {
+      const key = ALIASES[name] || name;
+      const v = Object.prototype.hasOwnProperty.call(fields, key) ? fields[key] : HOLE;
+      if (v === HOLE) drop = true; // 缺值或未知变量：整段作废
+      return v;
+    });
+    if (drop) continue;
+    const seg = rendered
+      .replace(CONTROL_RE, ' ')
+      .replace(ILLEGAL_RE, '_')
+      .replace(TRAILING_JUNK_RE, '')
+      .trim()
+      .slice(0, DIR_SEG_MAX);
+    if (seg) out.push(seg);
+  }
+  return out;
+}
+
 /**
  * 预览模板效果（固定样例，含扩展字段）
  * @param {string} template
@@ -202,6 +267,7 @@ function unknownPlaceholders(template) {
 
 module.exports = {
   renderFileName,
+  renderPathSegments,
   previewTemplate,
   unknownPlaceholders,
   TEMPLATE_VARS,
