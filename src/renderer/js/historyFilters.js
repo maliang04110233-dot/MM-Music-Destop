@@ -61,4 +61,25 @@ function retrySummary(tally) {
   return `🔁 重试完成：入队 ${t.added || 0}、已在队列 ${t.dup || 0}、已下载跳过 ${t.had || 0}、失败 ${t.fail || 0}`;
 }
 
-export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary };
+/** 清理结果 → toast 文案（一条都没清掉时不许报成功） */
+function deadSummary(removed, checked) {
+  if (!removed) return `ℹ️ 已核对 ${checked || 0} 条成功记录，文件都在，没有需要清理的失效记录`;
+  return `🧹 已清理 ${removed} 条文件已不存在的下载记录（本轮核对 ${checked || 0} 条，未改动磁盘上任何文件）`;
+}
+
+/**
+ * 清理前确认文案（增量153）。两件事必须写在脸上：
+ * 只删记录不动文件；文件"不在"不等于"没了" —— 整库挪盘时全部记录都会被判失效，
+ * 这时用户该取消而不是确认，所以把补救办法一起给出（放回原目录 / 扫描后自动接回）。
+ */
+function deadConfirmText(dead, checked) {
+  const list = dead || [];
+  const shown = list.slice(0, 5).map(s => `  · ${s.title || s.id}${s.artist ? ' - ' + s.artist : ''}`).join('\n');
+  const more = list.length > 5 ? `\n  …共 ${list.length} 条` : '';
+  return `发现 ${list.length} 条记录的文件已不在磁盘上${checked ? `（本轮核对 ${checked} 条）` : ''}：\n${shown}${more}\n\n`
+    + '确认删除这些历史记录？\n'
+    + '· 只删记录，磁盘上任何文件都不会被改动\n'
+    + '· 歌若只是挪了目录/换了硬盘，请先「取消」：把文件放回原目录，或在本地曲库重新扫描（被改名的文件会自动接回）';
+}
+
+export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText };

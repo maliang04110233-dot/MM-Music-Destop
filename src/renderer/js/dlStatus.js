@@ -79,6 +79,21 @@ const _BADGES = {
   done:        ['✔ 已下载', '此前已成功下载'],
 };
 
+/**
+ * 摘掉若干「✔ 已下载」徽标（增量153：清理死账记录之后必须同步）。
+ * 集合是启动时从历史表灌进来的，历史行删了集合不会自己瘦 ——
+ * 不摘的话，一首早被删掉的文件会一直顶着「已下载」，用户点了什么也不会发生。
+ * @param {Array<string>} keys songDlKey 形状的键
+ */
+export function dlForgetKeys(keys) {
+  if (!Array.isArray(keys) || !keys.length) return;
+  let changed = false;
+  for (const k of keys) {
+    if (typeof k === 'string' && _downloaded.delete(k)) changed = true;
+  }
+  if (changed) _fire();
+}
+
 /** 列表行内徽标 HTML（无状态返回空串；文本全部静态，无注入面） */
 export function dlBadgeHtml(s, queue) {
   const st = dlStatusFor(s, queue);
@@ -101,5 +116,6 @@ if (typeof window !== 'undefined') {
   window.dlBadgeHtml = dlBadgeHtml;
   window.dlObserveQueue = dlObserveQueue;
   window.dlEnsureHistoryLoaded = dlEnsureHistoryLoaded;
+  window.dlForgetKeys = dlForgetKeys;
   window.addDlChangeListener = addDlChangeListener;
 }

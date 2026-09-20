@@ -117,6 +117,7 @@ const COMMANDS = [
   { id: 'dl-m3u', icon: '📁', group: '下载', label: '导入 m3u 歌单文件（解析后匹配入队）', keywords: ['m3u', 'playlist import', '歌单'], run: () => _call('openM3uImport') },
   { id: 'pl-m3uimp', icon: '📥', group: '下载', label: '导入 m3u 为用户歌单（匹配本地曲库，导入即可播）', keywords: ['m3u', 'playlist', '导入', '歌单', '本地'], run: () => _call('pickM3uForPlaylist') },
   { id: 'dl-retry-failed', icon: '🔁', group: '下载', label: '重试全部失败的历史记录（≤200 条）', keywords: ['retry', '失败', '历史'], run: () => _call('retryFailedFromHistory') },
+  { id: 'dl-clean-dead', icon: '🧹', group: '下载', label: '清理失效的历史记录（文件已不在磁盘上）', keywords: ['clean', 'dead', '失效', '清理', '历史'], run: () => _call('cleanDeadHistory') },
   { id: 'dl-sched', icon: '⏰', group: '下载', label: '新建定时下载', keywords: ['schedule', '错峰', '夜间'], run: () => _call('openScheduledPanel') },
   { id: 'dl-pause', icon: '⏸', group: '下载', label: '暂停 / 继续下载队列', keywords: ['pause queue'], run: () => _call('toggleQueuePause') },
   { id: 'dl-clear', icon: '🧹', group: '下载', label: '清空已完成任务', keywords: ['clear done'], run: () => _call('clearFinishedDownloads') },

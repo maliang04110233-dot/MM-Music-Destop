@@ -7,8 +7,9 @@ import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
-import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary } from '../historyFilters.js';
+import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText } from '../historyFilters.js';
 import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
+import { dlForgetKeys, songDlKey } from '../dlStatus.js';
 let historyPage = 0;
 let _historyTotalPages = 1; // 最近一次查询的总页数（翻页钳制用）
 let historyFilter = '';
@@ -31,10 +32,15 @@ function _cacheHistoryDom() {
 
 async function loadHistory() {
   try {
-    const opts = buildHistoryQuery(
-      { keyword: historyFilter, status: _historyStatus, source: _historySource, sort: _historySort },
-      historyPage, PAGE_SIZE,
-    );
+    const opts = {
+      // markMissing：让主进程顺手 stat 一遍本页的已完成记录，行上才能如实说"文件已不在"。
+      // 判活规则（什么算死账）全在主进程 deadRefs.js，这里只消费结果。
+      ...buildHistoryQuery(
+        { keyword: historyFilter, status: _historyStatus, source: _historySource, sort: _historySort },
+        historyPage, PAGE_SIZE,
+      ),
+      markMissing: true,
+    };
     
     const [result, stats] = await Promise.all([
       api.queryHistory(opts),
@@ -76,34 +82,38 @@ function renderHistory(items, stats) {
     return;
   }
 
-  _historyDom.list.innerHTML = _historyItems.map((s, idx) => `
+  _historyDom.list.innerHTML = _historyItems.map((s, idx) => {
+    // 文件已被用户删/挪走的成功记录：✅ 是骗人的，▶ 点了只会报错 —— 换成 🚫 并把路
+    // 径指回「重新下载」。判活结论由主进程给出（见 loadHistory 的 markMissing）。
+    const dead = s.status === 'done' && s.missing;
+    const retryBtn = `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escQ(s.id)}', '${escQ(s.source)}', '${escQ(s.title)}', '${escQ(s.artist)}', '${escQ(s.album || '')}', '${escQ(s.quality || 'standard')}')">🔄</button>`;
+    return `
     <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}" data-hidx="${idx}">
-      <div class="history-icon">${s.status === 'done' ? '✅' : '❌'}</div>
+      <div class="history-icon">${s.status === 'done' ? (dead ? '🚫' : '✅') : '❌'}</div>
       <div class="history-info">
         <div class="history-title">${esc(s.title)}</div>
-        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}</div>
+        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}${dead ? ' · <span style="color:var(--neon-yellow)">文件已不在磁盘上</span>' : ''}</div>
       </div>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       <span class="history-quality">${esc(s.quality || 'standard')}</span>
       <span class="history-size">${formatBytes(s.size)}</span>
       <span class="history-time">${fmtDate(s.finishedAt)}</span>
       <div class="history-actions">
-        ${s.status === 'done' && s.savePath
+        ${s.status === 'done' && s.savePath && !dead
           ? `<button class="action-btn" title="本地播放（下载完直接听）" onclick="playHistoryItem(${idx})">▶</button>`
           : ''}
-        ${s.status === 'done' && s.savePath
+        ${s.status === 'done' && s.savePath && !dead
           ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escQ(s.savePath)}')">📂</button>`
           : ''}
-        ${s.status === 'error'
-          ? `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escQ(s.id)}', '${escQ(s.source)}', '${escQ(s.title)}', '${escQ(s.artist)}', '${escQ(s.album || '')}', '${escQ(s.quality || 'standard')}')">🔄</button>`
-          : ''}
+        ${s.status === 'error' || dead ? retryBtn : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 async function exportHistoryM3u() {
-  const done = _historyItems.filter(s => s.status === 'done' && s.savePath);
+  // missing 的行不写进 m3u：那一行路径指向的文件已经不在，导出的是放不出来的列表
+  const done = _historyItems.filter(s => s.status === 'done' && s.savePath && !s.missing);
   if (!done.length) {
     showToast('本页没有可导出的已完成下载', 'warn');
     return;
@@ -126,7 +136,8 @@ async function exportHistoryM3u() {
       return;
     }
     const pageNote = _historyItems.length >= PAGE_SIZE ? '（仅当前页）' : '';
-    showToast(`✅ 已导出 ${done.length} 首歌曲${pageNote}`, 'success');
+    const skipped = _historyItems.filter(s => s.status === 'done' && s.savePath && s.missing).length;
+    showToast(`✅ 已导出 ${done.length} 首歌曲${pageNote}${skipped ? `，跳过 ${skipped} 首文件已不在的` : ''}`, 'success');
   } catch (e) {
     showToast('导出失败: ' + e.message, 'error');
   }
@@ -201,6 +212,49 @@ async function retryFailedFromHistory() {
     showToast('批量重试失败：' + e.message, 'error');
   } finally {
     _retryAllBusy = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── 一键清理失效记录 ───────────────────────────────────
+// 「记录还在、文件早没了」的成功记录是死账：✅ 是假的、▶ 点了报错、搜索页还顶着
+// 「✔ 已下载」。判活和"什么算可删的死账"两条规则都在主进程 deadRefs.js（渲染层没有
+// fs，且规则抄第二份必然漂移），这里只负责：问一声 → 送进既有 remove-history →
+// 摘掉那些记录喂给徽标集合的键 → 重查。绝不碰磁盘上一个文件。
+let _cleanDeadBusy = false;
+const CLEAN_SCAN_LIMIT = 2000;
+
+async function cleanDeadHistory() {
+  if (_cleanDeadBusy) return;
+  _cleanDeadBusy = true;
+  const btn = document.getElementById('historyCleanBtn');
+  if (btn) btn.disabled = true;
+  try {
+    // 无视当前状态页签（恒查 done，与「重试失败项」对称），但尊重关键词/来源筛选
+    const q = buildHistoryQuery({ keyword: historyFilter, status: 'done', source: _historySource }, 0, CLEAN_SCAN_LIMIT);
+    const r = await api.queryHistory({ ...q, markMissing: true });
+    const dead = (r && r.deadEntries) || [];
+    const checked = ((r && r.items) || []).length;
+    if (!dead.length) {
+      showToast(deadSummary(0, checked), 'info');
+      return;
+    }
+    if (!confirm(deadConfirmText(dead, checked))) return;
+    const res = await api.removeHistory(dead);
+    if (!res || typeof res.removed !== 'number') {
+      showToast('清理失败', 'error');
+      return;
+    }
+    // 徽标集合是启动时从历史表灌进来的，历史行删了它不会自己瘦
+    dlForgetKeys(dead.map(d => songDlKey({ source: d.source, id: d.id })).filter(Boolean));
+    historyPage = 0;
+    loadHistory();
+    showToast(deadSummary(res.removed, checked), res.removed ? 'success' : 'info', 5000);
+  } catch (e) {
+    logger.warn('[history] 清理失效记录失败:', e.message);
+    showToast('清理失败：' + e.message, 'error');
+  } finally {
+    _cleanDeadBusy = false;
     if (btn) btn.disabled = false;
   }
 }
@@ -335,7 +389,7 @@ function historyRowContext(e) {
   if (!s) return;
   e.preventDefault();
   const items = [];
-  if (s.status === 'done' && s.savePath) {
+  if (s.status === 'done' && s.savePath && !s.missing) {
     items.push(
       { icon: '▶', label: '本地播放', onClick: () => playHistoryItem(idx) },
       { icon: '📂', label: '打开文件夹', onClick: () => api.openFolder(s.savePath) },
@@ -383,6 +437,7 @@ export {
   exportHistoryM3u,
   deleteHistoryItem,
   retryFailedFromHistory,
+  cleanDeadHistory,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -398,6 +453,7 @@ window.retryFromHistory = retryFromHistory;
 window.playHistoryItem = playHistoryItem;
 window.exportHistoryM3u = exportHistoryM3u;
 window.retryFailedFromHistory = retryFailedFromHistory;
+window.cleanDeadHistory = cleanDeadHistory;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHistoryDom();
