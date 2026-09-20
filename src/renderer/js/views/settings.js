@@ -838,6 +838,8 @@ function openDlTemplateEditor(templateId) {
   }
 
   updateTemplateVarHints();
+  ensureDlTemplatePreview();
+  updateDlPathPreview();
   modal.classList.remove('hidden');
   nameInput.focus();
 }
@@ -852,6 +854,64 @@ function updateTemplateVarHints() {
     el.innerHTML = '可用变量: {artist} {album} {title} {source} {year} {track}，'
       + '路径按「相对下载目录」写，如: <code>{artist}/{album}</code>（绝对路径也可，但必须落在下载目录内）';
   }
+}
+
+// ── 路径模板实时预览 ─────────────────────────────────
+// 文件名模板早就有实时预览（filenameTmplPreview），路径模板是这条线上唯一的例外：
+// 用户写完 {artist}/{album} 只能存下、下载一首、再去目录里核对。本段补上落点预览。
+// 两条纪律：① 段渲染跑在主进程（renderer 是打包的 ESM，拿不到 src/utils/*），
+// 复用既有 'preview-naming-template' 通道取数，不为预览再开一条通道；
+// ② 预览节点由这里自己造、不写进 index.html —— 模态框是编辑器专属外壳，
+// 少一处和并发改动抢同一份 HTML。文案一律 textContent（路径段可能含用户输入）。
+
+let _dlPathPreviewTimer = null;
+
+function ensureDlTemplatePreview() {
+  const input = document.getElementById('dlTemplatePath');
+  if (!input) return null;
+  let box = document.getElementById('dlTemplatePathPreview');
+  if (!box) {
+    box = document.createElement('p');
+    box.id = 'dlTemplatePathPreview';
+    // 与命名模板预览同一副长相（setting-hint + 等宽青字），两处预览该像一件事
+    box.className = 'setting-hint';
+    box.style.color = 'var(--neon-cyan)';
+    box.style.fontFamily = 'monospace';
+    input.insertAdjacentElement('afterend', box);
+    // 模态框元素常驻，监听器只在造壳时绑一次
+    input.addEventListener('input', updateDlPathPreview);
+  }
+  return box;
+}
+
+function updateDlPathPreview() {
+  const input = document.getElementById('dlTemplatePath');
+  const box = ensureDlTemplatePreview();
+  if (!input || !box) return;
+  const raw = input.value.trim();
+  if (!raw) {
+    box.textContent = '示例落点：（未填路径 —— 歌曲直接落在下载目录根下）';
+    return;
+  }
+  clearTimeout(_dlPathPreviewTimer);
+  _dlPathPreviewTimer = setTimeout(async () => {
+    try {
+      const r = await api.previewNamingTemplate({ pathTpl: raw });
+      if (input.value.trim() !== raw) return; // 键入已变，丢掉这次跨进程结果
+      if (!r) return;
+      const segs = r.pathSegments || [];
+      box.textContent = '示例落点：'
+        + (segs.length ? segs.join(' \\ ') : '（这一串取不到值 —— 歌曲会落在下载目录根下）');
+      const dropped = r.pathDropped || [];
+      if (dropped.length) {
+        box.textContent += ' | 不会建目录的段: ' + dropped.join('、')
+          + '（变量名不认识，或该歌曲没有这一项）';
+      }
+    } catch (_e) {
+      // 预览失败不许打断编辑器：留空即可，保存路径本身有主进程校验兜底
+      box.textContent = '';
+    }
+  }, 250);
 }
 
 async function saveDlTemplate() {

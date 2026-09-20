@@ -20,7 +20,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { renderPathSegments } = require('../src/utils/naming');
+const { renderPathSegments, previewPathPattern, previewTemplate } = require('../src/utils/naming');
 const {
   planDownloadDir,
   subpathFromAbsolute,
@@ -261,4 +261,70 @@ test('零新 IPC 通道：本增量只用既有方法', () => {
   assert.deepEqual(unknown, [], '出现契约外方法: ' + unknown.join(', '));
   const unknownCh = Array.from(invoked).filter((c) => !(c in CHANNELS));
   assert.deepEqual(unknownCh, [], '出现契约外通道: ' + unknownCh.join(', '));
+});
+
+// ── 增量172：路径模板实时预览（编辑器里当场看见「下一首歌会落到哪」）────────
+//
+// 为什么要有：169 之后模板真的生效了，但用户在编辑器里仍然只能靠想象 —— 写完
+// {artist}/{album} 存下、下载一首、再去目录里核对。文件名模板早就有实时预览
+// （设置页 filenameTmplPreview 那条），路径模板是这条线上唯一的例外。
+// 预览必须在主进程算：renderer 是 Vite 打包的 ESM，拿不到 src/utils/*（CJS），
+// 而"样例歌曲"这份 fixture 也只许有一个家（previewTemplate 用的就是它）。
+
+test('previewPathPattern 用与文件名预览同一份样例歌曲渲染落点', () => {
+  assert.equal(typeof previewPathPattern, 'function', 'naming.js 应导出 previewPathPattern');
+  const r = previewPathPattern('{artist}/{album}');
+  assert.deepStrictEqual(r.segments, ['周杰伦', '叶惠美']);
+  assert.deepStrictEqual(r.dropped, []);
+  // 同一份 fixture：文件名预览里出现的歌手，路径预览里也必须是同一个
+  assert.equal(previewTemplate('{artist} - {title}'), '周杰伦 - 晴天.mp3');
+});
+
+test('样例歌曲字面量在 naming.js 里只许出现一次（两份必然漂移）', () => {
+  assert.equal(countOf(read('src/utils/naming.js'), "'晴天'"), 1);
+});
+
+test('被丢弃的段进 dropped，用户看得见"我写的这段没了"', () => {
+  // 样例歌曲各项齐全，所以预览里能触发丢段的只有"变量名不认识"这一类；
+  // 真实下载时缺值（例如非歌单来源没有 {playlist}）走的是同一条丢弃分支。
+  const r = previewPathPattern('{artist}/{playlistX}/{album}');
+  assert.deepStrictEqual(r.segments, ['周杰伦', '叶惠美']);
+  assert.deepStrictEqual(r.dropped, ['{playlistX}']);
+  // 同一个变量写对就不该出现在 dropped 里（防止把 dropped 实现成"未知变量清单"）
+  assert.deepStrictEqual(previewPathPattern('{playlist}').dropped, []);
+});
+
+test('预览是确定性的：{date} 走固定渲染时间，不跟系统时钟漂移', () => {
+  assert.deepStrictEqual(previewPathPattern('{date}').segments, ['20260115']);
+});
+
+test('纯文本段照原样算落点，且和变量段混排也按顺序出', () => {
+  assert.deepStrictEqual(previewPathPattern('Music/{year}').segments, ['Music', '2003']);
+});
+
+test('空 pattern 出空结果而不是报错', () => {
+  assert.deepStrictEqual(previewPathPattern(''), { segments: [], dropped: [] });
+  assert.deepStrictEqual(previewPathPattern(null), { segments: [], dropped: [] });
+});
+
+test('renderPathSegments 仍返回字符串数组（downloadQueue 直接 path.join 用它）', () => {
+  const segs = renderPathSegments('{artist}/{album}', SONG, { now: NOW });
+  assert.ok(Array.isArray(segs));
+  assert.deepStrictEqual(segs, ['周杰伦', '叶惠美']);
+});
+
+// ── 接线钉：预览走既有 'preview-naming-template' 通道，不为预览再开一条 ──
+// 主进程那一侧不在这里钉：handler 真调得动（契约校验 + 信封 + prefs），
+// 已有 test/downloadTemplatePreview.test.js 覆盖，字符串钉只会重复且更弱。
+
+test('设置页路径模板编辑器接上实时预览（元素由 JS 造，不动 index.html）', () => {
+  const src = read('src/renderer/js/views/settings.js');
+  assert.ok(/function ensureDlTemplatePreview\(/.test(src), '预览节点要有生成的地方');
+  assert.ok(/function updateDlPathPreview\(/.test(src), '预览刷新要有函数');
+  assert.ok(/addEventListener\('input'/.test(src), '输入要绑到刷新（不靠 HTML 内联 oninput）');
+  assert.ok(/api\.previewNamingTemplate\(\s*\{/.test(src), '跨进程取预览值');
+  assert.ok(/示例落点/.test(src), '预览文案要用人话');
+  assert.ok(/textContent/.test(src.slice(src.indexOf('function updateDlPathPreview'))), '预览写 textContent 不写 innerHTML');
+  // 元素不写进 index.html：模态框是本增量自己造壳，避免与并发会话抢同一份 HTML
+  assert.equal(read('src/renderer/index.html').includes('dlTemplatePathPreview'), false);
 });

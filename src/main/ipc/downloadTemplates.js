@@ -94,15 +94,29 @@ function register() {
     return { success: true, active: templateId };
   });
 
-  // 文件名模板预览：renderFileName 依赖 src/utils/naming，renderer 无法直接 require，
-  // 预览必须在主进程算。顺带返回未知变量列表，设置页据此提示拼写错误。
+  // 模板预览：renderFileName / renderPathSegments 依赖 src/utils/naming，renderer
+  // 无法直接 require，预览一律在主进程算。两类模板共用这条既有的「模板预览」通道
+  // —— 为预览再开一条通道没有意义，通道名的语义本来就是"把模板算个结果回给你"。
+  // 入参两种形态：
+  //   字符串        → 文件名模板（设置页命名模板输入框的老口径，必须保持不变）
+  //   { pathTpl }   → 目录模板，回会建的层级 + 被丢弃的原文段
   handle('preview-naming-template', (_, template) => {
     const naming = require('../../utils/naming');
-    const src = typeof template === 'string' && template.trim() ? template : naming.DEFAULT_TEMPLATE;
-    return {
+    const req = (template && typeof template === 'object' && !Array.isArray(template))
+      ? template : {};
+    const src = (typeof template === 'string' && template.trim())
+      || (typeof req.naming === 'string' && req.naming.trim())
+      || naming.DEFAULT_TEMPLATE;
+    const out = {
       preview: naming.previewTemplate(src),
       unknown: naming.unknownPlaceholders(src),
     };
+    if (typeof req.pathTpl === 'string' && req.pathTpl.trim()) {
+      const detail = naming.previewPathPattern(req.pathTpl);
+      out.pathSegments = detail.segments;
+      out.pathDropped = detail.dropped;
+    }
+    return out;
   });
 
   // （原 'apply-path-template' handler 已删除：不在 preload 白名单，渲染层

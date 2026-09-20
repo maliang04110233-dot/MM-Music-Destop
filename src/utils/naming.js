@@ -209,12 +209,24 @@ const DIR_SEG_MAX = 100;
  * @returns {string[]} 可直接 path.join 的目录段（可能为空数组）
  */
 function renderPathSegments(pattern, song, opts) {
+  return renderPathDetailed(pattern, song, opts).segments;
+}
+
+/**
+ * renderPathSegments 的带真相版本：除了留下的段，还回哪些原文段被丢弃
+ *
+ * 「为什么我写的这段没建目录」是设置页要回答的问题，而答案只有这段代码知道。
+ * 丢段规则若在这里之外再算一遍（比如渲染层自己 split 数个数），两份口径迟早分叉。
+ *
+ * @returns {{ segments: string[], dropped: string[] }} dropped 是丢弃前的原始段文本
+ */
+function renderPathDetailed(pattern, song, opts) {
   const raw = (pattern == null ? '' : String(pattern)).trim();
-  if (!raw) return [];
+  const result = { segments: [], dropped: [] };
+  if (!raw) return result;
   const now = (opts && opts.now instanceof Date) ? opts.now : new Date();
   const fields = buildFields(song || {}, now, HOLE);
 
-  const out = [];
   for (const piece of raw.split(DIR_SEP_RE)) {
     let drop = false;
     const rendered = piece.replace(PLACEHOLDER_RE, (_, name) => {
@@ -223,36 +235,55 @@ function renderPathSegments(pattern, song, opts) {
       if (v === HOLE) drop = true; // 缺值或未知变量：整段作废
       return v;
     });
-    if (drop) continue;
+    if (drop) {
+      result.dropped.push(piece);
+      continue;
+    }
     const seg = rendered
       .replace(CONTROL_RE, ' ')
       .replace(ILLEGAL_RE, '_')
       .replace(TRAILING_JUNK_RE, '')
       .trim()
       .slice(0, DIR_SEG_MAX);
-    if (seg) out.push(seg);
+    if (seg) result.segments.push(seg);
   }
-  return out;
+  return result;
 }
 
+// 预览用的样例歌曲：文件名预览与路径预览共用这一份。两份 fixture 必然漂移
+// （改了一处忘另一处，用户看到的「示例」就对不上真实落点），所以只许有一个家，
+// 且有测试按字面量数出现次数钉住这件事（注意：那条钉也数注释里的引号串）。
+const PREVIEW_SONG = {
+  title: '晴天',
+  artist: '周杰伦',
+  album: '叶惠美',
+  source: 'netease',
+  id: '12345',
+  quality: 'hq',
+  trackNo: '3',
+  trackTotal: '12',
+  playlistName: '周杰伦精选',
+  year: '2003',
+};
+// 固定渲染时间：{date} 若跟系统时钟走，今天的预览就和昨天的不一样
+const PREVIEW_NOW = new Date('2026-01-15T12:00:00');
+
 /**
- * 预览模板效果（固定样例，含扩展字段）
+ * 预览文件名模板效果（固定样例，含扩展字段）
  * @param {string} template
  * @returns {string} 示例文件名
  */
 function previewTemplate(template) {
-  return renderFileName(template, {
-    title: '晴天',
-    artist: '周杰伦',
-    album: '叶惠美',
-    source: 'netease',
-    id: '12345',
-    quality: 'hq',
-    trackNo: '3',
-    trackTotal: '12',
-    playlistName: '周杰伦精选',
-    year: '2003',
-  }, 'mp3', { now: new Date('2026-01-15T12:00:00') });
+  return renderFileName(template, PREVIEW_SONG, 'mp3', { now: PREVIEW_NOW });
+}
+
+/**
+ * 预览目录模板效果：同一份样例歌曲，回「会建哪几层」+「哪几段被丢弃」
+ * @param {string} pattern 相对片段模板，如 '{artist}/{album}'
+ * @returns {{ segments: string[], dropped: string[] }}
+ */
+function previewPathPattern(pattern) {
+  return renderPathDetailed(pattern, PREVIEW_SONG, { now: PREVIEW_NOW });
 }
 
 /** 模板里写了但模板不支持的变量名（设置页用来提示） */
@@ -269,6 +300,7 @@ module.exports = {
   renderFileName,
   renderPathSegments,
   previewTemplate,
+  previewPathPattern,
   unknownPlaceholders,
   TEMPLATE_VARS,
   QUALITY_LABELS,
