@@ -118,4 +118,4 @@ function destroy() {
   _userDataPath = null;
 }
 
-module.exports = { init, get, set, getAll: _load, flush, destroy };
+module.exports = { init, get, set, getAll: _load, flush, destroy, SECRET_KEYS };

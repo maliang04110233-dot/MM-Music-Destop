@@ -15,6 +15,7 @@ const os = require('os');
 const path = require('path');
 
 const { ALLOWED_PREF_KEYS } = require('../src/main/ipc/prefs');
+const prefsUtils = require('../src/utils/prefs');
 const cloudSync = require('../src/main/ipc/cloudSync');
 const approvedDirs = require('../src/main/approvedDirs');
 
@@ -28,8 +29,12 @@ const DRIFTED = [
   'clipboardWatch', 'afterQueueDone', 'scheduledDownloads', 'welcomeSeen',
 ];
 
-test('ALLOWED 里的每个键都可导入（备份里有却 import 不进去 = 静默丢设置）', () => {
-  const missing = [...ALLOWED_PREF_KEYS].filter(k => !cloudSync.IMPORTABLE_PREF_KEYS.has(k));
+test('ALLOWED 里的每个非凭证键都可导入（备份里有却 import 不进去 = 静默丢设置）', () => {
+  // 增量151 起凭证键（prefs.SECRET_KEYS）两侧都不走：跨机不可解的密文装进本地
+  // 配置只会留下一个解不开的脏值。不变量因此是「ALLOWED 减去凭证键 ⊆ 可导入」
+  const missing = [...ALLOWED_PREF_KEYS]
+    .filter(k => !prefsUtils.SECRET_KEYS.has(k))
+    .filter(k => !cloudSync.IMPORTABLE_PREF_KEYS.has(k));
   assert.deepEqual(missing, [], '这些键能写入却被导入丢弃: ' + missing.join(', '));
   for (const k of DRIFTED) assert.ok(cloudSync.IMPORTABLE_PREF_KEYS.has(k), `${k} 未进导入白名单`);
 });
@@ -38,6 +43,12 @@ test('密文与本机同步配置永不进导入白名单（safeStorage 密文�
   for (const k of ['webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'mcpToken']) {
     assert.ok(!ALLOWED_PREF_KEYS.has(k), `${k} 根本不该是 pref 白名单键`);
     assert.ok(!cloudSync.IMPORTABLE_PREF_KEYS.has(k), `${k} 被带进导入白名单了`);
+  }
+  // aiMusicApiKey 是 ALLOWED 里的凭证键：靠 NONPORTABLE 清单两侧同时排除
+  for (const k of prefsUtils.SECRET_KEYS) {
+    assert.ok(ALLOWED_PREF_KEYS.has(k), `${k} 若不在 ALLOWED 就不必特殊处理`);
+    assert.ok(cloudSync.NONPORTABLE_PREF_KEYS.has(k), `${k} 未列入不可携清单`);
+    assert.ok(!cloudSync.IMPORTABLE_PREF_KEYS.has(k), `${k} 仍可被导入安装`);
   }
 });
 

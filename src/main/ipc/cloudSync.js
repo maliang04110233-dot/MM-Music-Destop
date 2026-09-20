@@ -20,14 +20,35 @@ const logger = require('../../utils/logger');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
 
-// 导入允许写入的 prefs 键：直接以 ipc/prefs.js 的 ALLOWED_PREF_KEYS 为唯一来源。
-// 曾经这里手抄过一份字面量清单，结果每加一个设置键就漂移一次——备份里明明
+// 不随备份走的键：凭证级数据（prefs.SECRET_KEYS，落盘是 safeStorage 密文，跨机
+// 根本解不开，留在备份里只是把密钥材料抄进一个用户可能随手分享的文件）
+// + 本机同步配置（WebDAV 连接参数、MCP 令牌）。
+// 这份清单同时喂导出与导入两侧 —— 曾经导出侧另抄了一份 5 键字面量，漏掉了
+// aiMusicApiKey，结果每次导出都把计费密钥密文写进备份，148 之后导入侧还会把
+// 别机器的解不开的密文当本地配置装上。derive 之后新增凭证键自动两侧跟上。
+const NONPORTABLE_PREF_KEYS = new Set([...prefs.SECRET_KEYS,
+  'webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'mcpToken']);
+
+// 导入允许写入的 prefs 键：以 ipc/prefs.js 的 ALLOWED_PREF_KEYS 为唯一来源。
+// 曾经这里也手抄过一份字面量清单，结果每加一个设置键就漂移一次——备份里明明
 // 存着 换源排除平台/歌词逐曲覆写/倍速/队列完成后动作…，导入时被静默丢弃，
-// 换机恢复完用户只看到"设置少了一半"。密文键（webdavPass/mcpToken）本就不在
-// ALLOWED 里，导出侧也会主动删除，不会进备份。
+// 换机恢复完用户只看到"设置少了一半"。
 const IMPORTABLE_PREF_KEYS = new Set([...ALLOWED_PREF_KEYS,
   // 主进程内部维护的数据键（导出时单独收集，导入时回写）
   'userPlaylists', 'activeDownloadTemplate']);
+for (const k of NONPORTABLE_PREF_KEYS) IMPORTABLE_PREF_KEYS.delete(k);
+
+// 导出前挑掉不可携键；返回剔除计数，便于导出侧如实报告
+function pickExportablePrefs(raw) {
+  const kept = {};
+  let dropped = 0;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kept, dropped };
+  for (const [key, value] of Object.entries(raw)) {
+    if (NONPORTABLE_PREF_KEYS.has(key)) { dropped++; continue; }
+    kept[key] = value;
+  }
+  return { kept, dropped };
+}
 
 // 从不可信备份里挑出可回写的 prefs 键。两道闸：白名单 + 目录键的已批准目录守卫
 // （导入不等于授予任意目录读写权，被挡下的目录键计数以便如实报告）。
@@ -62,12 +83,15 @@ function register() {
 
       // 收集所有数据（键名与真实存储对齐：历史在 history.json，EQ 是 eqPreset/eqGains）
       const historyStats = history.stats();
+      // WebDAV 凭证、MCP 令牌、AI 计费密钥不进备份：密码/令牌是 safeStorage 密文
+      // （跨机不可解），url/user 属本机同步配置，带走只会让另一台设备误连
+      const exportedPrefs = pickExportablePrefs(prefs.getAll ? prefs.getAll() : await getAllPrefs());
       const exportData = {
         version: 2,
         exportedAt: new Date().toISOString(),
         app: 'music-downloader',
         data: {
-          prefs: prefs.getAll ? prefs.getAll() : await getAllPrefs(),
+          prefs: exportedPrefs.kept,
           userPlaylists: prefs.get('userPlaylists') || [],
           downloadTemplates: prefs.get('downloadTemplates') || [],
           activeTemplate: prefs.get('activeDownloadTemplate') || null,
@@ -79,12 +103,6 @@ function register() {
           eqGains: prefs.get('eqGains') || null,
         },
       };
-
-      // WebDAV 凭证与 MCP 令牌不进备份：密码/令牌是 safeStorage 密文（跨机不可解），
-      // url/user 属本机同步配置，带走只会让另一台设备误连
-      for (const k of ['webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'mcpToken']) {
-        delete exportData.data.prefs[k];
-      }
 
       await fsa.writeText(result.filePath, JSON.stringify(exportData, null, 2));
       return { success: true, path: result.filePath };
@@ -251,4 +269,6 @@ async function getAllPrefs() {
   return {};
 }
 
-module.exports = { register, IMPORTABLE_PREF_KEYS, pickImportablePrefs };
+module.exports = {
+  register, IMPORTABLE_PREF_KEYS, NONPORTABLE_PREF_KEYS, pickImportablePrefs, pickExportablePrefs,
+};
