@@ -5,6 +5,9 @@
  * 未知码再按 error 文本关键词兜底（磁盘/网络/鉴权/VIP），永不返回空。
  * 弹层给出「原因 + 建议 + 可行动作」（前往设置 / 立即重试），
  * 与 download.js 的 errorTag 徽标互补：徽标说“是什么”，诊断说“怎么办”。
+ *
+ * 增量158 起弹层不再专属队列：按钮显隐收成 diagHeals 一处纯规则，
+ * 具体动作由调用方那一页经 ctx 注入（队列 retryQueueItem / 历史 retryFromHistory）。
  */
 
 /** 码表：cause=给用户看的原因，advice=下一步建议，heal=可一键执行的动作 */
@@ -51,7 +54,38 @@ function _closeDiag() {
   if (el && el.parentNode) el.parentNode.removeChild(el);
 }
 
-function _renderDiag(task, d) {
+/** 「前往设置」点的是全局导航，任何页面都点得动，故由本模块自己实现 */
+function _gotoSettings() {
+  const btn = document.querySelector('.nav-item[data-tab="settings"]');
+  if (btn && typeof window.switchTab === 'function') window.switchTab('settings', btn);
+}
+
+/**
+ * 纯函数：诊断弹层该出现哪些按钮（显隐规则唯一一家）。
+ * 「立即重试」还要看调用方那一页给没给重试动作 —— 队列给 retryQueueItem(taskId)，
+ * 历史页给 retryFromHistory(六字段)。通用层不认识任何一页的动作，
+ * 所以缺动作就少一个按钮，而不是弹一个点了没反应的按钮。
+ * @param {{heal?: (string|null)}} d
+ * @param {{retry?: Function}} [ctx]
+ * @returns {Array<{label:string, primary:boolean, run:Function}>}
+ */
+export function diagHeals(d, ctx) {
+  const heal = d ? d.heal : null;
+  const out = [];
+  if (heal === 'settings') out.push({ label: '前往设置', primary: true, run: _gotoSettings });
+  if (ctx && typeof ctx.retry === 'function' && (heal === 'retry' || heal === 'settings')) {
+    out.push({ label: '立即重试', primary: false, run: ctx.retry });
+  }
+  return out;
+}
+
+/** 通用入口：给一条带 error/errorCode 的记录弹诊断层，动作由页面经 ctx 注入 */
+export function showDiagnosis(task, ctx) {
+  if (!task) return;
+  _renderDiag(task, classifyFailure(task.errorCode, task.error), ctx);
+}
+
+function _renderDiag(task, d, ctx) {
   _closeDiag();
   const overlay = document.createElement('div');
   overlay.id = 'diagOverlay';
@@ -85,24 +119,13 @@ function _renderDiag(task, d) {
 
   const foot = document.createElement('div');
   foot.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:12px;';
-  if (d.heal === 'settings') {
+  for (const h of diagHeals(d, ctx)) {
     const b = document.createElement('button');
-    b.className = 'btn btn-primary';
-    b.textContent = '前往设置';
+    b.className = h.primary ? 'btn btn-primary' : 'btn';
+    b.textContent = h.label;
     b.addEventListener('click', () => {
       _closeDiag();
-      const btn = document.querySelector('.nav-item[data-tab="settings"]');
-      if (btn && typeof window.switchTab === 'function') window.switchTab('settings', btn);
-    });
-    foot.appendChild(b);
-  }
-  if (d.heal === 'retry' || d.heal === 'settings') {
-    const b = document.createElement('button');
-    b.className = 'btn';
-    b.textContent = '立即重试';
-    b.addEventListener('click', () => {
-      _closeDiag();
-      if (typeof window.retryQueueItem === 'function') window.retryQueueItem(task.taskId);
+      h.run();
     });
     foot.appendChild(b);
   }
@@ -118,7 +141,7 @@ function diagnoseFailure(taskId) {
   const queue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
   const task = queue.find(q => String(q.taskId) === String(taskId));
   if (!task) { showToast('任务已不在队列中', 'warn', 2000); return; }
-  _renderDiag(task, classifyFailure(task.errorCode, task.error));
+  showDiagnosis(task, { retry: () => { if (typeof window.retryQueueItem === 'function') window.retryQueueItem(task.taskId); } });
 }
 
 /** 命令面板入口：诊断最近一个失败任务 */

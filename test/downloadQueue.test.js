@@ -812,3 +812,33 @@ test('M1: 重试等待期取消任务 → 协程终止，不再取流/落盘/写
     restore();
   }
 });
+
+// ── 增量158：失败历史条目带上 errorCode ────────────────────
+
+test('fatal 失败的写历史条目带 errorCode（历史侧诊断才不必靠关键词猜）', async () => {
+  const { engine, historyAdds, restore } = buildEngine({
+    getDownloadUrlSmart: async () => ({ error: '该歌曲需要 VIP 会员', code: 'VIP_REQUIRED', fatal: true }),
+  });
+  try {
+    engine.getQueue().push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'x', status: 'pending' });
+    await engine.processQueue();
+    await waitFor(() => engine.getQueue()[0].status === 'error');
+    const rec = historyAdds.find((r) => r.status === 'error');
+    assert.ok(rec, '失败应写历史');
+    assert.strictEqual(rec.errorCode, 'VIP_REQUIRED');
+  } finally { restore(); }
+});
+
+test('取流无码失败时不往历史塞空 errorCode（宁可缺键，也不给诊断喂伪码）', async () => {
+  const { engine, historyAdds, restore } = buildEngine({
+    getDownloadUrlSmart: async () => ({ error: '临时失败' }),
+  });
+  try {
+    engine.getQueue().push({ id: '1', source: 'netease', title: 't', artist: 'a', taskId: 'x', status: 'pending' });
+    await engine.processQueue();
+    await waitFor(() => engine.getQueue()[0].status === 'error');
+    const rec = historyAdds.find((r) => r.status === 'error');
+    assert.ok(rec, '失败应写历史');
+    assert.ok(!('errorCode' in JSON.parse(JSON.stringify(rec))), '落盘 JSON 里不该出现 errorCode 键');
+  } finally { restore(); }
+});

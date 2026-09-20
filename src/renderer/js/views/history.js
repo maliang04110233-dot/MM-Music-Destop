@@ -11,6 +11,7 @@ import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, retrySummary, de
 import { enqueuePayloadFor, classifyRetryResult } from '../enqueuePayload.js';
 import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
 import { dlForgetKeys, songDlKey } from '../dlStatus.js';
+import { showDiagnosis } from '../diagnose.js';
 let historyPage = 0;
 let _historyTotalPages = 1; // 最近一次查询的总页数（翻页钳制用）
 let historyFilter = '';
@@ -91,6 +92,8 @@ function renderHistory(items, stats) {
     // 径指回「重新下载」。判活结论由主进程给出（见 loadHistory 的 markMissing）。
     const dead = s.status === 'done' && s.missing;
     const retryBtn = `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escQ(s.id)}', '${escQ(s.source)}', '${escQ(s.title)}', '${escQ(s.artist)}', '${escQ(s.album || '')}', '${escQ(s.quality || 'standard')}')">🔄</button>`;
+    // 失败行给一个就地诊断：队列早清空了（taskId 已随重启消失），历史是唯一还留着错误原文的地方
+    const diagBtn = `<button class="action-btn" title="诊断失败原因（原因 + 建议 + 下一步）" onclick="diagnoseHistoryItem(${idx})">🆘</button>`;
     return `
     <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}" data-hidx="${idx}">
       <div class="history-icon">${s.status === 'done' ? (dead ? '🚫' : '✅') : '❌'}</div>
@@ -109,7 +112,7 @@ function renderHistory(items, stats) {
         ${s.status === 'done' && s.savePath && !dead
           ? `<button class="action-btn" title="打开文件夹" onclick="api.openFolder('${escQ(s.savePath)}')">📂</button>`
           : ''}
-        ${s.status === 'error' || dead ? retryBtn : ''}
+        ${s.status === 'error' || dead ? retryBtn : ''}${s.status === 'error' ? diagBtn : ''}
       </div>
     </div>`;
   }).join('');
@@ -182,8 +185,27 @@ async function retryFromHistory(id, source, title, artist, album, quality) {
   }
 }
 
+/**
+ * 就地诊断一条失败历史：弹层与规则全在 diagnose.js 一家，本页只交出
+ * 「这一行的记录」和「这一页的重试动作」——没有队列 taskId 也能诊断。
+ */
+function diagnoseHistoryItem(idx) {
+  const s = _historyItems[idx];
+  if (!s) {
+    showToast('这条记录已不在本页（翻页或筛选会换行号），请刷新历史再诊断', 'warn', 2500);
+    return;
+  }
+  showDiagnosis(
+    { title: s.title, artist: s.artist, source: s.source, error: s.error, errorCode: s.errorCode },
+    {
+      retry: () => retryFromHistory(String(s.id), String(s.source || ''),
+        s.title || '', s.artist || '', s.album || '', s.quality || 'standard'),
+    },
+  );
+}
+
 // 一键重试全部失败项：无视当前状态页签（恒查 error），但尊重关键词/来源筛选；
-// 逐条串行 addToQueue（下载引擎自带去重），计数在 historyFilters.classifyRetryResult
+// 逐条串行 addToQueue（下载引擎自带去重），计数在 enqueuePayload.classifyRetryResult
 let _retryAllBusy = false;
 async function retryFailedFromHistory() {
   if (_retryAllBusy) return;
@@ -446,6 +468,10 @@ function historyRowContext(e) {
     onClick: () => retryFromHistory(String(s.id), String(s.source || ''),
       s.title || '', s.artist || '', s.album || '', s.quality || 'standard'),
   });
+  // 失败行紧跟一个诊断项（与队列侧右键同形）：重下解决不了 Cookie 过期这类根因
+  if (s.status === 'error') {
+    items.push({ icon: '🆘', label: '诊断失败原因', onClick: () => diagnoseHistoryItem(idx) });
+  }
   if (s.id != null && s.source) {
     const songLike = _historySongLike(s);
     registerFavSong(songLike); // 让「收藏」切换能带回元数据（历史行没有红心按钮可登记）
@@ -479,6 +505,7 @@ export {
   historyNextPage,
   clearAllHistory,
   retryFromHistory,
+  diagnoseHistoryItem,
   playHistoryItem,
   exportHistoryM3u,
   deleteHistoryItem,
@@ -497,6 +524,7 @@ window.historyPrevPage = historyPrevPage;
 window.historyNextPage = historyNextPage;
 window.clearAllHistory = clearAllHistory;
 window.retryFromHistory = retryFromHistory;
+window.diagnoseHistoryItem = diagnoseHistoryItem;
 window.playHistoryItem = playHistoryItem;
 window.exportHistoryM3u = exportHistoryM3u;
 window.retryFailedFromHistory = retryFailedFromHistory;

@@ -480,6 +480,10 @@ function createDownloadQueueEngine({
           duration: song.duration || 0,
           status: 'error',
           error: lastError.message,
+          // 增量158：取流侧的分类码一起落盘，历史行的 🆘 才不必退回关键词去猜。
+          // 无码留 undefined（JSON 直接丢键，不写空串伪码）；history.add 是
+          // {...existing, ...entry} 合并写，所以"这次没码"会覆盖"上次的码"，不留陈旧值。
+          errorCode: song.errorCode || undefined,
           finishedAt: Date.now(),
         });
       } catch (e) {
