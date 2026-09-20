@@ -10,6 +10,7 @@
 'use strict';
 
 import { errBrief } from './errBrief.js';
+import { askConfirm } from './confirmDialog.js';
 import { normalizeLrcText, overridePatch, parseOverrideMap } from './lyricEdit.js';
 import { parseLrc, showNoLyrics } from './player/lyrics.js';
 import { favKey } from './state.js';
@@ -68,8 +69,8 @@ function _modalEl() {
   el.addEventListener('click', (e) => { if (e.target === el) _close(); });
   document.getElementById('lyricEditorCancel').addEventListener('click', _close);
   document.getElementById('lyricEditorSave').addEventListener('click', () => _save());
-  document.getElementById('lyricEditorClear').addEventListener('click', () => {
-    if (confirm('清除后该歌曲将不再显示歌词（本地曲会清空 .lrc 文件），确认？')) {
+  document.getElementById('lyricEditorClear').addEventListener('click', async () => {
+    if (await askConfirm('清除后该歌曲将不再显示歌词（本地曲会清空 .lrc 文件），确认？')) {
       document.getElementById('lyricEditorText').value = '';
       _save();
     }

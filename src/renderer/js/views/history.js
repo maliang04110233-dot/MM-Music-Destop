@@ -4,6 +4,7 @@
 
 const PAGE_SIZE = 50;
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
@@ -268,7 +269,7 @@ async function cleanDeadHistory() {
       showToast(deadSummary(0, checked), 'info');
       return;
     }
-    if (!confirm(deadConfirmText(dead, checked))) return;
+    if (!await askConfirm(deadConfirmText(dead, checked))) return;
     const res = await api.removeHistory(dead);
     if (!res || typeof res.removed !== 'number') {
       showToast('清理失败', 'error');
@@ -306,7 +307,7 @@ async function redownloadDeadHistory() {
     const checked = ((r && r.items) || []).length;
     const dead = (r && r.deadEntries) || [];
     if (!dead.length) { showToast(deadSummary(0, checked), 'info'); return; }
-    if (!confirm(deadConfirmText(dead, checked, 'redownload'))) return;
+    if (!await askConfirm(deadConfirmText(dead, checked, 'redownload'))) return;
     const saveDir = getState('saveDir');
     const tally = { added: 0, dup: 0, had: 0, fail: 0 };
     for (const d of dead) {
@@ -397,7 +398,7 @@ function historyNextPage() {
 }
 
 async function clearAllHistory() {
-  if (!confirm('确认清空所有下载历史？')) return;
+  if (!await askConfirm('确认清空所有下载历史？')) return;
   try {
     await api.clearHistory();
   } catch (e) {

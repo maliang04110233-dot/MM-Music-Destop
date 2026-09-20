@@ -4,6 +4,7 @@
 
 /* @module */
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 import {
   accountPlatforms,
@@ -943,7 +944,7 @@ async function saveDlTemplate() {
 }
 
 async function deleteDlTemplate(templateId) {
-  if (!confirm('确认删除该路径模板？')) return;
+  if (!await askConfirm('确认删除该路径模板？')) return;
   try {
     const result = await api.deleteDownloadTemplate(templateId);
     if (result.success) {
@@ -985,7 +986,7 @@ async function clearPlayCache() {
 
 // ── 恢复默认设置 ──────────────────────────────────────
 async function resetAllSettings() {
-  if (!confirm('确认恢复所有设置为默认值？\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
+  if (!await askConfirm('确认恢复所有设置为默认值？\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
 
   // 默认值由 GENERAL_PREFS 表派生 —— 手抄清单必然漏项（审计发现的 6/13 缺漏）
   const defaults = {};

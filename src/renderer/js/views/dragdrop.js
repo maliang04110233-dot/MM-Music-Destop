@@ -20,6 +20,7 @@ import { pickDroppedText, isLrcFilename, looksLikeLrc, MAX_LRC_BYTES } from '../
 import { planDropSongs, isDropAudioName } from '../dropPlay.js';
 import { playQueueIdx } from '../player.js';
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 
 let _depth = 0; // dragenter/dragleave 计数：子元素间穿梭不误隐藏
 
@@ -149,7 +150,7 @@ async function _handleLrcDrop(dt) {
   if (/\.txt$/i.test(f.name) && !looksLikeLrc(lrc)) { showToast(`「${f.name}」看起来不是歌词文本`, 'warn'); return true; }
   const songPath = getState('_currentLocalFilePath');
   if (!songPath) { showToast('当前播放的不是本地歌曲，无法写入歌词', 'warn'); return true; }
-  if (!confirm(`把「${f.name}」写入当前歌曲旁的 .lrc？（覆盖同名旧歌词文件）`)) return true;
+  if (!await askConfirm(`把「${f.name}」写入当前歌曲旁的 .lrc？（覆盖同名旧歌词文件）`)) return true;
   try {
     const r = await api.writeLocalLrc(songPath, lrc);
     if (!r || !r.success) { showToast('写入失败：' + ((r && r.error) || '未知错误'), 'error'); return true; }

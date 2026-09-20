@@ -138,7 +138,7 @@ test('接线钉桩（增量118）：逐行 🧲 收拢按钮 + consolidateDup �
   assert.match(PL_JS, /window\.consolidateDup = consolidateDup;/);
   assert.ok(PL_JS.includes('保留在首见歌单'), '按钮 title 说清留哪删哪');
   assert.ok(PL_JS.includes('（不删文件）'), '口径：只动歌单成员，不碰本地文件');
-  assert.ok(PL_JS.includes('if (!confirm('), '写盘前先确认');
+  assert.ok(PL_JS.includes('if (!await askConfirm('), '写盘前先确认');
   assert.ok(PL_JS.includes('const r = await api.saveUserPlaylist(u);'), '复用整单更新通道，不新增 IPC');
   assert.ok(!/\bipcRenderer\b|invoke\('/.test(PL_JS), 'playlist 视图从不直连 ipcRenderer');
 });

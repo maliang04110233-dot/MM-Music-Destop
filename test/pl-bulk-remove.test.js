@@ -67,7 +67,7 @@ test('接线钉：三按钮入过滤行、行首勾选框跟模式走、整单�
   assert.ok(PLAYLIST_JS.includes('async function removeCheckedFromPlaylist()')
     && /removeCheckedFromPlaylist[\s\S]*?api\.saveUserPlaylist\(\{\s*id: pl\.id/.test(PLAYLIST_JS),
     '提交必须带 id 走整单更新，不逐首发 remove 通道');
-  assert.ok(PLAYLIST_JS.includes('confirm(`确认把 ${removed.length} 首歌移出歌单'), '不可逆前先确认');
+  assert.ok(PLAYLIST_JS.includes('askConfirm(`确认把 ${removed.length} 首歌移出歌单'), '不可逆前先确认');
   const openBody = PLAYLIST_JS.slice(PLAYLIST_JS.indexOf('async function openPlaylistDetail'));
   assert.ok(openBody.indexOf('_resetPlSel();') > -1 && openBody.indexOf('_resetPlSel();') < openBody.indexOf('closePlaylistDetail'),
     '开弹层重置选择态');

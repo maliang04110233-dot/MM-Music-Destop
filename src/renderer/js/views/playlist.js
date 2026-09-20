@@ -9,6 +9,7 @@
  */
 
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { HEART_ON, heartBtnHtml } from '../favorites.js';
@@ -499,7 +500,7 @@ async function removeCheckedFromPlaylist() {
   if (!pl) return;
   const { keep, removed } = splitBySelection(pl.songs || [], _plSelKeys);
   if (!removed.length) { _plSelKeys = new Set(); _syncPlSelBtns(); return; }
-  if (!confirm(`确认把 ${removed.length} 首歌移出歌单「${pl.name}」？（不会删除已下载的文件）`)) return;
+  if (!await askConfirm(`确认把 ${removed.length} 首歌移出歌单「${pl.name}」？（不会删除已下载的文件）`)) return;
   try {
     const r = await api.saveUserPlaylist({
       id: pl.id, name: pl.name, desc: pl.desc || '', cover: pl.cover || '', songs: keep,
@@ -662,7 +663,7 @@ async function deletePlaylist(playlistId) {
   const pl = (getState('userPlaylists') || []).find(p => p && p.id === playlistId);
   if (!pl) { showToast('歌单不存在或已刷新，请重试', 'warn'); return; }
   const n = Array.isArray(pl.songs) ? pl.songs.length : 0;
-  if (!confirm(`确认删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌 —— 删的只是这份清单，歌曲文件与红心收藏都不受影响\n• 删除后 5 秒内可点「撤销」原样找回`)) return;
+  if (!await askConfirm(`确认删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌 —— 删的只是这份清单，歌曲文件与红心收藏都不受影响\n• 删除后 5 秒内可点「撤销」原样找回`)) return;
   try {
     const result = await api.deleteUserPlaylist(playlistId);
     if (result.success) {
@@ -778,7 +779,7 @@ async function purgeTrashedPlaylist(playlistId) {
   if (!e) { showToast('该歌单已不在回收站，请刷新重试', 'warn'); return; }
   const pl = e.playlist;
   const n = Array.isArray(pl.songs) ? pl.songs.length : 0;
-  if (!confirm(`彻底删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌，彻底删除后无法再找回（仍在 30 天期限内的其他歌单不受影响）\n• 歌曲文件与红心收藏不受影响`)) return;
+  if (!await askConfirm(`彻底删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌，彻底删除后无法再找回（仍在 30 天期限内的其他歌单不受影响）\n• 歌曲文件与红心收藏不受影响`)) return;
   try {
     const r = await api.deleteUserPlaylist(playlistId);
     if (r && r.success) {
@@ -1308,7 +1309,7 @@ async function consolidateDup(i) {
   if (!g || !g.key) { showToast('该行缺身份键，收拢不了，重新扫描试试', 'warn'); return; }
   const plan = planConsolidate(getState('userPlaylists') || [], g.key);
   if (!plan) { showToast('这些歌单里该歌已变化，重新扫描看看', 'info'); closeDedupeScanModal(); return; }
-  if (!confirm(`「${g.title}」保留在「${plan.keepPlName}」，从其他 ${plan.updates.length} 个歌单移出 ${plan.removed} 份？（不删文件）`)) return;
+  if (!await askConfirm(`「${g.title}」保留在「${plan.keepPlName}」，从其他 ${plan.updates.length} 个歌单移出 ${plan.removed} 份？（不删文件）`)) return;
   try {
     let done = 0;
     for (const u of plan.updates) {

@@ -347,7 +347,7 @@ test('渲染层（增量157）：回收站入口/弹窗/四个函数接线齐全
   const restore = src.match(/async function restoreTrashedPlaylist[\s\S]*?\n}\n/);
   assert.match(restore[0], /api\.saveUserPlaylist\(e\.playlist\)/, '恢复必须把视图里嵌套的原货交给既有保存通道');
   const purge = src.match(/async function purgeTrashedPlaylist[\s\S]*?\n}\n/);
-  assert.match(purge[0], /confirm\(`彻底删除歌单「\$\{pl\.name\}」/, '彻底删除确认框必须点名歌单（F2 纪律）');
+  assert.match(purge[0], /askConfirm\(`彻底删除歌单「\$\{pl\.name\}」/, '彻底删除确认框必须点名歌单（F2 纪律）');
   assert.match(purge[0], /\$\{n\} 首歌/, '彻底删除确认框必须亮出歌数');
   assert.match(purge[0], /无法再找回/, '彻底删除必须说清这是不可逆的一层');
   assert.match(purge[0], /api\.deleteUserPlaylist\(playlistId\)/, '彻底删除必须走 delete 频道的再删一次分支，不许新开通道');

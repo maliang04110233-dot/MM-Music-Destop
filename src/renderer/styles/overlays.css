@@ -806,3 +806,34 @@ kbd {
 .cmdk-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmdk-group { flex-shrink: 0; font-size: 11px; color: var(--neon-dim); padding: 1px 7px; border-radius: 6px; background: var(--elev-1); }
 .cmdk-hint { padding: 8px 14px; font-size: 11px; color: var(--neon-dim); border-top: 1px solid var(--border-subtle); }
+
+/* ══ 不可逆操作确认弹层（confirmDialog.js，增量174）══════════
+   替换原生 confirm()：多行点名文案一行一屏展示，不再被系统灰窗压平。 */
+.confirm-dialog-overlay {
+  position: fixed; inset: 0; z-index: var(--z-overlay);
+  background: rgba(0, 0, 0, .6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in var(--dur-2) var(--ease);
+}
+.confirm-dialog {
+  background: var(--bg-card); border: 1px solid var(--neon-blue-dim);
+  border-radius: 16px; width: 440px; max-width: calc(100vw - 32px);
+  padding: 20px 22px 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .8);
+}
+.confirm-dialog.danger { border-color: var(--red); }
+.confirm-dialog-title {
+  font-size: 14px; font-weight: 600; color: var(--neon-text);
+  line-height: var(--lh-snug, 1.4);
+}
+.confirm-dialog-body { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.confirm-dialog-line { font-size: 12.5px; color: var(--fg-2); line-height: 1.55; }
+.confirm-dialog-footer {
+  margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px;
+}
+.confirm-dialog-ok {
+  background: var(--neon-cyan); color: #000; font-weight: 600;
+}
+.confirm-dialog.danger .confirm-dialog-ok {
+  background: var(--red); color: #fff;
+}

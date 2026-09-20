@@ -3,6 +3,7 @@
  */
 
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
 import { showContextMenu } from '../contextMenu.js';
@@ -509,7 +510,7 @@ async function clearFinishedDownloads() {
 }
 
 async function clearAllDownloads() {
-  if (!confirm('确认清空所有下载任务？正在进行的下载也会被取消。')) return;
+  if (!await askConfirm('确认清空所有下载任务？正在进行的下载也会被取消。')) return;
   try {
     const r = await api.clearAllQueue();
     showToast(`已清空 ${r.removed} 个任务`, 'success');

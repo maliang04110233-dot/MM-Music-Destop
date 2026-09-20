@@ -9,6 +9,7 @@
 // ES Module 导入 — 确保所有模块被 Vite 包含
 // ══════════════════════════════════════════════════════════
 import { errBrief } from './errBrief.js';
+import { askConfirm } from './confirmDialog.js';
 import { logger } from './logger.js';
 // 基础工具模块
 import './state.js';
@@ -1347,9 +1348,9 @@ window.togglePqSel = (idx) => {
   renderPlayQueueUI();
 };
 
-window.removeCheckedFromQueue = () => {
+window.removeCheckedFromQueue = async () => {
   if (!_pqSel.size) { showToast('先勾选要移除的行', 'warn'); return; }
-  if (!confirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列？`)) return;
+  if (!await askConfirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列？`)) return;
   const r = removeQueueItemsByIdentity(getState('playQueue') || [], getState('playIdx') || 0, _pqSel);
   _pqSel.clear();
   if (!r.removed) { renderPlayQueueUI(); return; }

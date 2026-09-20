@@ -9,6 +9,7 @@
  */
 
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 
 // ══════════════════════════════════════════════════════════
 // 状态
@@ -1010,7 +1011,7 @@ async function loadAiHistory() {
 function invalidateAiHistory() { aiState.historyCache = null; }
 
 async function clearAiHistory() {
-  if (!confirm('确认清空所有 AI 生成历史？')) return;
+  if (!await askConfirm('确认清空所有 AI 生成历史？')) return;
   try {
     await api.aiClearHistory();
   } catch (e) {

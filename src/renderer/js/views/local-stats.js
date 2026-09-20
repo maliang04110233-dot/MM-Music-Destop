@@ -6,6 +6,7 @@
  */
 
 import { errBrief } from '../errBrief.js';
+import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 
 // 库变更回调由 local.js 注入（删重后需要重刷列表，避免循环 import）。
@@ -319,7 +320,7 @@ export async function deleteSelectedDups() {
   const selSongs = _dupState.groups.flat().filter(s => selected.has(s.filePath));
   const totalSize = selSongs.reduce((sum, s) => sum + (s.fileSize || 0), 0);
   const sizeTxt = totalSize > 0 ? formatBytes(totalSize) : '大小未知';
-  if (!confirm(`确认删除 ${count} 个重复文件（共 ${sizeTxt}）？\n\n• 每组都会保留音质最好的一个版本，只有勾上的会动\n• 文件移入系统回收站，反悔了随时可还原`)) return;
+  if (!await askConfirm(`确认删除 ${count} 个重复文件（共 ${sizeTxt}）？\n\n• 每组都会保留音质最好的一个版本，只有勾上的会动\n• 文件移入系统回收站，反悔了随时可还原`)) return;
 
   let deleted = 0;
   let failed = 0;

@@ -86,7 +86,7 @@ test('接线钉：pq-header 双按钮、行首勾选框与模式化 onclick/拖�
   assert.ok(APP_JS.includes("draggable=\"' + (_pqSelMode ? 'false' : 'true')"), '多选态禁拖拽防误合');
   assert.ok(APP_JS.includes("_pqSelMode ? 'togglePqSel(' + i + ')' : 'window._playQueueIdx(' + i + ')'"),
     '多选态点行=勾选，平时=切歌');
-  assert.ok(APP_JS.includes('confirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列') && APP_JS.includes('_pqSel.clear();'),
+  assert.ok(APP_JS.includes('askConfirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列') && APP_JS.includes('_pqSel.clear();'),
     '先确认后落账，提交即清选态');
   assert.ok(APP_JS.includes('window._playQueueIdx(r.playIdx);'), '删掉当前播=补位曲续播');
   assert.ok(APP_JS.includes('_syncPqSelBtns();'), '按钮计数跟重绘走');

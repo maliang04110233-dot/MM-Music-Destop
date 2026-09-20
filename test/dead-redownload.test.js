@@ -75,7 +75,7 @@ test('接线：历史页重下入口二次判活、用 deadEntries、确认之�
   assert.match(fn, /enqueuePayloadFor/);          // 载荷构造走共用纯函数（155 起住 enqueuePayload.js）
   assert.match(fn, /classifyRetryResult/);        // 去向分类同样只有一家在 enqueuePayload.js
   const enqueueAt = fn.indexOf('api.addToQueue');
-  const confirmAt = fn.indexOf('confirm(');
+  const confirmAt = fn.indexOf('askConfirm(');
   assert.ok(confirmAt > -1 && enqueueAt > confirmAt, '确认必须在入队之前');
   assert.doesNotMatch(fn, /removeHistory|dlForgetKeys/); // 本增量只重下，删账是 153 的事
   assert.match(fn, /switchDlSubTab\('queue'\)/);   // 下起来了就把用户带到队列
