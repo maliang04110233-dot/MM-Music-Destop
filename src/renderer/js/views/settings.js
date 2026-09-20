@@ -995,7 +995,7 @@ async function clearPlayCache() {
 
 // ── 恢复默认设置 ──────────────────────────────────────
 async function resetAllSettings() {
-  if (!await askConfirm('确认恢复所有设置为默认值？\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
+  if (!await askConfirm('确认恢复所有设置为默认值？\n\n会一并复原：下载/播放/外观全部设置（含均衡器曲线与 EQ 开关）\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
 
   // 默认值由 GENERAL_PREFS 表派生 —— 手抄清单必然漏项（审计发现的 6/13 缺漏）
   const defaults = {};
@@ -1010,6 +1010,9 @@ async function resetAllSettings() {
     applyTheme('default');
     // 语言与主题同病：清完 pref 不重新换字典，界面还是原来那门语言（恢复默认=半兑现）
     if (window.i18n) await window.i18n.setLanguage(GENERAL_PREFS.language.default);
+    // 均衡器面板就长在「播放」tab 上，却不归 GENERAL_PREFS 管（它的家在 eq.js）：
+    // 这里调它自己那份"默认态"，而不是把 EQ 的三笔键抄进重置清单
+    window.resetEq();
     showToast('✅ 设置已恢复默认值', 'success');
   } catch (e) {
     showToast('恢复失败: ' + errBrief(e), 'error');

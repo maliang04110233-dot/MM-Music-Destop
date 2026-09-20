@@ -11,7 +11,10 @@
  * 原生输出后又不 resume（那会导致无声）。
  * 持久化闭环：eqPreset（曲线名）+ eqBypass + eqGains（逐段手调值）三个
  * 偏好键在预设/手调/重置/bypass 四个动作里都会写，恢复时以 eqGains 为准。
- * test/eq-behaviour.test.js 由「现状钉」反转为「正向钉」守卫本实现。
+ * 「默认态」也只有一份定义：重置 = applyEqPreset('flat')（增量179 收口，
+ * 此前 resetEq 自带半份归零循环，漏掉预设名、bypass 与按钮高亮）。
+ * test/eq-behaviour.test.js 由「现状钉」反转为「正向钉」守卫本实现，
+ * test/eq-reset.test.js 守默认态那条路。
  */
 
 // ── EQ 5 段均衡器 ────────────────────────────────────
@@ -50,6 +53,14 @@ const _hasProfile = () => !eqBypassed && _gains.some((g) => g !== 0);
 function _mirrorToGraph() {
   const eff = _effective();
   eqFilters.forEach((f, i) => { f.gain.value = eff[i]; });
+}
+
+/** 把 bypass 状态镜像到那枚按钮（文案 + 类名）：预设/开关/恢复三条路都得同步它 */
+function _syncBypassBtn() {
+  const btn = document.getElementById('eqBypassBtn');
+  if (!btn) return;
+  btn.textContent = eqBypassed ? '🔇 EQ关闭' : '🎚️ EQ开启';
+  btn.classList.toggle('eq-bypassed', eqBypassed);
 }
 
 /**
@@ -119,6 +130,9 @@ export function applyEqPreset(name) {
   // 更新预设按钮高亮
   document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('eq-preset-active'));
   document.querySelectorAll(`[data-eq-preset="${name}"]`).forEach(b => b.classList.add('eq-preset-active'));
+  // 选预设隐含"EQ 是开着的"（上面刚把 eqBypassed 置 false），按钮必须跟着走：
+  // 增量179 之前这里漏了这一格，于是"重置/选预设"之后按钮还写着 🔇 EQ关闭
+  _syncBypassBtn();
   saveEqPresetSetting(name);
   saveEqSettings();
 }
@@ -127,13 +141,8 @@ export function toggleEqBypass() {
   eqBypassed = !eqBypassed;
   if (_hasProfile()) ensureEqGraph(); // 开启且有曲线才需要图
   _mirrorToGraph();
-  // 更新 UI
-  const btn = document.getElementById('eqBypassBtn');
-  if (btn) {
-    btn.textContent = eqBypassed ? '🔇 EQ关闭' : '🎚️ EQ开启';
-    btn.classList.toggle('eq-bypassed', eqBypassed);
-  }
   // bypass 时不改滑块显示，只改按钮状态
+  _syncBypassBtn();
   saveEqPresetSetting(currentEqPreset);
 }
 
@@ -165,11 +174,7 @@ async function restoreEqPresetSetting() {
       if (slider) slider.value = _gains[i];
       if (label) label.textContent = _gains[i] + 'dB';
     });
-    const btn = document.getElementById('eqBypassBtn');
-    if (btn) {
-      btn.textContent = eqBypassed ? '🔇 EQ关闭' : '🎚️ EQ开启';
-      btn.classList.toggle('eq-bypassed', eqBypassed);
-    }
+    _syncBypassBtn();
     document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('eq-preset-active'));
     document.querySelectorAll(`[data-eq-preset="${currentEqPreset}"]`).forEach(b => b.classList.add('eq-preset-active'));
   } catch (e) { /* silent */ }
@@ -191,16 +196,10 @@ export function setEqBand(index, gain) {
 }
 
 export function resetEq() {
-   _gains.forEach((_, i) => { _gains[i] = 0; });
-   _mirrorToGraph();
-   // 更新 UI
-   EQ_BANDS.forEach((_, i) => {
-     const slider = document.getElementById('eq_' + i);
-     const label = document.getElementById('eq_val_' + i);
-     if (slider) slider.value = 0;
-     if (label) label.textContent = '0dB';
-   });
-   saveEqSettings();
+  // 默认态只有一份定义：applyEqPreset('flat') 会写齐三键、推滑块、改标签、切高亮。
+  // 增量179 之前这里是自带的一半实现（只推滑块 + 只写 eqGains），于是滑条读 0 而按钮
+  // 仍高亮旧预设、eqBypass 仍是关闭态、重启后按旧 eqPreset 复活 —— 同一件事的两只手必然长歪。
+  applyEqPreset('flat');
 }
 
 export async function saveEqSettings() {
