@@ -99,6 +99,7 @@ function openSettings() {
     ..._accountPlatforms.cookie.map(p => loadAccountCardStatus(p.id)),
     loadGeneralSettings(),
     loadQualityBySource(),
+    loadFallbackDisabled(),
     updateCacheSize(),
     loadDownloadTemplates(),
     loadSourceHealth(),
@@ -591,6 +592,59 @@ async function resetQualityBySource() {
   await saveQualityBySource({});
   renderQualityBySource();
   showToast('已恢复为全部跟随默认音质', 'info');
+}
+
+// ── 换源排除平台（增量126-B）─────────────────────────────
+// 清单由主进程 resolveTrackService 每次解析时读取：勾选的平台不再出现在
+// 跨源候选与 _altSource 记忆里；该平台自己的歌曲照常播放/下载（本源不受限）。
+let _fallbackDisabledTimer = null;
+let _fallbackDisabledIds = [];
+
+async function loadFallbackDisabled() {
+  let arr = [];
+  try {
+    const v = await api.getPref('fallbackDisabledPlatforms');
+    if (Array.isArray(v)) arr = v.filter((x) => typeof x === 'string' && x);
+  } catch (e) { logger.warn('读取换源排除平台失败:', e.message); }
+  _fallbackDisabledIds = arr;
+  renderFallbackDisabled();
+}
+
+function renderFallbackDisabled() {
+  const el = document.getElementById('fallbackDisabledList');
+  if (!el) return;
+  el.innerHTML = qualityPlatformIds().map(id => {
+    const on = _fallbackDisabledIds.includes(id);
+    const icon = platformIcon(id);
+    return '<div class="quality-map-row">' +
+      '<label class="quality-map-name" style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+        '<input type="checkbox"' + (on ? ' checked' : '') +
+          ' data-fd-id="' + escAttr(id) + '" onchange="onFallbackDisabledToggle(this)">' +
+        (icon ? esc(icon) + ' ' : '') + esc(platformName(id)) +
+      '</label>' +
+    '</div>';
+  }).join('');
+}
+
+function onFallbackDisabledToggle(cb) {
+  const id = cb.dataset.fdId;
+  if (!id) return;
+  const i = _fallbackDisabledIds.indexOf(id);
+  if (cb.checked && i < 0) _fallbackDisabledIds.push(id);
+  else if (!cb.checked && i >= 0) _fallbackDisabledIds.splice(i, 1);
+  // 防抖落盘：连续勾选时避免每个勾击都跨进程写 prefs
+  clearTimeout(_fallbackDisabledTimer);
+  _fallbackDisabledTimer = setTimeout(() => {
+    api.setPref('fallbackDisabledPlatforms', _fallbackDisabledIds.slice());
+  }, 250);
+}
+
+async function resetFallbackDisabled() {
+  clearTimeout(_fallbackDisabledTimer);
+  _fallbackDisabledIds = [];
+  renderFallbackDisabled();
+  await api.setPref('fallbackDisabledPlatforms', []);
+  showToast('已恢复为全部平台可参与换源', 'info');
 }
 
 async function loadGeneralSettings() {
@@ -1148,6 +1202,7 @@ export {
   runWebdavSync,
   loadGeneralSettings,
   loadQualityBySource,
+  loadFallbackDisabled,
   loadSourceHealth,
   probeSourcesUI,
   applyTheme,
@@ -1164,6 +1219,9 @@ window.switchSettingsTab = switchSettingsTab;
 window.loadQualityBySource = loadQualityBySource;
 window.onQualityBySourceChange = onQualityBySourceChange;
 window.resetQualityBySource = resetQualityBySource;
+window.loadFallbackDisabled = loadFallbackDisabled;
+window.onFallbackDisabledToggle = onFallbackDisabledToggle;
+window.resetFallbackDisabled = resetFallbackDisabled;
 window.selectTheme = selectTheme;
 window.loadCookieStatus = loadCookieStatus;
 window.loadAccountPlatforms = loadAccountPlatforms;

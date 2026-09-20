@@ -33,6 +33,7 @@ const logger = require('../../utils/logger');
 const { ERROR_CODES } = require('../../shared/errors');
 const { normalizeSong, normalizeTrackResult, isTrackSuccess } = require('../../shared/dto');
 const { shouldFallbackByCode, FALLBACK_CODES } = require('./fallbackCodes');
+const { normalizeDisabledPlatforms, filterDisabledCandidates } = require('./fallbackPolicy');
 
 /** CDN 签名过期类 HTTP 错误：无 code 但也值得换源（直链临时失效，换源常能拿到新链） */
 const FALLBACK_HTTP_RE = /HTTP\s*(403|404|410)/i;
@@ -87,6 +88,7 @@ function isDecisivelyDeadProbe(probe) {
  * @param {(deps:Object, song:Object) => Promise<Array>} deps.findCandidates
  * @param {{recordResult:(s:string,ok:boolean)=>void, rankByHealth:(a:Array)=>Array}} deps.sourceHealth
  * @param {(url:string, result:Object) => Promise<Object>} [deps.probeUrl] 候选直链预检（缺省不探测）
+ * @param {() => unknown} [deps.getDisabledPlatforms] 换源禁用平台清单（prefs 原始值，每次解析至多读一次）
  * @returns {Object} 冻结的服务实例
  */
 function createResolveTrackService({
@@ -96,6 +98,7 @@ function createResolveTrackService({
   findCandidates,
   sourceHealth,
   probeUrl,
+  getDisabledPlatforms,
 } = {}) {
   if (typeof getUrl !== 'function') throw new Error('[ResolveTrack] 必须注入 getUrl');
   if (typeof findCandidates !== 'function') throw new Error('[ResolveTrack] 必须注入 findCandidates');
@@ -108,6 +111,19 @@ function createResolveTrackService({
     try {
       sourceHealth.recordResult(source, !!ok);
     } catch (_e) { /* 统计不可用不影响取流 */ }
+  }
+
+  // 换源禁用平台清单：每次 resolve() 调用至多读一次 prefs（懒解析 + 单次缓存），
+  // 本源成功的主流路径零开销；getter 抛错按「无禁用」处理，不阻断取流。
+  let _disabledCache = null;
+  function disabledPlatforms() {
+    if (_disabledCache) return _disabledCache;
+    let raw = null;
+    try {
+      if (typeof getDisabledPlatforms === 'function') raw = getDisabledPlatforms();
+    } catch (_e) { /* 偏好不可读按未配置处理 */ }
+    _disabledCache = normalizeDisabledPlatforms(raw);
+    return _disabledCache;
   }
 
   /**
@@ -160,13 +176,15 @@ function createResolveTrackService({
     if (!song.id || !song.source) {
       return normalizeTrackResult({ error: '参数无效：缺少歌曲 id/source', code: 'INVALID_ARGS' });
     }
+    _disabledCache = null; // 每次解析重读偏好：设置页改完即刻生效，无需重启队列
 
     // 1. _altSource 记忆：上次换源成功的源先试。
     //    但本源已配置 Cookie 时跳过记忆、优先回试本源 —— 否则用户补了
     //    登录/Cookie 后，队列里带着旧换源记忆的歌（_altSource 随 play-queue
     //    持久化）会永远绕回别家源，本源 VIP 明明已可用却不再被尝试。
     const alt = rawSong && rawSong._altSource;
-    if (alt && alt.source && alt.id && alt.source !== song.source && !hasCookie(song.source)) {
+    if (alt && alt.source && alt.id && alt.source !== song.source && !hasCookie(song.source)
+        && !disabledPlatforms().has(alt.source)) {
       const r = await trySource(String(alt.id), alt.source, quality);
       if (isTrackSuccess(r)) {
         return normalizeTrackResult({
@@ -196,6 +214,10 @@ function createResolveTrackService({
     } catch (e) {
       logger.warn('[ResolveTrack] 跨源匹配失败:', (e && e.message) || e);
     }
+
+    // 用户排除清单（增量126-B）：先剔除再重排 —— 禁用的源连健康度投票权都没有。
+    // 注意只过滤跨源候选，本源取流（步骤 2）永远不受限。
+    candidates = filterDisabledCandidates(candidates, disabledPlatforms());
 
     // 源可用性自动降级：候选按健康度重排（好源先试）。稳定排序保住匹配分序。
     if (Array.isArray(candidates) && candidates.length > 1

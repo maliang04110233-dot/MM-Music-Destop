@@ -149,6 +149,9 @@ const resolveTrack = createResolveTrackService({
   sourceHealth,
   // 候选直链预检：HEAD 被拒自动退化为 Range GET（见 request.testAudioLink）
   probeUrl: (url) => request.testAudioLink(url, { timeout: 6000 }),
+  // 换源禁用平台清单（增量126-B）：懒加载 prefs —— 本模块被大量测试 require，
+  // 不在模块初始化期拖入 prefs 的磁盘路径依赖；未 init 时 get 自然落空按无禁用。
+  getDisabledPlatforms: () => require('../utils/prefs').get('fallbackDisabledPlatforms'),
 });
 
 /**

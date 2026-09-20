@@ -781,6 +781,16 @@
             </div>
             <div id="qualityBySourceList" class="quality-map"></div>
 
+            <div class="setting-row" style="display:block;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+                <label class="setting-label">换源排除平台</label>
+                <button class="action-btn" style="width:auto;height:auto;padding:3px 10px;font-size:11px;"
+                  onclick="resetFallbackDisabled()" title="清空排除清单，所有平台重新参与换源">恢复默认</button>
+              </div>
+              <span class="setting-hint">跨平台换源时跳过勾选的平台（某平台长期无版权/风控严时省掉无谓尝试）；不影响该平台自己歌曲的播放与下载</span>
+            </div>
+            <div id="fallbackDisabledList" class="quality-map"></div>
+
             <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.concurrency">最大并发下载数</label>
               <input class="setting-input setting-input--num" id="settingConcurrency" type="number" min="1" max="10" value="3">
