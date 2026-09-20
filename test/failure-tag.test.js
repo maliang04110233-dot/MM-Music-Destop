@@ -1,0 +1,168 @@
+/**
+ * 增量162：失败原因徽标的口径收口 + 历史行就地显示
+ *
+ * 症状：同一个失败错误码，全仓有三份互不相认的说法 ——
+ *   ① diagnose.js DIAG_TABLE：cause/advice/heal（「怎么办」那一套）
+ *   ② views/download.js ERROR_TAGS：短标签 + 颜色（队列行的「是什么」徽标）
+ *   ③ views/download.js:442 的 /^(VIP_REQUIRED|AUTH_EXPIRED|LOGIN_REQUIRED)$/：
+ *      鉴权码清单，和 diagnose.js 的 AUTH_CODES 是同一份规则的第二只手抄
+ * 码表加一个码要改两处、鉴权判定加一个码要改三处，漏一处就出现
+ * 「诊断弹层说得出原因、队列徽标是空的」这类跨页不一致。
+ *
+ * 编号说明：159/160 由并发会话先落地（删重确认框、侧边栏分组），本增量是它之后的 162。
+ *
+ * 本增量的形状：码表只留 DIAG_TABLE 一家（徽标短标签/颜色作为它的字段），
+ * 徽标渲染与鉴权判定都从 diagnose.js 导出；下载历史因此白捡一个徽标 ——
+ * 153 让 ✅ 不再骗人，本轮让 ❌ 行不点开 🆘 也能一眼看出是哪类失败。
+ *
+ * 历史行徽标必须按 status 把关：history.add 是 {...existing, ...entry} 合并写，
+ * 成功的 entry 不带 errorCode，先失败后成功的记录仍留着上一次的失败码，
+ * 不看 status 就会给 ✅ 行戴上 ❌ 的帽子。
+ */
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
+const fresh = () => import(`../src/renderer/js/diagnose.js?ck=${Math.random()}`);
+
+/** diagnose 码表里的全部平台回写码（与 src/shared/errors.js 的取流侧码对齐） */
+const CODES = [
+  'VIP_REQUIRED', 'AUTH_EXPIRED', 'LOGIN_REQUIRED', 'COPYRIGHT_RESTRICTED',
+  'UNAVAILABLE', 'CDN_EMPTY', 'NETWORK_TIMEOUT', 'NO_AUDIO_STREAM', 'UNKNOWN_PLATFORM',
+];
+
+// ── failureTagHtml：徽标渲染唯一一家 ──────────────────────
+
+test('failureTagHtml：鉴权码给出队列原来那份短标签（口径搬家不改用户看到的字）', async () => {
+  const { failureTagHtml } = await fresh();
+  assert.match(failureTagHtml('VIP_REQUIRED'), />需VIP</, '需VIP');
+  assert.match(failureTagHtml('AUTH_EXPIRED'), />Cookie过期</);
+  assert.match(failureTagHtml('LOGIN_REQUIRED'), />需登录</);
+  assert.match(failureTagHtml('COPYRIGHT_RESTRICTED'), />版权受限</);
+  assert.match(failureTagHtml('CDN_EMPTY'), />CDN异常</);
+  assert.match(failureTagHtml('NETWORK_TIMEOUT'), />网络超时</);
+  assert.match(failureTagHtml('UNKNOWN_PLATFORM'), />未知平台</);
+});
+
+test('failureTagHtml：九个码个个有徽标（漏一个就是加码时只补诊断不补徽标的老毛病）', async () => {
+  const { failureTagHtml } = await fresh();
+  for (const code of CODES) {
+    const html = failureTagHtml(code);
+    assert.ok(html.length > 0, `${code} 没有徽标`);
+    assert.match(html, /class="fail-tag"/, `${code} 徽标未走统一的 .fail-tag`);
+    assert.match(html, /color:var\(--/, `${code} 徽标没带语义色`);
+  }
+});
+
+test('failureTagHtml：无码 / 未知码一律不渲染（宁可没有，也不许猜一个原因给用户）', async () => {
+  const { failureTagHtml } = await fresh();
+  assert.equal(failureTagHtml(''), '');
+  assert.equal(failureTagHtml(null), '');
+  assert.equal(failureTagHtml(undefined), '');
+  assert.equal(failureTagHtml('IO_ERROR'), '', '未收录进诊断码表的码不许凭空造徽标');
+  assert.equal(failureTagHtml('INFERRED'), '', '关键词推断出来的伪码不是平台回写码');
+});
+
+test('failureTagHtml：徽标是短标签不是句子（它挤在行内，长文案属于诊断弹层）', async () => {
+  const { failureTagHtml } = await fresh();
+  for (const code of CODES) {
+    const html = failureTagHtml(code);
+    const m = html.match(/^<span class="fail-tag" style="color:var\(--[a-z-]+\)">([^<]*)<\/span>$/);
+    assert.ok(m, `${code} 徽标不是「一处渲染」产出的形状：${html}`);
+    assert.ok(m[1].length <= 8, `${code} 徽标文案过长：${m[1]}`); // 最长的仍是队列原有说法「Cookie过期」
+    assert.ok(!/。|，/.test(m[1]), `${code} 徽标写成了句子：${m[1]}`);
+  }
+});
+
+// ── isAuthFailure：鉴权判定唯一一家 ──────────────────────
+
+test('isAuthFailure：只有 VIP / Cookie 过期 / 需登录这三类算「自动重试没意义」', async () => {
+  const { isAuthFailure } = await fresh();
+  for (const code of ['VIP_REQUIRED', 'AUTH_EXPIRED', 'LOGIN_REQUIRED']) {
+    assert.equal(isAuthFailure(code), true, `${code} 应判为鉴权类`);
+  }
+  for (const code of ['CDN_EMPTY', 'NETWORK_TIMEOUT', 'UNAVAILABLE', 'NO_AUDIO_STREAM',
+    'COPYRIGHT_RESTRICTED', 'UNKNOWN_PLATFORM']) {
+    assert.equal(isAuthFailure(code), false, `${code} 不该被跳过重试`);
+  }
+});
+
+test('isAuthFailure：空值与非字符串安全（无码失败是最常见情形，不能抛）', async () => {
+  const { isAuthFailure } = await fresh();
+  for (const v of [undefined, null, '', 0, 'UNKNOWN', {}]) {
+    assert.equal(isAuthFailure(v), false, `${String(v)} 不该算鉴权`);
+  }
+});
+
+// ── 单一住处：三份抄本收成一家 ────────────────────────────
+
+test('download.js 不再自带码表与手抄鉴权正则', () => {
+  const src = read('src/renderer/js/views/download.js');
+  assert.ok(!src.includes('ERROR_TAGS'), 'ERROR_TAGS 还留在队列页 = 第二份码表');
+  assert.ok(!/VIP_REQUIRED:/.test(src), 'download.js 里仍逐码列了错误码');
+  assert.ok(!/\^\(VIP_REQUIRED\|AUTH_EXPIRED\|LOGIN_REQUIRED\)\$/.test(src),
+    '内联鉴权正则仍在 = AUTH_CODES 的第二只手抄');
+  assert.match(src, /import \{[^}]*failureTagHtml[^}]*\} from '\.\.\/diagnose\.js'/,
+    '队列页应从 diagnose.js 取徽标');
+  assert.match(src, /import \{[^}]*isAuthFailure[^}]*\} from '\.\.\/diagnose\.js'/);
+  assert.match(src, /failureTagHtml\(s\.errorCode\)/, '队列行须继续渲染徽标');
+  assert.match(src, /if \(isAuthFailure\(s\.errorCode\)\) continue/, '批量重试须走统一鉴权判定');
+});
+
+test('鉴权三码在渲染层只许出现在 diagnose.js 一处', () => {
+  const dir = path.join(ROOT, 'src', 'renderer', 'js');
+  const hits = [];
+  (function walk(d) {
+    for (const name of fs.readdirSync(d)) {
+      const p = path.join(d, name);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (name.endsWith('.js')) {
+        const s = fs.readFileSync(p, 'utf8');
+        if (/AUTH_EXPIRED/.test(s) && /LOGIN_REQUIRED/.test(s)) {
+          hits.push(path.relative(ROOT, p).replace(/\\/g, '/'));
+        }
+      }
+    }
+  })(dir);
+  assert.deepEqual(hits, ['src/renderer/js/diagnose.js'],
+    `鉴权码清单被抄到了多处：${hits.join(', ')}`);
+});
+
+test('徽标外观由 .fail-tag 一处定义，且不再出现 var(...)22 这种拼不出色的死声明', () => {
+  const css = read('src/renderer/styles/content.css');
+  const at = css.indexOf('.fail-tag');
+  assert.ok(at > -1, '.fail-tag 规则缺失');
+  assert.equal((css.match(/\.fail-tag\s*\{/g) || []).length, 1, '.fail-tag 规则应恰好一处');
+  const rule = css.slice(css.indexOf('{', at), css.indexOf('}', at) + 1);
+  assert.match(rule, /color-mix\(in srgb/,
+    '徽标底色须用 color-mix 算：老写法 var(--色)22 是无效 CSS，从来没生效过');
+  const bad = ['src/renderer/js/views/download.js', 'src/renderer/js/views/history.js']
+    .filter((f) => read(f).includes('}22') || read(f).includes('}44'));
+  assert.deepEqual(bad, [], '页面里仍在拼 `var(--色)22`，那串 CSS 从不生效');
+});
+
+// ── 历史行接入 ───────────────────────────────────────────
+
+test('历史失败行就地显示原因徽标，且只在 error 行显示', () => {
+  const src = read('src/renderer/js/views/history.js');
+  assert.match(src, /import \{[^}]*failureTagHtml[^}]*\} from '\.\.\/diagnose\.js'/,
+    '历史页应从 diagnose.js 取徽标，而不是自己造句');
+  assert.ok(!/ERROR_TAGS|VIP_REQUIRED:/.test(src), '历史页不许再开一份码表');
+  const row = src.slice(src.indexOf('_historyItems.map'), src.indexOf('exportHistoryM3u'));
+  assert.match(row, /s\.status === 'error' \? failureTagHtml\(s\.errorCode\)/,
+    '徽标必须按 status 把关：合并写会留下上一次失败的 errorCode，不看 status 就是给 ✅ 戴 ❌ 的帽子');
+  assert.ok(!/!s\.status|dead \? failureTagHtml/.test(row), '判活失效行（🚫）不是失败行，不该出现原因徽标');
+});
+
+test('徽标两条消费路径都零新 IPC 通道', () => {
+  const { METHODS } = require('../src/shared/ipcContract.js');
+  for (const f of ['src/renderer/js/views/download.js', 'src/renderer/js/views/history.js']) {
+    const used = [...read(f).matchAll(/\bapi\.([A-Za-z0-9_]+)\s*\(/g)].map((m) => m[1]);
+    const extra = used.filter((k) => !(k in METHODS));
+    assert.deepEqual(extra, [], `${f} 引入了契约外的 api 调用：${extra.join(', ')}`);
+  }
+});

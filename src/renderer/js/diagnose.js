@@ -4,23 +4,27 @@
  * classifyFailure 是纯函数：优先按引擎回写的 errorCode 查表，
  * 未知码再按 error 文本关键词兜底（磁盘/网络/鉴权/VIP），永不返回空。
  * 弹层给出「原因 + 建议 + 可行动作」（前往设置 / 立即重试），
- * 与 download.js 的 errorTag 徽标互补：徽标说“是什么”，诊断说“怎么办”。
+ * 行内徽标只说“是什么”，诊断说“怎么办”——两者共用下面这一张码表。
  *
  * 增量158 起弹层不再专属队列：按钮显隐收成 diagHeals 一处纯规则，
  * 具体动作由调用方那一页经 ctx 注入（队列 retryQueueItem / 历史 retryFromHistory）。
+ *
+ * 增量162 起「是什么」那一侧也搬了进来：行内失败徽标的短标签与颜色就是 DIAG_TABLE
+ * 的字段，failureTagHtml 是全仓唯一的徽标渲染（队列行与历史行共用），
+ * 「重试也没用、得先去设置」的鉴权判定同样只有 AUTH_CODES 一处定义。
  */
 
-/** 码表：cause=给用户看的原因，advice=下一步建议，heal=可一键执行的动作 */
+/** 码表：cause=给用户看的原因，advice=下一步建议，heal=可一键执行的动作，tag=行内徽标（短标签+语义色） */
 const DIAG_TABLE = {
-  VIP_REQUIRED: { cause: '该音质档位为平台 VIP 专享', advice: '在搜索结果右键「以此音质下载」选低一档，或到设置补 VIP 账号的 Cookie', heal: 'settings' },
-  AUTH_EXPIRED: { cause: '平台 Cookie 已过期', advice: '到 设置 → 平台 Cookie 更新后点「立即重试」', heal: 'settings' },
-  LOGIN_REQUIRED: { cause: '该平台需要登录才能取流', advice: '到 设置 填入已登录的 Cookie 后重试', heal: 'settings' },
-  COPYRIGHT_RESTRICTED: { cause: '版权受限（地区限制或曲目下架）', advice: '换其他平台搜索同名版本，一般聚合搜索里会有替代源', heal: null },
-  UNAVAILABLE: { cause: '曲目当前不可用', advice: '稍后重试；持续失败就换源搜索同名版本', heal: 'retry' },
-  CDN_EMPTY: { cause: '平台 CDN 返回空数据（多为高峰期限流）', advice: '稍后再试，或用「定时下载」错峰到夜间自动入队', heal: null },
-  NETWORK_TIMEOUT: { cause: '网络超时', advice: '检查网络/代理；不稳定时到设置把并发数调低再重试', heal: 'retry' },
-  NO_AUDIO_STREAM: { cause: '找不到可播放的音频流（付费/加密/下架）', advice: '换一档音质或换源；本地库可用「音质扫描」核对已有文件', heal: null },
-  UNKNOWN_PLATFORM: { cause: '链接所属平台暂不支持', advice: '确认链接来自支持列表内的平台', heal: null },
+  VIP_REQUIRED: { cause: '该音质档位为平台 VIP 专享', advice: '在搜索结果右键「以此音质下载」选低一档，或到设置补 VIP 账号的 Cookie', heal: 'settings', tag: { label: '需VIP', color: 'var(--neon-orange)' } },
+  AUTH_EXPIRED: { cause: '平台 Cookie 已过期', advice: '到 设置 → 平台 Cookie 更新后点「立即重试」', heal: 'settings', tag: { label: 'Cookie过期', color: 'var(--neon-orange)' } },
+  LOGIN_REQUIRED: { cause: '该平台需要登录才能取流', advice: '到 设置 填入已登录的 Cookie 后重试', heal: 'settings', tag: { label: '需登录', color: 'var(--neon-orange)' } },
+  COPYRIGHT_RESTRICTED: { cause: '版权受限（地区限制或曲目下架）', advice: '换其他平台搜索同名版本，一般聚合搜索里会有替代源', heal: null, tag: { label: '版权受限', color: 'var(--neon-purple)' } },
+  UNAVAILABLE: { cause: '曲目当前不可用', advice: '稍后重试；持续失败就换源搜索同名版本', heal: 'retry', tag: { label: '不可用', color: 'var(--neon-purple)' } },
+  CDN_EMPTY: { cause: '平台 CDN 返回空数据（多为高峰期限流）', advice: '稍后再试，或用「定时下载」错峰到夜间自动入队', heal: null, tag: { label: 'CDN异常', color: 'var(--neon-red)' } },
+  NETWORK_TIMEOUT: { cause: '网络超时', advice: '检查网络/代理；不稳定时到设置把并发数调低再重试', heal: 'retry', tag: { label: '网络超时', color: 'var(--neon-yellow)' } },
+  NO_AUDIO_STREAM: { cause: '找不到可播放的音频流（付费/加密/下架）', advice: '换一档音质或换源；本地库可用「音质扫描」核对已有文件', heal: null, tag: { label: '无音频流', color: 'var(--neon-red)' } },
+  UNKNOWN_PLATFORM: { cause: '链接所属平台暂不支持', advice: '确认链接来自支持列表内的平台', heal: null, tag: { label: '未知平台', color: 'var(--text-dim)' } },
 };
 
 const KEYWORD_RULES = [
@@ -47,6 +51,24 @@ export function classifyFailure(errorCode, errorText) {
     advice: '展开任务详情复制错误信息反馈；也可以直接点「立即重试」看是否为偶发',
     heal: 'retry',
   };
+}
+
+/**
+ * 纯取徽标：平台回写码 → 行内短标签；无码或未收录码返回 null。
+ * 徽标只认取流侧真实回写的码 —— classifyFailure 的关键词推断是给诊断弹层兜底的，
+ * 猜出来的原因不够确定，不配在行内戴一顶帽子。
+ * @returns {?{label:string, color:string}}
+ */
+export function failureTag(errorCode) {
+  const row = DIAG_TABLE[String(errorCode || '')];
+  return row ? { label: row.tag.label, color: row.tag.color } : null;
+}
+
+/** 徽标 HTML：队列行与历史行共用这一份渲染（两处各写一遍必然长歪） */
+export function failureTagHtml(errorCode) {
+  const t = failureTag(errorCode);
+  if (!t) return '';
+  return `<span class="fail-tag" style="color:${t.color}">${t.label}</span>`;
 }
 
 function _closeDiag() {
@@ -152,8 +174,17 @@ function diagnoseLatestFailure() {
   diagnoseFailure(failed[failed.length - 1].taskId);
 }
 
-/** 鉴权/VIP 类：自动重试没有意义，须先去设置处理 */
-const AUTH_CODES = new Set(['VIP_REQUIRED', 'AUTH_EXPIRED', 'LOGIN_REQUIRED']);
+/** 鉴权/VIP 类：自动重试没有意义，须先去设置处理（全仓唯一定义处，判定走 isAuthFailure） */
+const AUTH_CODES = ['VIP_REQUIRED', 'AUTH_EXPIRED', 'LOGIN_REQUIRED'];
+
+/**
+ * 纯判定：这个码是不是「重试也没用，得先去设置」。
+ * 队列的批量重试与失败报告都问它 —— 以前两处各自手抄三码，
+ * 加一个鉴权码要改三个地方，漏一处就是"设置没改却自动重试了 N 次"。
+ */
+export function isAuthFailure(code) {
+  return !!code && AUTH_CODES.includes(String(code));
+}
 
 /**
  * 纯聚合：error 任务按 classifyFailure 分组。
@@ -173,7 +204,7 @@ export function groupFailures(items) {
 
 /** 可自动重试（非鉴权类）的任务总数 */
 export function retryableFailureCount(groups) {
-  return groups.reduce((n, g) => n + (AUTH_CODES.has(g.code) ? 0 : g.songs.length), 0);
+  return groups.reduce((n, g) => n + (isAuthFailure(g.code) ? 0 : g.songs.length), 0);
 }
 
 function _closeFailReport() {
@@ -229,7 +260,7 @@ function _renderFailReport(groups) {
       _closeFailReport();
       let ok = 0;
       for (const g of groups) {
-        if (AUTH_CODES.has(g.code)) continue;
+        if (isAuthFailure(g.code)) continue;
         for (const s of g.songs) {
           try { const r = await api.retryDownload(s.taskId); if (r && r.ok) ok++; } catch (_e) { /* 单个失败不影响整体 */ }
         }

@@ -10,6 +10,7 @@ import {
   UNKNOWN_KEY, groupTasksByPlatform, groupHeaderLabel,
   toggleGroupCollapsed, nextPlatformFilter,
 } from '../queueGroup.js';
+import { failureTagHtml, isAuthFailure } from '../diagnose.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -204,7 +205,7 @@ function _queueRowHtml(s) {
       <div class="queue-cover-ph" ${s.cover ? 'style="display:none"' : ''}>🎵</div>
       <div class="queue-info" onclick="event.stopPropagation();toggleQueueDetail('${escQ(s.taskId)}')" style="cursor:pointer;">
         <div class="queue-title">${esc(s.title || '未知')}</div>
-        <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${errorTag(s.errorCode)}</div>
+        <div class="queue-status status-${s.status}">${statusLabel(s.status)}${s.error ? ': ' + esc(s.error) : ''}${failureTagHtml(s.errorCode)}</div>
         ${s.status === 'downloading' ? `
         <div class="progress-bar-wrap"><div class="progress-bar" id="prog-${escAttr(s.taskId)}" style="width:${s.progress||0}%"></div></div>
         <div class="queue-dl-meta" id="progmeta-${escAttr(s.taskId)}"></div>` : ''}
@@ -338,25 +339,6 @@ function queueRowContext(e) {
 }
 document.addEventListener('contextmenu', queueRowContext);
 
-// ── 错误分类标签 ───────────────────────────────────────
-const ERROR_TAGS = {
-  VIP_REQUIRED:      { label: '需VIP', color: 'var(--neon-orange)' },
-  AUTH_EXPIRED:      { label: 'Cookie过期', color: 'var(--neon-orange)' },
-  LOGIN_REQUIRED:    { label: '需登录', color: 'var(--neon-orange)' },
-  COPYRIGHT_RESTRICTED: { label: '版权受限', color: 'var(--neon-purple)' },
-  UNAVAILABLE:       { label: '不可用', color: 'var(--neon-purple)' },
-  CDN_EMPTY:         { label: 'CDN异常', color: 'var(--neon-red)' },
-  NETWORK_TIMEOUT:   { label: '网络超时', color: 'var(--neon-yellow)' },
-  NO_AUDIO_STREAM:   { label: '无音频流', color: 'var(--neon-red)' },
-  UNKNOWN_PLATFORM:  { label: '未知平台', color: 'var(--text-dim)' },
-};
-
-function errorTag(errorCode) {
-  const tag = ERROR_TAGS[errorCode];
-  if (!tag) return '';
-  return `<span style="display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;background:${tag.color}22;color:${tag.color};border:1px solid ${tag.color}44;margin-left:6px;">${tag.label}</span>`;
-}
-
 // ── 单项操作 ─────────────────────────────────────────
 async function toggleQueueDetail(taskId) {
   try {
@@ -438,10 +420,8 @@ async function retryAllFailed() {
   let ok = 0;
   for (const s of failed) {
     try {
-      // VIP_REQUIRED / AUTH_EXPIRED / LOGIN_REQUIRED 等致命错误不自动重试
-      if (s.errorCode && /^(VIP_REQUIRED|AUTH_EXPIRED|LOGIN_REQUIRED)$/.test(s.errorCode)) {
-        continue;
-      }
+      // 鉴权/VIP 这类致命错误不自动重试：哪几个码算这类，唯一的家在 diagnose.js，这里只问结论
+      if (isAuthFailure(s.errorCode)) continue;
       const r = await api.retryDownload(s.taskId);
       if (r && r.ok) ok++;
     } catch (_e) { /* 单个失败不影响整体 */ }

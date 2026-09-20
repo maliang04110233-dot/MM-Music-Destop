@@ -11,7 +11,7 @@ import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, retrySummary, de
 import { enqueuePayloadFor, classifyRetryResult } from '../enqueuePayload.js';
 import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
 import { dlForgetKeys, songDlKey } from '../dlStatus.js';
-import { showDiagnosis } from '../diagnose.js';
+import { showDiagnosis, failureTagHtml } from '../diagnose.js';
 let historyPage = 0;
 let _historyTotalPages = 1; // 最近一次查询的总页数（翻页钳制用）
 let historyFilter = '';
@@ -94,12 +94,14 @@ function renderHistory(items, stats) {
     const retryBtn = `<button class="action-btn" title="重新下载" onclick="retryFromHistory('${escQ(s.id)}', '${escQ(s.source)}', '${escQ(s.title)}', '${escQ(s.artist)}', '${escQ(s.album || '')}', '${escQ(s.quality || 'standard')}')">🔄</button>`;
     // 失败行给一个就地诊断：队列早清空了（taskId 已随重启消失），历史是唯一还留着错误原文的地方
     const diagBtn = `<button class="action-btn" title="诊断失败原因（原因 + 建议 + 下一步）" onclick="diagnoseHistoryItem(${idx})">🆘</button>`;
+    // 徽标只给 error 行：history.add 是 {...existing, ...entry} 合并写，成功的 entry 不带
+    // errorCode，先失败后成功的记录仍留着上一次的失败码 —— 不看 status 就是给 ✅ 戴 ❌ 的帽子。
     return `
     <div class="history-row ${s.status === 'error' ? 'history-row-error' : ''}" data-hidx="${idx}">
       <div class="history-icon">${s.status === 'done' ? (dead ? '🚫' : '✅') : '❌'}</div>
       <div class="history-info">
         <div class="history-title">${esc(s.title)}</div>
-        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}${dead ? ' · <span style="color:var(--neon-yellow)">文件已不在磁盘上</span>' : ''}</div>
+        <div class="history-meta">${esc(s.artist)}${s.album ? ' · ' + esc(s.album) : ''}${dead ? ' · <span style="color:var(--neon-yellow)">文件已不在磁盘上</span>' : ''}${s.status === 'error' ? failureTagHtml(s.errorCode) : ''}</div>
       </div>
       <span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>
       <span class="history-quality">${esc(s.quality || 'standard')}</span>

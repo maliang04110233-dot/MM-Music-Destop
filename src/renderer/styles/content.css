@@ -573,6 +573,16 @@
   color: var(--badge-fg, var(--text-dim));
   border: 1px solid var(--badge-border, var(--border));
 }
+/* 失败原因徽标（队列行 + 历史行同一份渲染，见 diagnose.js 的 failureTagHtml）：
+   字色由内联 style 给（语义色跟着码表走），这里只管外形。
+   ⚠️ 老写法把底色边框拼成 `var(--neon-orange)22` —— CSS 变量不能这么串字面量，
+      那两条声明从来没生效过，徽标一直是"只有颜色的几个字"。这里改用 color-mix 补上意图。 */
+.fail-tag {
+  display: inline-block; font-size: 10px; font-weight: 600; line-height: 1.6;
+  padding: 0 6px; border-radius: 4px; margin-left: 6px; white-space: nowrap;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
 .album-link { color:var(--text-muted);cursor:pointer;border-bottom:1px dashed var(--border);transition:color .2s; }
 .album-link:hover { color:var(--accent);border-bottom-color:var(--accent); }
 

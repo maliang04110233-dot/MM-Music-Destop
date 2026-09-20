@@ -119,7 +119,8 @@ test('接线：历史行右键菜单同样有诊断项，且排在重新下载�
 
 test('接线：诊断入口既进导出块又进 window 桥（行内 onclick 走全局）', () => {
   const src = read(HISTORY);
-  assert.match(src, /import \{ showDiagnosis \} from '\.\.\/diagnose\.js';/);
+  // 钉「showDiagnosis 在这个 import 语句里」即可：同模块后续会长出兄弟导出（162 就加了 failureTagHtml）
+  assert.match(src, /import \{[^}]*\bshowDiagnosis\b[^}]*\} from '\.\.\/diagnose\.js';/);
   assert.match(src, /window\.diagnoseHistoryItem = diagnoseHistoryItem;/);
   const exportBlock = src.slice(src.indexOf('export {'));
   assert.match(exportBlock.slice(0, exportBlock.indexOf('}')), /diagnoseHistoryItem,/);
