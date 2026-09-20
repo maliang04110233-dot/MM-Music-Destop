@@ -13,6 +13,7 @@ import { logger } from './logger.js';
 import './state.js';
 import './toast.js';
 import './utils.js';
+import { buildFallbackNotice } from './fallbackNotice.js';
 import './router.js';
 
 // 播放器和快捷键
@@ -808,12 +809,13 @@ async function playPlaylistModalSong(idx) {
       }
       return;
     }
+    const notice = buildFallbackNotice(result, song.source);
+    if (notice) showToast(notice, 'info', 3000);
     if (result.matchedSong) {
-      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       song._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
     song._playedQuality = quality;
-    const playSource = result.matchedSong?.source || song.source;
+    const playSource = result.source || song.source;
     const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _plModalPlayRequestId) return;

@@ -10,6 +10,7 @@ import { dlBadgeHtml, dlStatusFor, dlEnsureHistoryLoaded, addDlChangeListener } 
 import { openSongRowMenu } from '../songMenu.js';
 import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
 import { markTerm } from '../highlight.js';
+import { buildFallbackNotice } from '../fallbackNotice.js';
 import { dismissedKeySet, filterDismissedPairs, onDismissChanged } from '../dismissed.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
@@ -1259,11 +1260,12 @@ async function playSong(idx, queueOverride = null) {
       return;
     }
     s._playedQuality = quality;
+    const notice = buildFallbackNotice(result, s.source);
+    if (notice) showToast(notice, 'info', 3000);
     if (result.matchedSong) {
-      showToast(`🎵 本源不可用，已切换到${result.matchedSong.source}音源`, 'info', 3000);
       s._altSource = { source: result.matchedSong.source, id: String(result.matchedSong.id) };
     }
-    const playSource = result.matchedSong?.source || s.source;
+    const playSource = result.source || s.source;
     const referer = playReferer(playSource, result);
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _searchPlayRequestId) return;
