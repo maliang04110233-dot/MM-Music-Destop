@@ -1,6 +1,11 @@
 /**
  * MusicDL i18n 国际化 — ES Module
  */
+// 语言包只在这里静态导入 —— 因此 i18n.js **不许**进入任何被 node 测试直接 import 的模块图：
+// node 的 ESM 加载器要求 JSON 写 `import x from './zh.json' with { type: 'json' }`，
+// 而本仓 eslint 8 / espree 9.6 解析不了 with 写法（lint 门禁会红）。
+// 需要在测试里可加载的文件（toast.js、各 views）按仓里既有约定**把取词函数当参数传进去**
+// （同 listAccess.js 的 term、home.js 的 term），而不是静态拖进这条链。
 import zh from './lang/zh.json';
 import en from './lang/en.json';
 

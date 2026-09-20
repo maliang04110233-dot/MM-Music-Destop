@@ -83,9 +83,15 @@ test('播放取流 toast 的「音源」原样保留（防无差别替换把病�
     ['js', 'views', 'home.js'],
     ['js', 'views', 'playlist.js'],
     ['js', 'views', 'search.js'],
-    ['js', 'app.js'],
   ]) {
     assert.ok(read(...f).includes('正在准备音源：'),
       `${f.join('/')} 的「正在准备音源」被误改了`);
   }
+  // 增量191：app.js 的这条文案搬进了语言包（源码只留键名）。判据跟着搬家，但两处都钉 ——
+  // 只钉词典，源码可以悄悄换键；只钉源码，词典可以悄悄改词。
+  const appSrc = read('js', 'app.js');
+  assert.ok(appSrc.includes("t('toast.preparingSource'"),
+    'app.js 不再取 toast.preparingSource 键（取词旁路了？）');
+  assert.ok(dict('zh')['toast.preparingSource'].includes('音源'),
+    'toast.preparingSource 的「音源」被无差别替换改成了「平台」（病句）');
 });

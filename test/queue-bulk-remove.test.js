@@ -18,6 +18,10 @@ const APP_JS = fs.readFileSync(
 const HTML = fs.readFileSync(
   path.join(__dirname, '../src/renderer/index.html'), 'utf8'
 );
+// 增量191 起，用户反馈文案住在语言包里（源码只留键名），接线钉要两侧都看得见的东西才能钉稳
+const ZH = JSON.parse(fs.readFileSync(
+  path.join(__dirname, '../src/renderer/js/lang/zh.json'), 'utf8'
+));
 const PALETTE_JS = fs.readFileSync(
   path.join(__dirname, '../src/renderer/js/commandPalette.js'), 'utf8'
 );
@@ -86,8 +90,14 @@ test('接线钉：pq-header 双按钮、行首勾选框与模式化 onclick/拖�
   assert.ok(APP_JS.includes("draggable=\"' + (_pqSelMode ? 'false' : 'true')"), '多选态禁拖拽防误合');
   assert.ok(APP_JS.includes("_pqSelMode ? 'togglePqSel(' + i + ')' : 'window._playQueueIdx(' + i + ')'"),
     '多选态点行=勾选，平时=切歌');
-  assert.ok(APP_JS.includes('askConfirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列') && APP_JS.includes('_pqSel.clear();'),
+  assert.ok(APP_JS.includes("askConfirm(t('toast.confirmRemoveRows', { count: _pqSel.size }))") && APP_JS.includes('_pqSel.clear();'),
     '先确认后落账，提交即清选态');
+  // 增量191：这句确认文案从模板串搬进了语言包（英文界面要能翻）。判据跟着搬，但两侧都钉 ——
+  // 只钉源码，词典可以悄悄换词；只钉词典，源码可以悄悄换键。
+  assert.ok(ZH['toast.confirmRemoveRows'].includes('移出播放队列'),
+    '确认框仍说清移出去的是「播放队列」里的行');
+  assert.ok(ZH['toast.confirmRemoveRows'].includes('{count}'),
+    '计数占位符在位（漏掉 {count} 就是把变量名印给用户）');
   assert.ok(APP_JS.includes('window._playQueueIdx(r.playIdx);'), '删掉当前播=补位曲续播');
   assert.ok(APP_JS.includes('_syncPqSelBtns();'), '按钮计数跟重绘走');
   ['togglePqSelMode', 'togglePqSel', 'removeCheckedFromQueue'].forEach((fn) => {

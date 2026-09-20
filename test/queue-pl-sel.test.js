@@ -13,6 +13,8 @@ const APP_JS = fs.readFileSync(path.join(__dirname, '../src/renderer/js/app.js')
 const HTML = fs.readFileSync(path.join(__dirname, '../src/renderer/index.html'), 'utf8');
 const PALETTE_JS = fs.readFileSync(path.join(__dirname, '../src/renderer/js/commandPalette.js'), 'utf8');
 const QP_JS = fs.readFileSync(path.join(__dirname, '../src/renderer/js/queuePlaylist.js'), 'utf8');
+// 增量191 起，用户反馈文案住在语言包里（源码只留键名），接线钉要两侧都看得见的东西才能钉稳
+const ZH = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/renderer/js/lang/zh.json'), 'utf8'));
 
 async function fresh() {
   return import(`../src/renderer/js/queuePlaylist.js?v=${Math.random()}`);
@@ -52,7 +54,12 @@ test('接线钉：app 判形调用 + 按钮计数 + window 挂桥 + HTML/面板�
   assert.match(APP_JS, /window\.pqSelAddPlaylist = \(\) => \{/);
   assert.ok(APP_JS.includes('filter(s => _pqSel.has(s))'), '按队列原序投影，不跟勾选乱序');
   assert.ok(APP_JS.includes('pickPlSavableRows(picked);'));
-  assert.ok(APP_JS.includes("showToast('先勾选要加歌单的行', 'warn')"));
+  // 增量191：这句「先勾选」提示搬进了语言包（英文界面要能翻）。判据跟着搬，源码与词典两侧都钉：
+  // 只钉源码，词典能悄悄换词；只钉词典，源码能悄悄换键。
+  assert.ok(APP_JS.includes("showToast(t('toast.pickRowsForPlaylist'), 'warn')"),
+    '没勾选时的提示仍走 toast.pickRowsForPlaylist 键');
+  assert.ok(ZH['toast.pickRowsForPlaylist'].includes('加歌单'),
+    '提示指的是「加歌单」这一路（队列里 4 条同形提示各管各的入口，不许互相串）');
   assert.ok(APP_JS.includes("window.quickAddToPlaylist(rows)"), '复用既有批量链，零新通道');
   assert.match(HTML, /<button class="pq-clear-btn hidden" id="pqSelPlBtn" onclick="pqSelAddPlaylist\(\)"/);
   assert.match(PALETTE_JS, /id: 'pq-selpl'[\s\S]{0,220}?_call\('pqSelAddPlaylist'\)/);

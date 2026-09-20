@@ -87,7 +87,8 @@ import './songGroups.js';
 
 // 初始化模块（副作用引入：init.js 内部自挂 window.persistPlayQueue）
 import './init.js';
-import './i18n.js';
+// t 要在本文件里直接取 toast.* 词条：动态文案的家是语言包，不是调用点
+import { t } from './i18n.js';
 import './logger.js';
 import './updater.js';
 
@@ -108,7 +109,7 @@ const mockApi = {
   getDownloadUrl: async () => ({ url: '' }),
   getDownloadUrlSmart: async () => ({ url: '' }),
   getLyrics: async () => ({ lrc: '' }),
-  addToQueue: async (s) => { showToast(`已加入队列: ${s.title}`, 'info'); return { queued: true, taskId: 'mock-' + Date.now() }; },
+  addToQueue: async (s) => { showToast(t('toast.queueAdded', { title: s.title }), 'info'); return { queued: true, taskId: 'mock-' + Date.now() }; },
   cancelDownload: () => {},
   retryDownload: async () => ({ ok: true }),
   removeQueueItem: async () => ({ removed: true }),
@@ -355,18 +356,18 @@ async function init() {
     });
 
     api.onDownloadError(({ title, error, fatal }) => {
-      showDownloadError(title, error, fatal);
+      showDownloadError(title, error, fatal, t);
     });
 
   api.onLocalLrcFetched(({ filePath, lrc, source }) => {
     if (filePath !== getState('_currentLocalFilePath')) return;
     if (lrc && lrc.trim()) {
       parseLrc(lrc);
-      showToast('已在线获取歌词（已保存为同名 .lrc）', 'success', 2200);
+      showToast(t('toast.lyricFetched'), 'success', 2200);
     } else {
       showNoLyrics();
-      if (source === 'error') showToast('在线拉歌词失败：网络或接口异常', 'error', 2500);
-      else showToast('在线未找到该歌曲的歌词', 'info', 2000);
+      if (source === 'error') showToast(t('toast.lyricFetchError'), 'error', 2500);
+      else showToast(t('toast.lyricNotFound'), 'info', 2000);
     }
   });
 
@@ -393,7 +394,7 @@ async function init() {
         const retry = playFailureRetry(cur, _audio.error.code);
         if (retry) {
           showActionToast({
-            text: playFailureRetryText(cur), btnLabel: '⬇ 重新下载', ttl: 9000, onConfirm: () => retryAfterPlayFailure(retry),
+            text: playFailureRetryText(cur), btnLabel: t('toast.redownloadBtn'), ttl: 9000, onConfirm: () => retryAfterPlayFailure(retry),
           });
         } else {
           showToast(e.text, e.kind, e.local ? 5500 : 3000);
@@ -410,7 +411,7 @@ async function init() {
           if (!_loadWatchSince) _loadWatchSince = now;
           if (now - _loadWatchSince > 25000) {
             _loadWatchSince = 0;
-            showToast('⚠️ 音源加载超时，自动播放下一曲', 'warn', 3000);
+            showToast(t('toast.streamTimeout'), 'warn', 3000);
             if (typeof window.nextSong === 'function') window.nextSong();
           }
         } else {
@@ -594,11 +595,11 @@ async function init() {
   const searchInput = document.getElementById('searchInput');
   if (searchInput) searchInput.focus();
 
-  showToast('✅ 初始化完成', 'success', 1500);
+  showToast(t('toast.initComplete'), 'success', 1500);
   } catch (e) {
     logger.error('[init] FATAL:', e);
     if (typeof showToast === 'function') {
-      showToast('❌ init 失败 step: ' + errBrief(e), 'error', 8000);
+      showToast(t('toast.initFailed', { msg: errBrief(e) }), 'error', 8000);
     }
     throw e;
   }
@@ -721,7 +722,6 @@ async function saveNamingTemplate(template) {
  * 取回空数组后复用同一次判档的文案。判据的家在 listAccess.js，这里只接线。
  */
 function listAccessFor(platformId, capability, subjectKey, subjectFallback) {
-  const t = (key, params) => (typeof window.t === 'function' ? window.t(key, params) : '');
   const subject = term(t, subjectKey, subjectFallback);
   return listAccessHint(getPlatforms().find(x => x && x.id === platformId), {
     capability, subject, name: platformName(platformId), tr: t,
@@ -854,18 +854,18 @@ let _plModalPlayRequestId = 0;
 async function playPlaylistModalSong(idx) {
   const songs = state.getPlaylistSongs();
   const song = songs[idx];
-  if (!song) { showToast('未找到歌曲', 'warn'); return; }
+  if (!song) { showToast(t('toast.songNotFound'), 'warn'); return; }
   const quality = resolveQuality(song.source);
-  showToast(`正在准备音源：${song.title}`, 'info');
+  showToast(t('toast.preparingSource', { title: song.title }), 'info');
   const reqId = ++_plModalPlayRequestId;
   try {
     const result = await api.getDownloadUrlSmart(song, quality);
     if (reqId !== _plModalPlayRequestId) return;
     if (!result || !result.url) {
       if (result && result.code === 'VIP_REQUIRED') {
-        showToast('⚠️ 该歌曲为 VIP 专享，请登录后重试', 'warn', 5000);
+        showToast(t('toast.vipRequired'), 'warn', 5000);
       } else {
-        showToast('⚠️ 暂无法获取音源，请稍后重试', 'warn', 5000);
+        showToast(t('toast.noSource'), 'warn', 5000);
       }
       return;
     }
@@ -880,18 +880,18 @@ async function playPlaylistModalSong(idx) {
     const proxied = await api.proxyPlay(result.url, referer);
     if (reqId !== _plModalPlayRequestId) return;
     if (!proxied || !proxied.fileUrl) {
-      showToast('⚠️ 音源获取失败', 'error', 5000);
+      showToast(t('toast.sourceFailed'), 'error', 5000);
       return;
     }
     setState('playQueue', songs.slice());
     setState('playIdx', idx);
     setState('currentPlaying', song);
     await loadAndPlay(song, proxied.fileUrl, true);
-    showToast('▶ 正在播放：' + song.title, 'success', 2500);
+    showToast(t('toast.nowPlaying', { title: song.title }), 'success', 2500);
   } catch (e) {
     if (reqId === _plModalPlayRequestId) {
       logger.warn('弹层播放失败:', e);
-      showToast('⚠️ 播放失败：' + errBrief(e), 'error', 4000);
+      showToast(t('toast.playFailed', { msg: errBrief(e) }), 'error', 4000);
     }
   }
 }
@@ -899,7 +899,7 @@ async function playPlaylistModalSong(idx) {
 /** 「▶ 播放全部」：整单进队列从第一首连播 */
 async function playPlaylistModalAll() {
   const songs = state.getPlaylistSongs();
-  if (!songs.length) { showToast('歌单为空', 'warn'); return; }
+  if (!songs.length) { showToast(t('toast.playlistEmpty'), 'warn'); return; }
   await playPlaylistModalSong(0);
 }
 
@@ -991,27 +991,27 @@ async function addSingleToQueue(idx) {
     const task = { ...s, ...playlistTaskMeta(idx), saveDir, quality: resolveQuality(s.source) };
     const r = await api.addToQueue(task);
     if (r && r.duplicated) {
-      showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
+      showToast(t('toast.queueDup', { title: s.title }), 'warn', 2500);
       return;
     }
     if (r && r.alreadyDownloaded) {
       showRedownloadToast(s.title, r.finishedAt, () => {
         api.addToQueue({ ...task, forceRedownload: true })
-          .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
+          .then(() => showToast(t('toast.queueAdded', { title: s.title }), 'success'))
+          .catch(e => showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error'));
       });
       return;
     }
-    showToast(`「${s.title}」已加入下载队列`, 'success');
+    showToast(t('toast.queueAdded', { title: s.title }), 'success');
   } catch (e) {
-    showToast('加入失败: ' + errBrief(e), 'error');
+    showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
 async function addPlaylistToQueueClick(skipExisting) {
   const checkedSet = state.getPlaylistChecked();
   if (checkedSet.size === 0) {
-    showToast('请先勾选要下载的歌曲', 'warn');
+    showToast(t('toast.pickDownloadFirst'), 'warn');
     return;
   }
   let toAdd = Array.from(checkedSet).sort((a, b) => a - b)
@@ -1028,7 +1028,7 @@ async function addPlaylistToQueueClick(skipExisting) {
     toAdd = filtered;
   }
   if (!toAdd.length) {
-    showToast('没有可加入的歌曲（全部已下载）', 'info');
+    showToast(t('toast.nothingToAdd'), 'info');
     return;
   }
   try {
@@ -1037,17 +1037,18 @@ async function addPlaylistToQueueClick(skipExisting) {
     const payload = { songs: toAdd.map(({ s, idx }) => ({ ...s, ...playlistTaskMeta(idx), saveDir, quality: resolveQuality(s.source) })) };
     const r = await api.addPlaylistToQueue(payload);
     const dlSkipped = r && r.skippedDownloaded ? r.skippedDownloaded : 0;
-    let msg = `已加入 ${r.queued} 首`;
+    // 汇总串各段都是词条，段间分隔用语言中立的间隔号（括号与全角逗号是中文专属形状）
     const skippedParts = [];
-    if (skipped) skippedParts.push(`跳过 ${skipped} 首队内重复`);
-    if (dlSkipped) skippedParts.push(`跳过 ${dlSkipped} 首已下载过`);
-    if (skippedParts.length) msg += `（${skippedParts.join('，')}）`;
-    showToast(msg, 'success');
+    if (skipped) skippedParts.push(t('toast.skippedQueueDup', { count: skipped }));
+    if (dlSkipped) skippedParts.push(t('toast.skippedDownloaded', { count: dlSkipped }));
+    showToast(t('toast.batchQueued', {
+      count: r.queued, extra: skippedParts.length ? ' · ' + skippedParts.join(' · ') : '',
+    }), 'success');
     checkedSet.clear();
     renderPlaylistModal(state.getPlaylistSongs());
   } catch (e) {
     logger.error('[addPlaylistToQueue] 失败:', e);
-    showToast('批量加入失败: ' + errBrief(e), 'error');
+    showToast(t('toast.batchAddFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1055,11 +1056,11 @@ async function addPlaylistToQueueClick(skipExisting) {
 async function savePlModalAsPlaylist() {
   const modal = document.getElementById('playlistModal');
   if (!modal || modal.classList.contains('hidden')) {
-    showToast('先打开平台歌单/专辑弹层再保存', 'info');
+    showToast(t('toast.openModalFirst'), 'info');
     return;
   }
   const picked = pickCheckedSongs(state.getPlaylistSongs(), state.getPlaylistChecked());
-  if (!picked.length) { showToast('请先勾选要保存的歌曲', 'warn'); return; }
+  if (!picked.length) { showToast(t('toast.pickSaveFirst'), 'warn'); return; }
   const m = state.getPlaylistMeta() || {};
   const rows = toPlaylistRows(picked);
   const payload = buildSavedPlaylist(
@@ -1070,36 +1071,36 @@ async function savePlModalAsPlaylist() {
     const r = await api.saveUserPlaylist(payload);
     if (r && r.success) {
       if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
-      showToast(`📥 已保存歌单「${payload.name}」：${rows.length} 首`, 'success', 3000);
+      showToast(t('toast.playlistSaved', { name: payload.name, count: rows.length }), 'success', 3000);
     } else {
-      showToast((r && r.error) || '保存失败', 'error');
+      showToast((r && r.error) || t('toast.saveFailed'), 'error');
     }
   } catch (e) {
     logger.error('[savePlModalAsPlaylist] 失败:', e);
-    showToast('保存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
   }
 }
 
 function addPlModalToPlaylist() {
   const picked = pickCheckedSongs(state.getPlaylistSongs(), state.getPlaylistChecked());
-  if (!picked.length) { showToast('请先勾选要加入的歌曲', 'warn'); return; }
+  if (!picked.length) { showToast(t('toast.pickAddFirst'), 'warn'); return; }
   if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(toPlaylistRows(picked));
 }
 
 async function downloadSongFromList(s) {
-  showToast(`⏳ 正在获取 ${s.title} 的下载链接...`, 'info', 2000);
+  showToast(t('toast.fetchingLink', { title: s.title }), 'info', 2000);
   try {
     const result = await api.getDownloadUrl(s.id, s.source, 'standard');
     if (result && result.url) {
-      showToast(`✅ 已获取下载链接`, 'success', 4000);
+      showToast(t('toast.linkReady'), 'success', 4000);
       document.getElementById('searchInput').value = `${s.title} ${s.artist}`;
       switchTab('search');
     } else {
-      showToast('⚠️ 暂无法获取下载链接', 'warn', 3000);
+      showToast(t('toast.linkUnavailable'), 'warn', 3000);
     }
   } catch (e) {
     logger.warn('获取下载链接失败:', e);
-    showToast('⚠️ 获取下载链接失败', 'warn', 3000);
+    showToast(t('toast.linkFetchFailed'), 'warn', 3000);
   }
 }
 
@@ -1247,7 +1248,7 @@ function locatePlayingInQueue() {
   const queue = getState('playQueue') || [];
   const cur = getState('currentPlaying');
   const idx = resolvePlayingIndex(queue, cur, getState('playIdx') || 0);
-  if (idx < 0) { showToast('正在播放的歌不在当前队列', 'info', 2500); return; }
+  if (idx < 0) { showToast(t('toast.notInQueue'), 'info', 2500); return; }
   if (!_pqVisible) window.togglePlayQueue();
   const row = document.querySelector(`#pqList .pq-item[data-pqidx="${idx}"]`);
   if (row) flashRow(row);
@@ -1315,7 +1316,7 @@ window.clearPlayQueue = () => {
   setState('playQueue', []);
   setState('playIdx', 0);
   setState('currentPlaying', null);
-  showToast('播放队列已清空', 'info');
+  showToast(t('toast.queueCleared'), 'info');
 };
 
 // ── 队列单行移除 / 一键去重（playQueueEdit 纯函数的接线层）──────
@@ -1337,15 +1338,15 @@ window.removePqItem = (idx) => {
   } else {
     setState('playIdx', r.playIdx);
   }
-  showToast('已从播放队列移除', 'info');
+  showToast(t('toast.queueRemovedOne'), 'info');
 };
 
 window.dedupePlayQueue = () => {
   const r = dedupeQueue(getState('playQueue') || [], getState('playIdx') || 0);
-  if (!r.removed) { showToast('队列里没有重复曲目', 'info'); return; }
+  if (!r.removed) { showToast(t('toast.queueNoDup'), 'info'); return; }
   setState('playQueue', r.queue);
   setState('playIdx', Math.max(0, r.playIdx));
-  showToast(`🧹 已移除 ${r.removed} 首重复`, 'success');
+  showToast(t('toast.queueDupRemoved', { count: r.removed }), 'success');
 };
 
 // ── 队列多选批量移除（增量101）：选态装行对象引用，下标漂移不误伤 ──
@@ -1382,8 +1383,8 @@ window.togglePqSel = (idx) => {
 };
 
 window.removeCheckedFromQueue = async () => {
-  if (!_pqSel.size) { showToast('先勾选要移除的行', 'warn'); return; }
-  if (!await askConfirm(`确认把勾选的 ${_pqSel.size} 首移出播放队列？`)) return;
+  if (!_pqSel.size) { showToast(t('toast.pickRowsFirst'), 'warn'); return; }
+  if (!await askConfirm(t('toast.confirmRemoveRows', { count: _pqSel.size }))) return;
   const r = removeQueueItemsByIdentity(getState('playQueue') || [], getState('playIdx') || 0, _pqSel);
   _pqSel.clear();
   if (!r.removed) { renderPlayQueueUI(); return; }
@@ -1402,18 +1403,18 @@ window.removeCheckedFromQueue = async () => {
   } else if (r.playIdx >= 0) {
     setState('playIdx', r.playIdx);
   }
-  showToast(`🗑 已移出 ${r.removed} 首`, 'success');
+  showToast(t('toast.rowsRemoved', { count: r.removed }), 'success');
 };
 
 // 队列多选「🎼 加歌单」（增量115）：勾选行按队列原序投影成可持久行，
 // 喂 quickAddToPlaylist 既有批量链（引擎端 id+source 去重）。drop 行是
 // 临时 blob、本地行缺 filePath 播不动 —— 都被纯函数挡在门外。
 window.pqSelAddPlaylist = () => {
-  if (!_pqSel.size) { showToast('先勾选要加歌单的行', 'warn'); return; }
+  if (!_pqSel.size) { showToast(t('toast.pickRowsForPlaylist'), 'warn'); return; }
   const picked = (getState('playQueue') || []).filter(s => _pqSel.has(s));
   const rows = pickPlSavableRows(picked);
   if (!rows.length) {
-    showToast('勾到的行都不能持久（拖入即播/缺路径的播不了），换正常的歌试试', 'warn', 2600);
+    showToast(t('toast.noPersistableRows'), 'warn', 2600);
     return;
   }
   if (typeof window.quickAddToPlaylist === 'function') window.quickAddToPlaylist(rows);
@@ -1427,11 +1428,11 @@ window.copyQueueListText = async () => {
   const { rows, scope } = pickQueueCopyRows(getState('playQueue') || [], _pqSel);
   const lines = toTrackLines(rows);
   if (!lines.length) {
-    showToast(scope === 'checked' ? '勾到的行都没有歌名，复制不了' : '播放队列是空的', 'info', 2500);
+    showToast(scope === 'checked' ? t('toast.noTitlesChecked') : t('toast.queueEmptyForCopy'), 'info', 2500);
     return;
   }
   const ok = await copyText(lines.join('\n'));
-  showToast(ok ? queueCopyToastText(lines.length, scope) : '复制失败：剪贴板被占用或无权限', ok ? 'success' : 'error', 2500);
+  showToast(ok ? queueCopyToastText(lines.length, scope) : t('toast.copyFailed'), ok ? 'success' : 'error', 2500);
 };
 
 // 播放队列一键存为歌单（queuePlaylist 纯函数的接线层）：
@@ -1439,7 +1440,7 @@ window.copyQueueListText = async () => {
 // 增量118：走 pickPlSavableRows —— 整单存为同样不收死行（drop 临时行 / 缺 filePath 的本地行）
 window.saveQueueAsPlaylist = async () => {
   const songs = pickPlSavableRows(getState('playQueue') || []);
-  if (!songs.length) { showToast('播放队列没有可保存的歌（空队列，或都是拖入即播/缺路径的临时行）', 'warn', 2800); return; }
+  if (!songs.length) { showToast(t('toast.queueNotSavable'), 'warn', 2800); return; }
   try {
     const r = await api.saveUserPlaylist({
       name: defaultQueuePlaylistName(new Date()),
@@ -1449,12 +1450,14 @@ window.saveQueueAsPlaylist = async () => {
     });
     if (r && r.success) {
       if (typeof window.loadUserPlaylists === 'function') await window.loadUserPlaylists();
-      showToast(`💾 已存为歌单「${r.playlist?.name || defaultQueuePlaylistName(new Date())}」（${songs.length} 首）`, 'success', 3000);
+      showToast(t('toast.queueAsPlaylist', {
+        name: r.playlist?.name || defaultQueuePlaylistName(new Date()), count: songs.length,
+      }), 'success', 3000);
     } else {
-      showToast((r && r.error) || '保存歌单失败', 'error');
+      showToast((r && r.error) || t('toast.savePlaylistFailed'), 'error');
     }
   } catch (e) {
-    showToast('保存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
   }
 };
 
@@ -1463,20 +1466,20 @@ async function downloadPqSong(s) {
     const task = { ...s, saveDir: getState('saveDir'), quality: resolveQuality(s.source) };
     const r = await api.addToQueue(task);
     if (r && r.duplicated) {
-      showToast(`「${s.title}」已在下载队列中`, 'warn', 2500);
+      showToast(t('toast.queueDup', { title: s.title }), 'warn', 2500);
       return;
     }
     if (r && r.alreadyDownloaded) {
       showRedownloadToast(s.title, r.finishedAt, () => {
         api.addToQueue({ ...task, forceRedownload: true })
-          .then(() => showToast(`「${s.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
+          .then(() => showToast(t('toast.queueAdded', { title: s.title }), 'success'))
+          .catch(e => showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error'));
       });
       return;
     }
-    showToast(`「${s.title}」已加入下载队列`, 'success');
+    showToast(t('toast.queueAdded', { title: s.title }), 'success');
   } catch (e) {
-    showToast('加入失败: ' + errBrief(e), 'error');
+    showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
