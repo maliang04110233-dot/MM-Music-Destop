@@ -37,6 +37,7 @@ const { MUSIC_DIR_NAME } = require('../shared/downloadDefaults');
 const speedMeter = require('./speedMeter');
 const diskSpace = require('./diskSpace');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
+const { sidecarPathFor } = require('../utils/relinkRefs');
 
 /** done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长 */
 const MAX_DONE_RETAINED = 200;
@@ -388,7 +389,7 @@ function createDownloadQueueEngine({
 
         // LRC 歌词文件（独立 try-catch：写歌词失败不应覆盖已成功的下载）
         if (lrc) {
-          const lrcPath = savePath.replace(/\.[^.]+$/, '.lrc');
+          const lrcPath = sidecarPathFor(savePath);
           fs.promises.writeFile(lrcPath, lrc, 'utf8').catch(lrcErr => {
             logger.warn('[processOneSong] LRC 写入失败（不影响下载结果）:', lrcErr.message);
           });

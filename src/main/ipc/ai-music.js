@@ -12,6 +12,7 @@ const aiMusic = require('../../api/ai-music');
 const { defaultDownloadDir, AI_SUBDIR_NAME } = require('../../shared/downloadDefaults');
 // 主进程即 UI 线程：文件 IO 必须异步
 const fsa = require('../../utils/fsAsync');
+const { sidecarPathFor } = require('../../utils/relinkRefs');
 
 /**
  * 根据歌词内容和歌曲时长，生成带时间轴的 LRC 文件
@@ -171,7 +172,7 @@ function register() {
 
         // 保存歌词到同目录 .lrc 文件
         if (params.lyrics) {
-          const lrcPath = savePath.replace(/\.mp3$/i, '.lrc');
+          const lrcPath = sidecarPathFor(savePath);
           const durationMs = result.duration || 180000; // 默认 3 分钟
           const lrcContent = generateLrcWithTiming(params.lyrics, params.title, durationMs);
           await fsa.writeText(lrcPath, lrcContent);

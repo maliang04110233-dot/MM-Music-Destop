@@ -16,7 +16,7 @@
  */
 
 const fs = require('fs');
-const path = require('path');
+const { sidecarPathFor } = require('./relinkRefs');
 
 const ONLINE_LRC_TTL_MS = 30 * 60 * 1000;     // 失败结果缓存 30 分钟
 const ONLINE_LRC_TIMEOUT_MS = 10 * 1000;       // 单次拉取超时
@@ -90,8 +90,7 @@ async function _run({ filePath, deps }) {
     if (lrc && lrc.trim()) {
       // 3) 写 sidecar .lrc 文件（UTF-8 + BOM 兼容 Windows 旧播放器）
       try {
-        const parsed = path.parse(filePath);
-        const lrcPath = parsed.ext ? filePath.replace(/\.[^.]+$/, '.lrc') : filePath + '.lrc';
+        const lrcPath = sidecarPathFor(filePath);
         const bom = Buffer.from([0xEF, 0xBB, 0xBF]);
         const body = Buffer.from(lrc, 'utf8');
         await fs.promises.writeFile(lrcPath, Buffer.concat([bom, body]));
