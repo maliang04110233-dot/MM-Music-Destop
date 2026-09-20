@@ -9,24 +9,51 @@ const https = require('https');
 const http = require('http');
 const logger = require('./logger');
 
+/** 重定向跳数上限 / 图片体积上限（封面源 URL 不可信，与 downloader 同规） */
+const MAX_REDIRECTS = 5;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 /**
  * 下载图片到 Buffer（支持重定向）
+ * 每跳都过 urlGuard（封面搜索结果/重定向目标都不可信），body 有体积上限。
  */
-function downloadImageBuffer(url, timeout = 10000) {
+async function downloadImageBuffer(url, timeout = 10000, redirectCount = 0) {
+  if (!url) throw new Error('empty url');
+  if (redirectCount > MAX_REDIRECTS) throw new Error('重定向次数超上限');
+  const { assertPublicHttpUrl } = require('./urlGuard');
+  const check = await assertPublicHttpUrl(url);
+  if (!check.ok) throw new Error('封面地址被 SSRF 防护拒绝: ' + (check.reason || url));
+  const u = check.url;
+  const lib = u.protocol === 'https:' ? https : http;
+
   return new Promise((resolve, reject) => {
-    if (!url) return reject(new Error('empty url'));
-    const lib = url.startsWith('https') ? https : http;
-    const req = lib.get(url, {
+    const req = lib.get({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
+      servername: u.hostname,
+      lookup: require('./urlGuard').makePinnedLookup(check.ips),
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       timeout,
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
         const next = new URL(res.headers.location, url).toString();
-        return downloadImageBuffer(next, timeout).then(resolve).catch(reject);
+        return downloadImageBuffer(next, timeout, redirectCount + 1).then(resolve).catch(reject);
       }
       if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+      const declared = parseInt(res.headers['content-length'] || '0', 10);
+      if (declared > MAX_IMAGE_BYTES) return reject(new Error('图片超过体积上限'));
       const chunks = [];
-      res.on('data', c => chunks.push(c));
+      let total = 0;
+      res.on('data', c => {
+        total += c.length;
+        if (total > MAX_IMAGE_BYTES) {
+          res.destroy();
+          return reject(new Error('图片超过体积上限'));
+        }
+        chunks.push(c);
+      });
       res.on('end', () => resolve(Buffer.concat(chunks)));
     });
     req.on('error', reject);

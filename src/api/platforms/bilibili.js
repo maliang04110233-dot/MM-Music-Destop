@@ -159,8 +159,10 @@ function bilibiliSubtitleToLrc(body) {
     const text = String(seg?.content || '').replace(/\s+/g, ' ').trim();
     if (!text) continue;
     const sec = Number(seg.from) || 0;
-    const min = Math.floor(sec / 60);
-    const rest = sec - min * 60;
+    // 先按厘秒取整再进位：toFixed 四舍五入后可能出现 60.00（分钟不进位）
+    const totalCs = Math.round(sec * 100);
+    const min = Math.floor(totalCs / 6000);
+    const rest = (totalCs % 6000) / 100;
     const stamp = '[' + String(min).padStart(2, '0') + ':' + rest.toFixed(2).padStart(5, '0') + ']';
     lines.push(stamp + text);
   }

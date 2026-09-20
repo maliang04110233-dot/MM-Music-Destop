@@ -86,34 +86,38 @@ let _pendingPlayQueueData = null;
 function persistPlayQueue(data) {
   _pendingPlayQueueData = data;
   if (playQueuePersistTimer) return;
-  playQueuePersistTimer = setTimeout(() => {
-    playQueuePersistTimer = null;
-    const latest = _pendingPlayQueueData;
-    _pendingPlayQueueData = null;
-    try {
-      // latest = { queue: [...], playIdx: number }
-      const queue = Array.isArray(latest?.queue) ? latest.queue : [];
-      // 剔除 data: 协议的 cover（base64 数据极大，恢复后 player loadAndPlay 会重新获取）
-      const clean = queue.map(song => {
-        if (!song) return song;
-        const s = { ...song };
-        if (typeof s.cover === 'string' && s.cover.startsWith('data:')) {
-          delete s.cover;
-        }
-        return s;
-      });
-      const payload = {
-        queue: clean,
-        playIdx: typeof latest?.playIdx === 'number' ? latest.playIdx : -1,
-        loopMode: typeof latest?.loopMode === 'number' ? latest.loopMode : 0,
-        isShuffled: !!latest?.isShuffled,
-        updatedAt: Date.now(),
-      };
-      atomicWriteJson(PLAY_QUEUE_FILE(), payload);
-    } catch (e) {
-      logger.warn('播放队列持久化失败:', e.message);
-    }
-  }, 500);
+  playQueuePersistTimer = setTimeout(flushPlayQueueNow, 500);
+}
+
+/** 立即落盘挂起的播放队列（退出时防抖窗口内的变更不能丢） */
+function flushPlayQueueNow() {
+  if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
+  const latest = _pendingPlayQueueData;
+  _pendingPlayQueueData = null;
+  if (!latest) return;
+  try {
+    // latest = { queue: [...], playIdx: number }
+    const queue = Array.isArray(latest?.queue) ? latest.queue : [];
+    // 剔除 data: 协议的 cover（base64 数据极大，恢复后 player loadAndPlay 会重新获取）
+    const clean = queue.map(song => {
+      if (!song) return song;
+      const s = { ...song };
+      if (typeof s.cover === 'string' && s.cover.startsWith('data:')) {
+        delete s.cover;
+      }
+      return s;
+    });
+    const payload = {
+      queue: clean,
+      playIdx: typeof latest?.playIdx === 'number' ? latest.playIdx : -1,
+      loopMode: typeof latest?.loopMode === 'number' ? latest.loopMode : 0,
+      isShuffled: !!latest?.isShuffled,
+      updatedAt: Date.now(),
+    };
+    atomicWriteJson(PLAY_QUEUE_FILE(), payload);
+  } catch (e) {
+    logger.warn('播放队列持久化失败:', e.message);
+  }
 }
 
 async function loadPersistedPlayQueue() {
@@ -645,6 +649,8 @@ app.on('window-all-closed', () => {
     logger.warn('[index] 队列引擎清理失败:', e.message);
   }
   try { if (libraryWatcher) libraryWatcher.stop(); } catch (_e) { /* 停止监听允许失败 */ }
+  // 防抖窗口内挂起的播放队列变更立即落盘（只清定时器会把最后一次变更丢掉）
+  try { flushPlayQueueNow(); } catch (e) { logger.warn('[index] 播放队列退出冲刷失败:', e.message); }
   if (playQueuePersistTimer) { clearTimeout(playQueuePersistTimer); playQueuePersistTimer = null; }
   subscriptions.stopScheduler();
   clipboardWatch.stop();

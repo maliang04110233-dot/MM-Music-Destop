@@ -29,8 +29,9 @@ function handleKey(e) {
     return;
   }
 
-  // 输入框中不处理其他快捷键
-  if (inInput) return;
+  // 输入框中只跳过非组合键：Ctrl+F/D/L/H/G 与 Ctrl+方向键（切歌/音量）
+  // 在输入框聚焦时同样可用（帮助文档承诺过）；Space 等裸键仍被跳过
+  if (inInput && !ctrlOrCmd) return;
 
   // ── 搜索页结果列表导航：↑/↓ 选行，Enter 将高亮曲加入下载队列 ──
   if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')
@@ -103,8 +104,9 @@ function handleKey(e) {
     }
   }
 
-  // ── Space 播放/暂停（不在输入框） ──
-  if (e.key === ' ' && !inInput) {
+  // ── Space 播放/暂停（不在输入框）──
+  if (e.key === ' ') {
+    if (inInput || _anyModalOpen()) return;
     e.preventDefault();
     if (typeof togglePlay === 'function') togglePlay();
     return;
@@ -137,6 +139,12 @@ function _anyModalOpen() {
 }
 
 function closeActiveModal() {
+  // 快捷键帮助优先关闭（Esc 关不掉帮助弹窗曾被用户卡住）
+  const shortcutsHelp = document.getElementById('shortcutsHelp');
+  if (shortcutsHelp) {
+    shortcutsHelp.remove();
+    return true;
+  }
   // 按优先级关闭：歌单弹窗 > ID3 编辑 > 设置
   const playlistModal = document.getElementById('playlistModal');
   if (playlistModal && !playlistModal.classList.contains('hidden')) {
@@ -183,10 +191,11 @@ function showVolumeToast() {
 
 // ── 快捷键帮助弹窗 ──
 export function showShortcutsHelp() {
-  // 已有则不重复
+  // toggle：已打开则关闭（此前移除后无条件重建 = 永远关不掉）
   let overlay = document.getElementById('shortcutsHelp');
   if (overlay) {
     overlay.remove();
+    return;
   }
 
   overlay = document.createElement('div');

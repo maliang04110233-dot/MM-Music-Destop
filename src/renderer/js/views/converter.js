@@ -308,8 +308,9 @@ function renderQueue() {
 
   if (actions) actions.style.display = 'flex';
 
-  const formatOpts = CONVERT_FORMATS.map(f =>
-    `<option value="${f.value}"${f.value === DEFAULT_FORMAT ? ' selected' : ''}>${f.label}</option>`).join('');
+  // 行内下拉的选中项必须跟随 item.format（批量改格式后重渲染不能跳回默认值）
+  const formatOptsFor = (item) => CONVERT_FORMATS.map(f =>
+    `<option value="${f.value}"${f.value === item.format ? ' selected' : ''}>${f.label}</option>`).join('');
 
   container.innerHTML = `
     <div class="conv-queue-list">
@@ -332,7 +333,7 @@ function renderQueue() {
             ${item.status === 'error' ? `<div class="conv-error">${esc(item.error || '转换失败')}</div>` : ''}
           </div>
           <select class="conv-queue-format" onchange="_convQueue[${idx}].format=this.value" ${busy ? 'disabled' : ''}>
-            ${formatOpts}
+            ${formatOptsFor(item.format)}
           </select>
           <button class="conv-queue-remove" onclick="_converterRemoveFromQueue(${idx})" ${busy ? 'disabled' : ''} title="移除">✕</button>
         </div>`;

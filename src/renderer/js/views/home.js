@@ -396,8 +396,11 @@ async function fetchSection(meta) {
 
     if (result && result.ok) {
       const data = Array.isArray(result.data) ? result.data : [];
-      st.sections[meta.sec] = data;
-      st.ok++;
+      // await 期间 reloadPlatform 可能整体替换了状态对象，必须重读再写，
+      // 否则数据落在孤儿对象上（页面上不显示、计数错乱）
+      const st2 = _platState(plat);
+      st2.sections[meta.sec] = data;
+      st2.ok++;
       renderSection(meta, data);
       logger.log(`[Home] ✓ ${meta.sec} -> ${data.length} items`);
       _refreshPlatformState(plat);
@@ -406,13 +409,15 @@ async function fetchSection(meta) {
 
     logger.warn(`[Home] ✗ ${meta.sec}:`, (result && result.error) || '加载失败');
     renderSectionError(meta, (result && result.error) || '加载失败');
-    st.fail++;
+    const st2 = _platState(plat);
+    st2.fail++;
     _refreshPlatformState(plat);
     return false;
   } catch (e) {
     logger.warn(`[Home] ✗ ${meta.sec} exception:`, e.message);
     renderSectionError(meta, e.message || String(e));
-    st.fail++;
+    const st2 = _platState(plat);
+    st2.fail++;
     _refreshPlatformState(plat);
     return false;
   } finally {
@@ -526,9 +531,10 @@ function listHtml(meta, pairs, total) {
  */
 function songRowsHtml(meta, rows) {
   // rows 是 [{s, i}]：i 必须是**原始数组下标**——行内播放/下载/右键全部经
-  // _getSection(sec)[i] 回查，过滤后重排下标会点 A 播 B。
+  // _resolveSectionSong 回查，过滤后重排下标会点 A 播 B；id 一起烘焙进回调，
+  // 弹窗快照与 live 数组错位时按下标+id 双重校验，id 命中则仍能正确取歌。
   return rows.map(({ s, i }) => `
-    <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" onclick="playRecommendById('${escQ(meta.sec)}',${i})">
+    <div class="top-song-row" data-sec="${escAttr(meta.sec)}" data-ridx="${i}" onclick="playRecommendById('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">
       <span class="top-song-rank ${i < 3 ? 'top3' : ''}">${i + 1}</span>
       ${coverThumbHtml(s.cover)}
       <div class="top-song-info">
@@ -540,13 +546,28 @@ function songRowsHtml(meta, rows) {
       ${meta.showSource ? `<span class="source-badge badge-${badgeCls(s.source)}">${esc(srcLabel(s.source))}</span>` : ''}
       <span class="top-song-dur">${fmtDuration(s.duration)}</span>
       <div class="top-song-actions">
-        <button class="top-song-action" title="播放" aria-label="播放 ${escAttr(s.title)}" onclick="event.stopPropagation();playRecommendById('${escQ(meta.sec)}',${i})">${svgIcon('play')}</button>
-        <button class="top-song-action" title="下载" aria-label="下载 ${escAttr(s.title)}" onclick="event.stopPropagation();addRecommendDownload('${escQ(meta.sec)}',${i})">${svgIcon('down')}</button>
-        <button class="top-song-action" title="添加到歌单" aria-label="添加到歌单" onclick="event.stopPropagation();quickAddRecommendToPlaylist('${escQ(meta.sec)}',${i})">${svgIcon('plus')}</button>
+        <button class="top-song-action" title="播放" aria-label="播放 ${escAttr(s.title)}" onclick="event.stopPropagation();playRecommendById('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">${svgIcon('play')}</button>
+        <button class="top-song-action" title="下载" aria-label="下载 ${escAttr(s.title)}" onclick="event.stopPropagation();addRecommendDownload('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">${svgIcon('down')}</button>
+        <button class="top-song-action" title="添加到歌单" aria-label="添加到歌单" onclick="event.stopPropagation();quickAddRecommendToPlaylist('${escQ(meta.sec)}',${i},'${escQ(s.id)}')">${svgIcon('plus')}</button>
         ${heartBtnHtml(s, 'top-song-action')}
       </div>
     </div>
   `).join('');
+}
+
+/**
+ * 按下标+id 双重解析分区歌曲：idx 是烘焙进 DOM 的快照下标，分区数据重载/
+ * 过滤后可能错位 —— 下标取到的歌 id 不符时按 id 在当前数组里重找。
+ */
+function _resolveSectionSong(sec, idx, songId) {
+  const cur = _getSection(sec);
+  const at = cur[idx];
+  if (at && (!songId || String(at.id) === String(songId))) return at;
+  if (songId) {
+    const byId = cur.find(s => String(s.id) === String(songId));
+    if (byId) return byId;
+  }
+  return at || null;
 }
 
 // ── 首页榜单过滤（会话级）──────────────────────────────
@@ -582,7 +603,7 @@ document.addEventListener('contextmenu', (e) => {
   openSongRowMenu(e, s, {
     play: () => playRecommendById(sec, idx),
     download: () => addRecommendDownload(sec, idx),
-    downloadQuality: (q) => addRecommendDownload(sec, idx, q),
+    downloadQuality: (q) => addRecommendDownload(sec, idx, '', q),
   });
 });
 
@@ -698,9 +719,9 @@ function closeHomeChartModal() {
 }
 
 // ── 推荐歌曲交互 ──────────────────────────────────────────
-async function playRecommendById(sec, idx) {
+async function playRecommendById(sec, idx, songId) {
   try {
-    const song = _getSection(sec)[idx];
+    const song = _resolveSectionSong(sec, idx, songId);
     if (song) await playRecommendSong(song);
   } catch (e) {
     logger.warn(`[playRecommendById] error:`, e);
@@ -746,8 +767,9 @@ async function playRecommendSong(song) {
   }
 }
 
-async function addRecommendDownload(sec, idx, qualityOverride) {
-  const song = _getSection(sec)[idx];
+async function addRecommendDownload(sec, idx, songId, qualityOverride) {
+  // songId 在 qualityOverride 之前：行模板把 id 作为第 3 参烘焙进回调
+  const song = _resolveSectionSong(sec, idx, songId);
   if (!song) return;
   const existing = (state.get('queueSnapshot') || []).find(q => q.id === song.id && q.source === song.source && q.status !== 'done');
   if (existing) {
@@ -776,9 +798,9 @@ async function addRecommendDownload(sec, idx, qualityOverride) {
   }
 }
 
-async function quickAddRecommendToPlaylist(sec, idx) {
+async function quickAddRecommendToPlaylist(sec, idx, songId) {
   try {
-    const song = _getSection(sec)[idx];
+    const song = _resolveSectionSong(sec, idx, songId);
     if (!song) return;
     const playlists = getState('userPlaylists') || [];
     if (playlists.length === 0) {

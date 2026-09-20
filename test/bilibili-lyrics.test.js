@@ -77,3 +77,10 @@ test('bilibili: manifest 注册 getLyrics，registry 自动推导 lyrics 能力'
   const caps = reg.getCapabilities('bilibili');
   assert.strictEqual(caps.lyrics, true);
 });
+
+// ── 批④：秒进位 ──────────────────────────────────────────────
+test('bilibili: 59.999 秒必须进位成 [01:00.00]（toFixed 四舍五入后不得溢出成 [00:60.00]）', () => {
+  const lrc = mod.bilibiliSubtitleToLrc([{ from: 59.999, to: 60.5, content: '进位' }]);
+  assert.ok(!/\[\d+:60\./.test(lrc), `秒不得溢出 59.9995+: ${lrc}`);
+  assert.ok(lrc.startsWith('[01:00.'), `应进位到下一分钟: ${lrc}`);
+});

@@ -72,12 +72,14 @@ function _ensureLoaded() {
   }
 }
 
-/** 同步写盘（内容已是加密形态） */
+/** 同步写盘（内容已是加密形态）：tmp+rename 原子化，崩溃不留半截 JSON */
 function _persist() {
   try {
     const fp = getFilePath();
     if (!fp) return false;
-    fs.writeFileSync(fp, JSON.stringify(_cache, null, 2), 'utf8');
+    const tmp = fp + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(_cache, null, 2), 'utf8');
+    fs.renameSync(tmp, fp);
     return true;
   } catch (e) {
     logger.warn('[cookieStore] 写入失败:', e.message);

@@ -136,6 +136,18 @@ function _followRedirects(url, options, redirectCount = 0, pinnedIps = null) {
     // code=ETIMEDOUT 让 isRetriableError 识别：socket 空闲超时值得重试（M4）
     req.on('timeout', () => { req.destroy(); reject(Object.assign(new Error('请求超时'), { code: 'ETIMEDOUT' })); });
 
+    // AbortSignal 支持（M11：计费接口取消）。中止销毁 socket 走 error 路径；
+    // ABORT_ERR 不在 isRetriableError 列表，外层重试不会吞掉取消语义。
+    if (options.signal) {
+      if (options.signal.aborted) {
+        req.destroy();
+        return reject(Object.assign(new Error('已取消'), { code: 'ABORT_ERR' }));
+      }
+      options.signal.addEventListener('abort', () => {
+        req.destroy(Object.assign(new Error('已取消'), { code: 'ABORT_ERR' }));
+      }, { once: true });
+    }
+
     if (options.body) req.write(options.body);
     req.end();
   });

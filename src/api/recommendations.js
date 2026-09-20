@@ -322,8 +322,11 @@ async function searchSinger(keyword, source = SOURCE_PREFERENCE.defaultSingerSea
  * 平台选择由源偏好策略常量表达（见上方 SOURCE_PREFERENCE），
  * 本函数不再出现平台 id 字面量比较。
  */
-async function getSingerSongs(singerMid, limit = 30) {
+async function getSingerSongs(singerMid, limit = 30, platform = '') {
   const g = gw();
+  // 显式指定 platform（如订阅条目记录的来源）时直达该源，不做偏好猜测
+  if (platform) return await g.getSingerSongs(platform, singerMid, limit);
+
   const pref = /^\d+$/.test(String(singerMid))
     ? SOURCE_PREFERENCE.numericSingerMid
     : SOURCE_PREFERENCE.namedSingerMid;

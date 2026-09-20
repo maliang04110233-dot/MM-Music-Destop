@@ -228,6 +228,7 @@ async function generateLyrics(params) {
   try {
     const result = await request(`${MINIMAX_API_BASE}/v1/text/chatcompletion_v2`, {
       method: 'POST',
+      retries: 0, // 计费 LLM 调用禁自动重试——超时重试会重复扣费
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
@@ -389,7 +390,7 @@ function normalizeLyrics(lyrics) {
  * @param {function} [params.onProgress] - 进度回调
  * @returns {Promise<{audioHex: string, status: number}>}
  */
-async function generateMusic(params) {
+async function generateMusic(params, callOptions = {}) {
   const { lyrics, style, musicPrompt, apiKey, timbre, onProgress } = params;
 
   if (!apiKey) throw new Error('请先配置 MiniMax API Key');
@@ -421,6 +422,7 @@ async function generateMusic(params) {
         },
       },
       timeout: 300000, // 5 分钟超时
+      signal: callOptions.signal, // M11：取消链路，主进程侧 AbortController 触发
     });
 
     if (result.status !== 200) {
@@ -495,25 +497,38 @@ async function loadHistory() {
 async function saveHistory(history) {
   if (!_historyPath) return;
   try {
-    await writeFile(_historyPath, JSON.stringify(history, null, 2), 'utf-8');
+    // tmp+rename 原子写：整文件覆盖途中崩溃不留半截 JSON
+    const tmp = _historyPath + '.tmp';
+    await writeFile(tmp, JSON.stringify(history, null, 2), 'utf-8');
+    const { rename: fsRename } = require('fs/promises');
+    await fsRename(tmp, _historyPath);
   } catch (e) {
     logger.warn('[AI Music] 保存历史失败:', e.message);
   }
 }
 
+// 并发生成多版本时各自 addToHistory 是并发读改写，后写的整文件覆盖先写的
+// 会丢条目 —— 用 promise 链把整段读-改-写串行化
+let _historyChain = Promise.resolve();
+
 async function addToHistory(item) {
-  const history = await loadHistory();
-  history.unshift({
-    id: Date.now().toString(36),
-    title: item.title || 'AI创作',
-    lyrics: item.lyrics || '',
-    style: item.style || '',
-    audioPath: item.audioPath || '',
-    createdAt: new Date().toISOString(),
-  });
-  if (history.length > 50) history.length = 50;
-  await saveHistory(history);
-  return history;
+  const run = async () => {
+    const history = await loadHistory();
+    history.unshift({
+      id: Date.now().toString(36),
+      title: item.title || 'AI创作',
+      lyrics: item.lyrics || '',
+      style: item.style || '',
+      audioPath: item.audioPath || '',
+      createdAt: new Date().toISOString(),
+    });
+    if (history.length > 50) history.length = 50;
+    await saveHistory(history);
+    return history;
+  };
+  const p = _historyChain.then(run, run);
+  _historyChain = p.catch(() => {});
+  return p;
 }
 
 async function clearHistory() {
@@ -551,6 +566,7 @@ ${lyrics}
   try {
     const result = await request(`${MINIMAX_API_BASE}/v1/text/chatcompletion_v2`, {
       method: 'POST',
+      retries: 0, // 计费 LLM 调用禁自动重试——超时重试会重复扣费
       headers: { 'Authorization': `Bearer ${apiKey}` },
       body: {
         model: 'MiniMax-Text-01',
@@ -627,6 +643,7 @@ async function rewriteSearchQueries(params) {
 
   const result = await request(`${MINIMAX_API_BASE}/v1/text/chatcompletion_v2`, {
     method: 'POST',
+    retries: 0, // 计费 LLM 调用禁自动重试
     headers: { 'Authorization': `Bearer ${apiKey}` },
     body: {
       model: 'MiniMax-Text-01',

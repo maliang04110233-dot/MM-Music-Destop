@@ -176,6 +176,10 @@ function _ensure() {
     // db 损坏/被占用 → 备份重建（与 JSON 时代 .bak 约定一致），仍失败则退内存库
     logger.warn('[history] history.db 打不开，备份重建:', e.message);
     try { fs.renameSync(file, `${file}.bak`); } catch (_e) { /* 可能本就不存在 */ }
+    // 伴生的 WAL/SHM 若留着，会与重建出的新库错配，必须一并清走
+    for (const suffix of ['-wal', '-shm']) {
+      try { fs.renameSync(file + suffix, `${file}.bak${suffix}`); } catch (_e) { /* 本就不存在 */ }
+    }
     try {
       _db = _openDb(file);
     } catch (e2) {

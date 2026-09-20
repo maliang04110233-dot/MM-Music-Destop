@@ -175,7 +175,15 @@ test('createThrottleStream: drain 后数据继续流动直至流完（H2 死锁�
       await sleepKeepingAlive(150);
       if (totalBytes() > before) stallRounds = 0;
       else if (totalBytes() > 0) stallRounds++;
-      if (endedFlag) break;
+      if (endedFlag) {
+        // throttle 的 end 只代表它写完，sink 可能仍压着末块回调，泵完再断言
+        for (let i = 0; i < 10 && sinkCbs.length; i++) {
+          const rest = sinkCbs; sinkCbs = [];
+          rest.forEach((cb) => cb());
+          await new Promise((r) => setImmediate(r));
+        }
+        break;
+      }
       if (stallRounds >= 5) break;
     }
     assert.strictEqual(totalBytes(), TOTAL,

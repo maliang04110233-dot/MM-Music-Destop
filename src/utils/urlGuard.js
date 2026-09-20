@@ -67,9 +67,10 @@ function isPrivateIPv4(ip) {
 
 function isPrivateIPv6(ip) {
   const norm = ip.toLowerCase();
-  // 展开形式：::1 loopback / :: unspecified / fe80:: link-local / fc00::/7 ULA
+  // 展开形式：::1 loopback / :: unspecified / fe80::/10 link-local / fc00::/7 ULA
   if (norm === '::' || norm === '::1') return true;
-  if (norm.startsWith('fe80:') || norm.startsWith('fe9') || norm.startsWith('fea') || norm.startsWith('feb')) return true;
+  // fe80::/10 覆盖 fe80-febf，逐前缀 startsWith 会漏掉 fe81-fe8f
+  if (/^fe[89ab]/.test(norm)) return true;
   if (/^f[cd][0-9a-f]{2}:/.test(norm)) return true; // ULA fc00::/7
   if (norm.startsWith('ff')) return true;           // multicast
   // IPv4-mapped，两种写法：

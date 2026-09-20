@@ -9,6 +9,7 @@ import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.j
 import { favKey } from '../state.js';
 import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary } from '../historyFilters.js';
 let historyPage = 0;
+let _historyTotalPages = 1; // 最近一次查询的总页数（翻页钳制用）
 let historyFilter = '';
 let _historyStatus = '';
 let _historySource = '';
@@ -38,6 +39,14 @@ async function loadHistory() {
       api.getHistoryStats(),
     ]);
     // queryHistory 返回 { items, total }，解包后再渲染
+    _historyTotalPages = Math.max(1, Math.ceil(((result && result.total) || 0) / PAGE_SIZE));
+    // 筛选变更后当前页可能越界：钳到最后有效页并按新页重查一次
+    // （重查后 historyPage < _historyTotalPages，不会递归）
+    if (historyPage >= _historyTotalPages) {
+      historyPage = _historyTotalPages - 1;
+      if (historyPage > 0) { loadHistory(); return; }
+      if (historyPage < 0) historyPage = 0;
+    }
     renderHistory((result && result.items) || [], stats);
   } catch (e) {
     logger.warn('加载历史失败:', e);
@@ -243,7 +252,10 @@ function historyPrevPage() {
 }
 
 function historyNextPage() {
-  historyPage++;
+  // 受已知总页数钳制：翻到最后一页后再点不越界（否则可无限翻到空页）
+  const lastPage = Math.max(0, (_historyTotalPages || 1) - 1);
+  if (historyPage >= lastPage) return;
+  historyPage = Math.min(historyPage + 1, lastPage);
   loadHistory();
 }
 

@@ -132,7 +132,7 @@ function _renderRows() {
     const cyc = r.cands.length > 1 ? `<button class="btn-sm" title="换一个候选（共 ${r.cands.length} 个）" onclick="cycleNameBatchCand(${i})">🔄</button>` : '';
     return `
     <div class="sched-job" style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);">
-      <input type="checkbox" id="nbChk_${i}" ${c ? 'checked' : ''} ${c ? '' : 'disabled'} style="margin-top:4px;">
+      <input type="checkbox" id="nbChk_${i}" ${c && r.checked !== false ? 'checked' : ''} ${c ? '' : 'disabled'} style="margin-top:4px;" onchange="_nbSetCheck(${i}, this.checked)">
       <div class="sched-job-lines" style="flex:1;min-width:0;">
         <div style="font-size:12px;">${hit}</div>
         <div style="font-size:11px;color:var(--text-dim,#8b93a7);">原始行：${_esc(r.raw)}</div>
@@ -142,6 +142,11 @@ function _renderRows() {
   }).join('');
   const go = document.getElementById('nameBatchGoBtn');
   if (go) go.disabled = !_rows.some(r => r.cands.length);
+}
+
+/** 勾选态回写行对象：换一换会全量重绘，DOM 态不落数据就会被复位 */
+function _nbSetCheck(i, checked) {
+  if (_rows[i]) _rows[i].checked = checked;
 }
 
 function openNameBatch() {
@@ -250,6 +255,7 @@ if (typeof document !== 'undefined') {
   window.closeNameBatch = closeNameBatch;
   window.runNameBatchSearch = runNameBatchSearch;
   window.cycleNameBatchCand = cycleNameBatchCand;
+  window._nbSetCheck = _nbSetCheck;
   window.enqueueNameBatch = enqueueNameBatch;
   window.openM3uImport = function () {
     openNameBatch();

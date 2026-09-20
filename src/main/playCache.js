@@ -54,6 +54,33 @@ async function safeUnlink(p) {
 }
 
 /**
+ * 数量超限淘汰的纯选择器：按 mtime 最旧优先，宽限期内（刚写入/正在播放）
+ * 的项尽量不动；若必须删且全部在宽限内，则删最旧的（防缓存无限膨胀）。
+ * @param {Array<{url: string, mtimeMs: number}>} entries
+ * @param {number} now
+ * @param {number} max
+ * @param {number} graceMs
+ * @returns {string[]} 要淘汰的 url 列表
+ */
+function pickEvictionCandidates(entries, now, max, graceMs) {
+  if (!Array.isArray(entries) || entries.length <= max) return [];
+  const toRemove = entries.length - max;
+  const sorted = [...entries].sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const fresh = [];
+  const out = [];
+  for (const e of sorted) {
+    if (out.length >= toRemove) break;
+    if (now - e.mtimeMs < graceMs) { fresh.push(e); continue; }
+    out.push(e.url);
+  }
+  for (const e of fresh) {
+    if (out.length >= toRemove) break;
+    out.push(e.url);
+  }
+  return out;
+}
+
+/**
  * 清理过期条目
  * @returns {Promise<void>}
  */
@@ -73,13 +100,17 @@ async function cleanupExpired() {
     }
   }
   if (PLAY_CACHE.size > PLAY_CACHE_MAX) {
-    const toRemove = PLAY_CACHE.size - PLAY_CACHE_MAX;
-    let removed = 0;
+    const entries = [];
     for (const [url, info] of PLAY_CACHE) {
-      if (removed >= toRemove) break;
-      await safeUnlink(info.filePath);
-      PLAY_CACHE.delete(url);
-      removed++;
+      const stat = await fsa.statOrNull(info.filePath);
+      entries.push({ url, mtimeMs: stat ? stat.mtimeMs : 0 });
+    }
+    for (const url of pickEvictionCandidates(entries, now, PLAY_CACHE_MAX, 60 * 1000)) {
+      const info = PLAY_CACHE.get(url);
+      if (info) {
+        await safeUnlink(info.filePath);
+        PLAY_CACHE.delete(url);
+      }
     }
   }
 }
@@ -291,6 +322,7 @@ module.exports = {
   getCacheSize,
   clearAllCache,
   formatCacheSize,
+  pickEvictionCandidates,
   PLAY_CACHE_TTL,
   PLAY_CACHE_GC_INTERVAL,
 };

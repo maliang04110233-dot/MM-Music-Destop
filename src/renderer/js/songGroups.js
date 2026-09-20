@@ -61,14 +61,26 @@ function _bannerHtml(groups) {
   </div>`;
 }
 
+/**
+ * 渲染弹层时按当前 state.songs 重解析下标：items 里的 idx 是构建期快照，
+ * 搜索结果被替换/重排后旧下标会点 A 播 B。按 source+id 在当前结果里重找，
+ * 找不到（如已过滤隐藏）才退回旧下标。
+ */
+function _resolveVariantIdx(it) {
+  if (typeof getState !== 'function') return it.idx;
+  const songs = getState('songs') || [];
+  const i = songs.findIndex(s => s && s.source === it.source && String(s.id) === String(it.id));
+  return i >= 0 ? i : it.idx;
+}
+
 function _rowHtml(g) {
   const esc_ = typeof esc === 'function' ? esc : (s => String(s));
   const variants = g.items.map(it => `
     <div class="sched-job" style="display:flex;align-items:center;gap:8px;padding:4px 0;">
       <span class="source-badge" style="flex-shrink:0;">${esc_(_srcName(it.source))}</span>
       <span style="flex:1;color:var(--text-dim,#8b93a7);">${_dur(it.duration)}</span>
-      <button class="btn-sm" title="试听（按该行原索引）" onclick="playSong(${it.idx})">▶</button>
-      <button class="btn-sm" title="下载" onclick="addDownload(${it.idx})">⬇</button>
+      <button class="btn-sm" title="试听" onclick="playSong(${_resolveVariantIdx(it)})">▶</button>
+      <button class="btn-sm" title="下载" onclick="addDownload(${_resolveVariantIdx(it)})">⬇</button>
       <button class="btn-sm" title="滚动到结果列表中的这一行" onclick="locateSongRow('${esc_(it.source)}','${esc_(it.id)}')">🎯</button>
     </div>`).join('');
   return `

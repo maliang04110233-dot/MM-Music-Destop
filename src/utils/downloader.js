@@ -257,6 +257,33 @@ async function embedTagsWithPython(filePath, meta) {
  * 5. 修复 B4：增加 maxRedirects 计数器，避免 CDN 跳转链过长时栈溢出
  *    先 cleanupTmp 再递归；显式关闭当前 res 释放 socket
  */
+/**
+ * 取 host 的「域族」（末两段，如 upos.bilivideo.com → bilivideo.com）。
+ * 精确 host 比较会误伤同站 CDN 的子域重定向（bilivideo 内部跳转必须保 Referer 防盗链）。
+ */
+function _domainFamily(host) {
+  const parts = String(host || '').toLowerCase().split('.').filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join('.') : parts.join('.');
+}
+
+/**
+ * 跨站重定向剥离凭证头（对齐 request.js C2 / playCache B22）：
+ * 302 把带 Referer/Cookie 的请求送去第三方域 = 登录态/来源标记扩散。
+ * 同域族（含子域）跳转原样保留，防盗链依赖不受影响。
+ */
+function stripCrossHostHeaders(extraHeaders, url, nextUrl) {
+  try {
+    const refHost = new URL(url).host;
+    const nextHost = new URL(nextUrl).host;
+    if (_domainFamily(refHost) === _domainFamily(nextHost)) return extraHeaders;
+    const out = { ...extraHeaders };
+    for (const k of Object.keys(out)) {
+      if (['referer', 'cookie', 'authorization'].includes(k.toLowerCase())) delete out[k];
+    }
+    return out;
+  } catch (_e) { return extraHeaders; }
+}
+
 function downloadFile(url, savePath, onProgress, extraHeaders = {}, redirectCount = 0, options = {}) {
   // SSRF 防护（含重定向链每一跳）：URL 来自音乐平台 API 响应，虽非渲染层
   // 直传，但被劫持的平台响应/恶意重定向可指向内网（云元数据等）。
@@ -346,7 +373,7 @@ function _downloadFileInner(url, savePath, onProgress, extraHeaders = {}, redire
             nextUrl,
             savePath,
             onProgress,
-            extraHeaders,
+            stripCrossHostHeaders(extraHeaders, url, nextUrl),
             redirectCount + 1,
             options
           ).then(resolve).catch(reject);
@@ -471,7 +498,7 @@ function downloadBuffer(url, extraHeaders = {}, redirectCount = 0, _ssrfChecked 
               logger.warn('[downloadBuffer] 重定向目标被 SSRF 防护拒绝:', nextUrl);
               return resolve(null);
             }
-            return downloadBuffer(nextUrl, extraHeaders, redirectCount + 1, true, check.ips).then(resolve).catch(reject);
+            return downloadBuffer(nextUrl, stripCrossHostHeaders(extraHeaders, url, nextUrl), redirectCount + 1, true, check.ips).then(resolve).catch(reject);
           }).catch(() => resolve(null));
         }
         const chunks = [];

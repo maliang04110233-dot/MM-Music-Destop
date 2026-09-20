@@ -139,7 +139,8 @@ async function _fetchSongs(entry) {
   if (entry.type === 'playlist') {
     return await api.getPlaylistSongs(entry.platform, entry.targetId, PLAYLIST_LIMIT);
   }
-  return await api.getSingerSongs(entry.targetId, SINGER_LIMIT);
+  // platform 必须透传：门面缺省会按 id 形态猜平台，数字 mid 的歌手会被路由错源
+  return await api.getSingerSongs(entry.targetId, SINGER_LIMIT, entry.platform);
 }
 
 // ── 自动下载 ─────────────────────────────────────────────

@@ -124,9 +124,24 @@ function register() {
   });
 
   // 生成音乐（同步返回 hex 数据）
+  // M11：生成期间持有 AbortController，渲染层经 ai-cancel-generation 真取消
+  // （此前取消只改 UI 状态，底层计费请求照跑）
+  const _aiGenControllers = new Map();
+
+  handle('ai-cancel-generation', (_, requestId) => {
+    const ctrl = _aiGenControllers.get(String(requestId));
+    if (!ctrl) return { cancelled: false };
+    ctrl.abort();
+    _aiGenControllers.delete(String(requestId));
+    return { cancelled: true };
+  });
+
   handle('ai-generate-music', async (_, params) => {
+    const requestId = params && params.requestId ? String(params.requestId) : '';
+    const ctrl = requestId ? new AbortController() : null;
+    if (ctrl) _aiGenControllers.set(requestId, ctrl);
     try {
-      const result = await aiMusic.generateMusic(params);
+      const result = await aiMusic.generateMusic(params, { signal: ctrl ? ctrl.signal : undefined });
 
       // 如果生成成功，保存为文件
       if (result.audioHex) {
@@ -168,6 +183,8 @@ function register() {
       return result;
     } catch (e) {
       return { error: e.message };
+    } finally {
+      if (requestId) _aiGenControllers.delete(requestId);
     }
   });
 

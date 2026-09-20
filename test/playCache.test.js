@@ -79,3 +79,34 @@ test('M3: 同一 URL 并发 proxyPlay 只发起一次下载（在途去重）', 
     fs.rmSync(userData, { recursive: true, force: true });
   }
 });
+
+// ── 批④：数量超限淘汰按 mtime 最旧优先 + 宽限期 ─────────────
+
+test('playCache: 超量淘汰按 mtime 最旧优先且尊重宽限期（正在播放的项不动）', () => {
+  const now = 1_000_000;
+  const entries = [
+    { url: 'a', mtimeMs: now - 10 * 60 * 1000 },
+    { url: 'b', mtimeMs: now - 5 * 60 * 1000 },
+    { url: 'c', mtimeMs: now - 30 * 1000 },
+    { url: 'd', mtimeMs: now - 10 * 1000 },
+  ];
+  const out = playCache.pickEvictionCandidates(entries, now, 2, 60 * 1000);
+  assert.deepStrictEqual(out, ['a', 'b'], '删 2 个：最旧的 a/b 先走，宽限内 c/d 不能动');
+});
+
+test('playCache: 全部在宽限内时淘汰最旧项（防缓存无限膨胀）', () => {
+  const now = 1_000_000;
+  const entries = [
+    { url: 'x', mtimeMs: now - 50 * 1000 },
+    { url: 'y', mtimeMs: now - 20 * 1000 },
+  ];
+  const out = playCache.pickEvictionCandidates(entries, now, 1, 60 * 1000);
+  assert.deepStrictEqual(out, ['x']);
+});
+
+test('playCache: 未超量返回空', () => {
+  const now = 1_000_000;
+  const out = playCache.pickEvictionCandidates(
+    [{ url: 'a', mtimeMs: now - 1000 }], now, 5, 60 * 1000);
+  assert.deepStrictEqual(out, []);
+});

@@ -143,6 +143,7 @@ const CHANNELS = {
 
   // ── AI（invoke） ──────────────────────────────────
   'ai-generate-music':   { invoke: MAIN, args: [['params', t.obj()]] },
+  'ai-cancel-generation': { invoke: MAIN, args: [['requestId', t.str(64)]] },
   'ai-generate-lyrics':  { invoke: MAIN, args: [['params', t.obj()]] },
   'ai-translate-lyrics': { invoke: MAIN, args: [['params', t.obj()]] },
   'ai-history':          { invoke: MAIN },
@@ -311,6 +312,7 @@ const METHODS = {
   getVersion: 'get-version',
   // AI
   aiGenerateMusic: 'ai-generate-music',
+  aiCancelGeneration: 'ai-cancel-generation',
   aiGenerateLyrics: 'ai-generate-lyrics',
   aiTranslateLyrics: 'ai-translate-lyrics',
   aiGetHistory: 'ai-history',

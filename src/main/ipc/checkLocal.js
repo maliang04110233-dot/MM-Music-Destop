@@ -88,7 +88,8 @@ function register() {
       });
     } catch (e) {
       logger.warn('[check-local-exists] 失败:', e.message || e);
-      return items.map(it => ({ ...it, exists: false }));
+      // 兜底返回自身要先防 items 非数组——否则 catch 内再抛，IPC 整体 reject
+      return Array.isArray(items) ? items.map(it => ({ ...it, exists: false })) : [];
     }
   });
 }

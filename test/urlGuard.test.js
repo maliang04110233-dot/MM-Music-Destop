@@ -213,3 +213,10 @@ test('makePinnedLookup: 端到端真实 HTTP 连接可用', async () => {
     server.close();
   }
 });
+
+// ── 批④ M6：fe80::/10 全段拦截 ──────────────────────────────
+test('isPrivateIPv6: fe81-fe8f 属链路本地 fe80::/10 必须拦截（此前仅精确匹配 fe80: 前缀）', () => {
+  for (const ip of ['fe80::1', 'fe81::1', 'fe8f::abcd', 'fe90::1', 'febf::1']) {
+    assert.strictEqual(isPrivateIPv6(ip), true, `${ip} 属 fe80::/10 应按内网拒绝`);
+  }
+});

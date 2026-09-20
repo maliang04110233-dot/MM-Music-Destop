@@ -26,6 +26,9 @@ const aiState = {
   generatedVersions: [], // [{label, lyrics}]
 };
 
+// 历史 tab 渲染序号：迟到回包守卫（见 renderHistoryTab）
+let _historyRenderSeq = 0;
+
 // ══════════════════════════════════════════════════════════
 // 配置
 // ══════════════════════════════════════════════════════════
@@ -344,9 +347,12 @@ function renderBottomBar() {
 // ══════════════════════════════════════════════════════════
 
 function renderHistoryTab(el) {
+  // 序号守卫：连续切 tab / 快速重渲染时，迟到的历史回包不得覆盖当前 tab
+  const seq = ++_historyRenderSeq;
   el.innerHTML = '<div class="ai-empty"><div class="ai-spinner-lg"></div><span class="ai-loading-text">加载中...</span></div>';
 
   loadAiHistory().then(items => {
+    if (seq !== _historyRenderSeq || aiState.tab !== 'history') return;
     if (!items.length) {
       el.innerHTML = `
         <div class="ai-empty">
@@ -388,6 +394,7 @@ function renderHistoryTab(el) {
       </div>
     `;
   }).catch(e => {
+    if (seq !== _historyRenderSeq || aiState.tab !== 'history') return;
     el.innerHTML = '<div class="ai-empty"><div class="ai-empty-icon">⚠️</div><div class="ai-empty-title">加载失败</div></div>';
     logger.warn('[aiHistory] 加载失败:', e.message);
   });
@@ -565,6 +572,8 @@ async function generateAiMusic() {
 
   aiState.generating = true;
   aiState.abortCtrl = new AbortController();
+  // M11：生成带 requestId，取消时通知主进程中止底层计费请求
+  aiState.genRequestId = 'ai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // 清理结果区上一次的结果
   const resultAreaCard = document.getElementById('aiResultAreaCard');
@@ -616,6 +625,7 @@ async function generateAiMusic() {
     setProgressText(`⏳ 正在提交 ${totalTasks} 首任务...`);
     const promises = versionsToGenerate.map((ver) =>
       api.aiGenerateMusic({
+        requestId: aiState.genRequestId,
         lyrics: ver.lyrics,
         title,
         musicPrompt,
@@ -628,6 +638,13 @@ async function generateAiMusic() {
 
     const settledResults = await Promise.allSettled(promises);
     clearInterval(timer);
+
+    // 用户已取消：主进程已中止请求，任何残余回包都不再写 UI/历史
+    if (aiState.abortCtrl?.signal.aborted) {
+      setProgressWidth('0%');
+      setProgressText('已取消');
+      return;
+    }
 
     // 统计成/败
     const succeeded = [];
@@ -713,7 +730,14 @@ async function generateAiMusic() {
 }
 
 function cancelAiGeneration() {
-  if (aiState.abortCtrl) { aiState.abortCtrl.abort(); aiState.generating = false; showToast('已取消', 'info'); renderAiMusicPage(); }
+  if (aiState.abortCtrl) {
+    aiState.abortCtrl.abort();
+    // 通知主进程中止底层计费请求（此前取消只改 UI，请求照跑）
+    if (typeof api.aiCancelGeneration === 'function') api.aiCancelGeneration(aiState.genRequestId);
+    aiState.generating = false;
+    showToast('已取消', 'info');
+    renderAiMusicPage();
+  }
 }
 
 function regenerateAiMusic() { generateAiMusic(); }
