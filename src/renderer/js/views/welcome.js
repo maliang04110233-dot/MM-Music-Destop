@@ -4,7 +4,14 @@
  * prefs.welcomeSeen 非 true 时展示一次性引导浮层：
  * 三条核心用法（剪贴板识别 / 登录解锁音质 / 目录与命名）+ 快捷键提示。
  * 「开始使用」永久关闭；「稍后再说」仅本次关闭，下次启动仍会提示。
+ *
+ * 键盘叠层纪律（增量186）：本层的 Esc 是 document-capture 监听、注册早于
+ * confirmDialog——capture 队列按注册序执行，182 的围堵罩不到它，所以处理前
+ * 必须问 hasOpenConfirm()：确认框开着时这一次 Esc 归最上层，本层让位。
+ * 不让位的后果是双抢——按"取消"关个对话框，连没读完的引导被顺手永久关闭。
  */
+
+import { hasOpenConfirm } from '../confirmDialog.js';
 
 let _overlay = null;
 let _escHandler = null;
@@ -45,7 +52,7 @@ function showWelcome() {
       </div>
     </div>`;
   document.body.appendChild(_overlay);
-  _escHandler = (e) => { if (e.key === 'Escape') closeWelcome(); };
+  _escHandler = (e) => { if (e.key === 'Escape' && !hasOpenConfirm()) closeWelcome(); };
   document.addEventListener('keydown', _escHandler, true);
 }
 

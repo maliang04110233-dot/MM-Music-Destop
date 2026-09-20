@@ -15,6 +15,10 @@
  * 键盘围堵契约（182，aria-modal 的行为面）：弹层开着时 Enter 归聚焦的那颗钮
  * （浏览器原生激活，我们不代劳）、Tab 只在取消/确认间循环、Esc 即取消，
  * 其余按键一律封在弹层内不外漏给后台快捷键；关闭后焦点归还唤起弹层的元素。
+ *
+ * 让位契约（186，围堵的镜像面）：capture 队列按注册序执行，围堵罩不到比本模块
+ * 早注册的监听（如 welcome 引导层的 Esc）——那些抢跑者须自觉先问 hasOpenConfirm()，
+ * 确认框开着即让位。两侧的规矩合起来才是完整的"最上层赢"。
  */
 
 export const CONFIRM_FALLBACK_TITLE = '确认执行该操作？';
@@ -47,6 +51,16 @@ export function confirmDetails(opts) {
 }
 
 let _current = null; // { el, promise, done }
+
+/**
+ * 确认框此刻是否开着——叠层键盘归属契约（增量186）的问话接口。
+ * capture 相监听按注册序执行，比确认框晚注册的会被 182 的围堵罩住；
+ * 比它早注册的（如 welcome 的引导层 Esc）跑在前面，围堵鞭长莫及——
+ * 这类"抢跑者"处理按键前必须先问 hasOpenConfirm()，开着即让位。
+ */
+export function hasOpenConfirm() {
+  return _current != null;
+}
 
 /**
  * 弹一个确认框，返回 Promise<boolean>（true=点确认，false=取消/Esc/点遮罩）。
