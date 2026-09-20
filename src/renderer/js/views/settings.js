@@ -782,7 +782,7 @@ function renderDownloadTemplates() {
     const idArg = "'" + escQ(tpl.id) + "'";
     return `
       <div class="dl-template-item ${isActive ? 'active' : ''}" data-id="${escAttr(tpl.id)}">
-        <div class="dl-template-info" onclick="setActiveTemplate(${idArg})">
+        <div class="dl-template-info" tabindex="0" role="button" onclick="setActiveTemplate(${idArg})">
           <div class="dl-template-name">
             ${isActive ? '✅ ' : ''}${escHtml(tpl.name)}
             ${isActive ? '<span class="dl-template-badge">使用中</span>' : ''}

@@ -1230,7 +1230,7 @@ function renderPlayQueueUI() {
         ? '<input type="checkbox" class="pq-sel-chk" ' + (_pqSel.has(s) ? 'checked ' : '')
           + 'onclick="event.stopPropagation()" onchange="togglePqSel(' + i + ')" title="勾选后批量移出队列" style="width:14px;height:14px;flex-shrink:0;cursor:pointer;margin:0 4px 0 2px;">'
         : '';
-      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" draggable="' + (_pqSelMode ? 'false' : 'true') + '" data-pqidx="' + i + '" onclick="' + (_pqSelMode ? 'togglePqSel(' + i + ')' : 'window._playQueueIdx(' + i + ')') + '">'
+      return '<div class="pq-item' + (isCur ? ' playing' : '') + '" tabindex="0" role="button" draggable="' + (_pqSelMode ? 'false' : 'true') + '" data-pqidx="' + i + '" onclick="' + (_pqSelMode ? 'togglePqSel(' + i + ')' : 'window._playQueueIdx(' + i + ')') + '">'
         + cb
         + '<span class="pq-idx">' + (i + 1) + '</span>'
         + cover

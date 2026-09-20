@@ -88,10 +88,19 @@ test('local.js: 列表行与网格单元挂桥属性（本地曲库两种视图�
   ], 2);
 });
 
+test('第二批（163 收尾）: 播放队列行 / 下载队列详情 / 下载模板卡各挂 1 处', () => {
+  const app = read('js', 'app.js');
+  assertCardPinned('app.js', app, ['<div class="pq-item'], 1);
+  const dl = read('js', 'views', 'download.js');
+  assertCardPinned('download.js', dl, ['<div class="queue-info"'], 1);
+  const st = read('js', 'views', 'settings.js');
+  assertCardPinned('settings.js', st, ['<div class="dl-template-info"'], 1);
+});
+
 // ── 反向钉：不收的口子，防止无声扩大或走偏 ─────────────
 
 test('桥属性不得被挂到既有 input/checkbox 上（tabindex 归桥只认 div 卡片；复选框另有 aria-checked 课题）', () => {
-  const files = ['index.html', 'js/views/home.js', 'js/views/playlist.js', 'js/views/local.js'];
+  const files = ['index.html', 'js/app.js', 'js/views/home.js', 'js/views/playlist.js', 'js/views/local.js', 'js/views/download.js', 'js/views/settings.js'];
   for (const f of files) {
     const parts = f.split('/');
     const src = read(...parts);
@@ -102,8 +111,11 @@ test('桥属性不得被挂到既有 input/checkbox 上（tabindex 归桥只认 
   }
 });
 
-test('本切片刻意未收的元素保持原样（并发会话热文件 download.js / app.js pq-item，避免踩线）', () => {
+test('选择模式复选框宿主保持裸挂（local-row-cb / queue-item-cb 不搭键盘可达的便车）', () => {
+  const local = read('js', 'views', 'local.js');
+  assert.ok(local.includes('<div class="local-row-cb" onclick=') && !local.includes('local-row-cb" ' + KB_ATTR),
+    'local-row-cb 挂了 onclick 但不该挂桥属性 —— 它的键盘语义是复选框（aria-checked），不是按钮');
   const dl = read('js', 'views', 'download.js');
-  assert.ok(!dl.includes(KB_ATTR),
-    'download.js 尚未纳入键盘收口切片（该文件正被并发会话改动）—— 若此钉变红，说明有人先行挂了桥属性，需对齐归属而非直接删');
+  assert.ok(dl.includes('<div class="queue-item-cb" onclick=') && !dl.includes('queue-item-cb" ' + KB_ATTR),
+    'queue-item-cb 同理 —— 选择模式下的勾选行借按钮语义会谎报 role');
 });
