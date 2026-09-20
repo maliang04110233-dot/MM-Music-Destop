@@ -750,9 +750,14 @@ function renderSingerPagination(page, count, total) {
 }
 
 // ── 专辑渲染 ─────────────────────────────────────────
-function renderAlbumList(list) {
+/**
+ * @param {Array} list 专辑数组
+ * @param {HTMLElement|null} [targetEl] 渲染目标。默认 #songList；歌手详情内嵌时
+ *   传 #singerDetailContent —— 否则会把详情页的头部/页签一起 innerHTML 掉。
+ */
+function renderAlbumList(list, targetEl = null) {
   _dlLastList = null; // 非单曲视图：同上，防止被陈旧单曲列表覆盖
-  const el = document.getElementById('songList');
+  const el = targetEl || document.getElementById('songList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🔍</div>
@@ -879,6 +884,10 @@ async function switchSingerTab(tab, btn) {
 }
 
 async function loadSingerDetail(singerMid, tab) {
+  // 详情页头部/页签与 #singerDetailContent 同在 #songList 内（见 openSingerDetail）。
+  // 列表必须渲染进 #singerDetailContent，**不能**渲染进 #songList ——
+  // 后者会把头部（返回/订阅）与页签一起 innerHTML 掉，用户被卡在详情页里出不来，
+  // switchSingerTab 也随之不可达。
   const el = document.getElementById('singerDetailContent');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
   const singer = state.get('currentSinger');
@@ -891,7 +900,7 @@ async function loadSingerDetail(singerMid, tab) {
       if (reqId !== _typeSearchReqId) return;
       setState('songs', songs);
       _searchType = 'song';
-      renderSongList(songs);
+      renderSongList(songs, el);
       document.getElementById('batchToolbar').style.display = (songs.length && _searchBatchMode) ? 'flex' : 'none';
       updateBatchInfo();
     } else {
@@ -899,12 +908,9 @@ async function loadSingerDetail(singerMid, tab) {
       if (reqId !== _typeSearchReqId) return;
       const albums = (result && result.albums) || [];
       setState('albums', albums);
-      renderAlbumList(albums);
+      renderAlbumList(albums, el);
       document.getElementById('batchToolbar').style.display = 'none';
     }
-    // 把内容移入 songList
-    const content = document.getElementById('singerDetailContent');
-    document.getElementById('songList').innerHTML = content.innerHTML;
   } catch (e) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">⚠️</div>
@@ -940,13 +946,22 @@ addDlChangeListener(() => {
 // 屏蔽列表变化（启动预取完成/屏蔽/恢复）→ 当前结果视图即时重渲染
 onDismissChanged(() => { if (_dlLastList) renderSongList(_dlLastList); });
 
-function renderSongList(list) {
-  _dlLastList = list;
+/**
+ * @param {Array} list 单曲数组
+ * @param {HTMLElement|null} [targetEl] 渲染目标。默认 #songList；歌手详情内嵌时
+ *   传 #singerDetailContent（见 loadSingerDetail）。
+ */
+function renderSongList(list, targetEl = null) {
+  // 徽标重绘锚点只在「渲染到默认容器」时设置：四处重绘入口（:171/:179/:936/:941）
+  // 一律按默认容器重绘，若内嵌列表也设锚点，一次队列变化就会把详情页头部/页签
+  // 连壳一起 innerHTML 掉（就是本函数 targetEl 参数要解决的问题）。
+  if (targetEl) _dlLastList = null;
+  else _dlLastList = list;
   if (list !== _lastRenderedSongList) _rowIdx = -1; // 新结果集：行焦点归零；徽标重绘保持
   _lastRenderedSongList = list;
   dlEnsureHistoryLoaded(); // 首次渲染后拉一次下载历史，到达时自动重打徽标
   const _dlQueue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
-  const el = document.getElementById('songList');
+  const el = targetEl || document.getElementById('songList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🔍</div>

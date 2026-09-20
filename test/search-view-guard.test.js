@@ -29,6 +29,21 @@
  * 修法：号在**发起时**占（doSearch 开头），同一次搜索的链接识别与类型搜索共用
  *   一个号（doSearchByType 接收 reqId 参数）；接管与否改用返回值传递，无悬挂状态。
  *
+ * 增量132「歌手详情头部自毁」：
+ * 缺陷：openSingerDetail 把「头部（返回/订阅）+ 页签 + #singerDetailContent」整块写进
+ *   #songList；而 loadSingerDetail 的 el 取的是 #singerDetailContent，却调
+ *   renderSongList / renderAlbumList —— 这两个函数写的是 **#songList**。
+ *   于是 innerHTML 一替换，头部与页签（连同 #singerDetailContent 本身）全被销毁，
+ *   紧接着那句「把内容移入 songList」里 `getElementById('singerDetailContent')`
+ *   返回 null → 读 .innerHTML 抛 TypeError → 被 catch 写进一个已脱离文档的节点。
+ *   净效果：点进歌手后**返回按钮与页签消失，用户被卡在详情页**，switchSingerTab 不可达。
+ *   （commit 4d06dbc 初版导入即如此，不是近期回归。）
+ *
+ * 修法：renderSongList / renderAlbumList 增加 targetEl 参数（默认回退 #songList），
+ *   loadSingerDetail 把列表渲染进 #singerDetailContent，删掉内容搬运 hack。
+ *   注意锚点：传 targetEl 时必须清空 _dlLastList —— 四处重绘入口一律按默认容器重绘，
+ *   内嵌列表若也设锚点，一次队列变化就会把详情页连壳覆盖。
+ *
  * 渲染层模块顶层碰 document，node:test 无法真跑 —— 沿用本仓库的静态源码断言约定。
  * 扫描前一律 stripComments（本仓库有「注释里写代码示例」的惯例）。
  */
@@ -254,3 +269,77 @@ test('回归钉：搜索类型页签高亮只允许由 _syncSearchTypeTabs 单�
       `${fn}() 改了 _searchType 却没同步页签 —— 列表已是新类型、页签仍停在上一个类型，用户会以为结果错了`);
   }
 });
+
+// ── 增量132：歌手详情头部自毁 ───────────────────────────
+
+/** 枚举 function 声明名（本文件的渲染函数都是声明式；箭头函数形态本钉扫不到，见文末说明） */
+function allFnNames(src) {
+  return [...src.matchAll(/(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)]
+    .map((m) => m[1]);
+}
+
+test('自检: allFnNames 能列出本文件全部函数声明', () => {
+  const names = allFnNames(CODE);
+  assert.ok(names.length >= 30, `只列出 ${names.length} 个函数声明，本钉可能已失效`);
+  for (const n of ['renderSongList', 'renderAlbumList', 'loadSingerDetail', 'openSingerDetail']) {
+    assert.ok(names.includes(n), `allFnNames 漏了 ${n}`);
+  }
+});
+
+test('回归钉：loadSingerDetail 必须把列表渲染进 #singerDetailContent，不得重写 #songList', () => {
+  const body = fnBody(CODE, 'loadSingerDetail');
+  assert.ok(body.includes('singerDetailContent'),
+    'loadSingerDetail 需以 #singerDetailContent 为渲染目标（哨兵缺失，钉可能已失效）');
+
+  // 两个分支各自都要把 targetEl 传下去
+  assert.match(body, /renderSongList\([^;]*?,/,
+    'loadSingerDetail 的 songs 分支必须传 targetEl —— 否则 renderSongList 写 #songList，'
+    + '会把详情页头部（返回/订阅）与页签一起 innerHTML 掉，用户被卡在详情页出不来');
+  assert.match(body, /renderAlbumList\([^;]*?,/,
+    'loadSingerDetail 的 albums 分支必须传 targetEl（同上，否则切「全部专辑」后头部消失）');
+
+  assert.doesNotMatch(body, /getElementById\(\s*'songList'\s*\)/,
+    'loadSingerDetail 不得直接碰 #songList：它是子区域渲染函数，整块重写会连头部/页签一起销毁'
+    + '（旧的「把内容移入 songList」搬运 hack 就是这么来的）');
+});
+
+test('回归钉：写 #songList 的函数集合受限（子区域渲染函数不得重写整个容器）', () => {
+  const writers = allFnNames(CODE).filter((n) => {
+    const body = fnBody(CODE, n);
+    return body.includes("getElementById('songList')") && body.includes('innerHTML');
+  }).sort();
+
+  // 视图级渲染函数：它们渲染/清空的就是整个 #songList，属正常。
+  // backToSearch 属此类：它退出详情视图，清空整个容器（含详情壳）正是预期行为。
+  // 若确需新增，请先确认它渲染的是整个容器而不是其中一块 —— 后者必须走 targetEl。
+  const EXPECTED = ['backToSearch', 'openAlbumDetail', 'openSingerDetail',
+    'renderAlbumList', 'renderSingerList', 'renderSongList'];
+  assert.deepStrictEqual(writers, EXPECTED,
+    '写 #songList 的函数集合发生变化。新增者若只渲染容器内的一块（如详情页列表），'
+    + '必须改为渲染进自己的子容器，否则会把同级的头部/页签一起覆盖');
+});
+
+test('接线钉：renderSongList/renderAlbumList 的 targetEl 必须回退到 #songList', () => {
+  for (const fn of ['renderSongList', 'renderAlbumList']) {
+    const full = fnSrc(CODE, fn);
+    assert.match(full, new RegExp(`function\\s+${fn}\\([^)]*,[^)]*=\\s*null\\s*\\)`),
+      `${fn} 需有默认 null 的 targetEl 参数（不传时行为不变）`);
+    const body = fnBody(CODE, fn);
+    assert.match(body, /targetEl\s*\|\|\s*document\.getElementById\(\s*'songList'\s*\)/,
+      `${fn} 未传 targetEl 时必须仍渲染到 #songList —— 默认容器变了会让所有既有调用方渲染到空处`);
+  }
+});
+
+test('接线钉：内嵌渲染（传 targetEl）不得设置徽标重绘锚点', () => {
+  const body = fnBody(CODE, 'renderSongList');
+  const anchor = body.indexOf('_dlLastList = list');
+  assert.ok(anchor >= 0, 'renderSongList 需把本次列表记为徽标重绘锚点');
+  assert.ok(body.includes('targetEl'), 'renderSongList 需有 targetEl 判断（哨兵缺失，钉可能已失效）');
+  assert.ok(body.indexOf('targetEl') < anchor,
+    '锚点赋值必须受 targetEl 约束：传 targetEl（内嵌渲染）时不得设锚点 —— '
+    + '四处重绘入口（:171/:179/:936/:941）一律按默认容器重绘，'
+    + '内嵌列表若也设锚点，一次队列变化就会把详情页头部/页签连壳覆盖，本缺陷原地复活');
+});
+
+// 已知残余：allFnNames 只扫 `function 名(` 声明式写法。若将来用箭头函数新增
+// 一个「写 #songList」的渲染器，上面那条集合钉扫不到 —— 新增渲染器时请一并复核。
