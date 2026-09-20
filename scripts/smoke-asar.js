@@ -36,6 +36,12 @@
 const fs = require('fs');
 const path = require('path');
 
+// 判据住在 scripts/smoke-checks.cjs 一家（增量192）：本文件顶层就 process.exit()，
+// 判据留在原地就等于「没有测试能跑它」—— 而一条没人测的判据正是 8a 红了 5 个增量没人发现的原因。
+const {
+  stripJsComments, exportedNamesOf, unownedEsmExports, isPackageStale, pickBundleSource,
+} = require('./smoke-checks.cjs');
+
 const ROOT = path.resolve(__dirname, '..');
 
 // ── 断言框架 ────────────────────────────────────────────
@@ -50,16 +56,19 @@ function norm(p) {
   return String(p).replace(/^[\\/]+/, '').replace(/\\/g, '/');
 }
 
-/**
- * 剥离 JS 注释后再做符号断言。
- * 必须如此：bundle 是压缩产物，若某行 `window.resetEq = resetEq;` 被注释掉，
- * 裸正则仍会命中注释文本，把「断链」误报成「已挂载」——守卫就白设了。
- * 块注释用等长空格替换以保留行结构。
- */
-function stripJsComments(src) {
-  return String(src)
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+/** 递归取目录下所有文件（pred 缺省 = 全部；按扩展名筛是调用方的事） */
+function walkFiles(dir, pred) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return walkFiles(full, pred);
+    return (!pred || pred(e.name)) ? [full] : [];
+  });
+}
+
+/** 一组文件里最新的 mtime（无文件 → 0） */
+function newestMtime(files) {
+  return files.reduce((acc, p) => Math.max(acc, fs.statSync(p).mtimeMs), 0);
 }
 
 /** 定位 asar —— 显式参数 > release/ > .preview 下最新产物 */
@@ -191,30 +200,53 @@ if (lockRaw) {
 }
 
 // 7) 渲染层 bundle 存在且含本轮关键符号（防 bundle 被跳过）
+//
+//    ⚠ 内容锚判「最新鲜的那份构建产物」，不硬判 release/ 里的包（增量192）。
+//    `npm run verify` 的顺序是 build → smoke:asar，dist/ 必然反映当前代码；
+//    而 app.asar 只有跑过 `npm run package` 才更新 —— 本机它停在 9/18，于是 187 起
+//    每条内容锚都在说「逻辑被 tree-shake 掉了」，真相只是「包是旧的」（实测：
+//    锚串在 dist 产物里在、在这个旧包里 0 处）。旧包天天红 = 门禁失效，
+//    而且会训练人跳过这一条去看下一条，那才是真危险。
+//    退判时必须把"退判了"写在检查名里：发布前重打包后它会重新判包。
+//    CI 上顺序是 build → electron-builder --dir → smoke:asar，包必然新于检出 ⇒ 判包，
+//    这一支没有变松；只有"包比源码旧"的开发机才退判 dist/。
+//    陈旧度输入集取 src/ **全部**文件：内容锚里有来自 lang/*.json 与 *.html/*.css 的串，
+//    只扫 .js 会把"改了词条没重打包"判成"包是新鲜的"。
+//    包**成员**断言（第 1/2/9/10 项）不受此影响 —— 那些是"用户拿到的 exe"专属的事实。
+const RENDERER_JS = path.join(ROOT, 'src', 'renderer', 'js');
 const assets = [...set].filter((p) => /^dist\/renderer\/assets\/index-.*\.js$/.test(p));
-const bundle = assets.length ? (read(assets[0]) || '') : '';
+const asarBundleText = assets.length ? (read(assets[0]) || '') : '';
+
+/** 工作树 dist/ 里最新的渲染 bundle（verify 里就是刚刚 build 出来的那一份） */
+function newestDistBundle() {
+  const dir = path.join(ROOT, 'dist', 'renderer', 'assets');
+  if (!fs.existsSync(dir)) return '';
+  const cands = fs.readdirSync(dir).filter((f) => /^index-.*\.js$/.test(f)).map((f) => path.join(dir, f));
+  if (!cands.length) return '';
+  return fs.readFileSync(cands.reduce((a, b) => (fs.statSync(b).mtimeMs > fs.statSync(a).mtimeMs ? b : a)), 'utf8');
+}
+
+const packageStale = isPackageStale({
+  packageMtime: fs.statSync(ASAR).mtimeMs,
+  newestInputMtime: newestMtime(walkFiles(path.join(ROOT, 'src'))),
+});
+const resolvedBundle = pickBundleSource({
+  asarBundle: asarBundleText,
+  distBundle: newestDistBundle(),
+  stale: packageStale,
+});
+const bundle = resolvedBundle.text;
+check(`渲染层 bundle 断言源 = ${resolvedBundle.from}（app.asar ${packageStale ? '早于' : '不早于'} src/ 最新改动）`,
+  resolvedBundle.from !== 'none',
+  resolvedBundle.note || `包内 ${assets[0] || '无'} (${bundle.length} B)`);
+
 check('渲染层 bundle 含 refreshPlayerState（顶栏状态单一判据）',
-  /refreshPlayerState/.test(bundle), assets[0] ? `${bundle.length} B` : '未找到 bundle');
+  /refreshPlayerState/.test(bundle), `${bundle.length} B @ ${resolvedBundle.from}`);
 
 // 8) 渲染层子模块若被 tree-shake 或 re-export 断链，其 window 挂载会静默失效，
 //    而 vite build 照样成功 —— 这是「拆分真出事」的唯一兜底。
 //    期望清单一律从源码的 export 面**推导**，不硬编码（否则以后加函数时永远通过）。
-function exportedNamesOf(srcPath) {
-  if (!fs.existsSync(srcPath)) return null;
-  const src = fs.readFileSync(srcPath, 'utf8');
-  const acc = new Set();
-  for (const m of src.matchAll(/^\s*export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)) acc.add(m[1]);
-  for (const m of src.matchAll(/export\s*\{([^}]*)\}/g)) {
-    for (const part of m[1].split(',')) {
-      const n = part.trim().split(/\s+as\s+/).pop().trim();
-      if (n) acc.add(n);
-    }
-  }
-  return [...acc].sort();
-}
-
 const bundleNoComments = stripJsComments(bundle);
-const RENDERER_JS = path.join(ROOT, 'src', 'renderer', 'js');
 
 // 8a) EQ 簇 → player/eq.js
 //     两类导出要分开证，混在一起必然恒假（v1.0.27 发布时踩到：增量82 加了
@@ -222,27 +254,26 @@ const RENDERER_JS = path.join(ROOT, 'src', 'renderer', 'js');
 //     window」，于是门禁从那天起一直是红的）：
 //     ① 桥接面 —— player.js 从 eq.js import 的那几个，HTML onclick 只认 window，
 //        必须仍在 bundle 里挂上（这才会被 tree-shake / re-export 断链弄丢）；
-//     ② ESM-only —— 其余导出被别的渲染模块 import，压缩后必然改名，按 8b 的教训
-//        不能用标识符断言，改为「确实有人 import 它」+「消费方的字符串字面量仍在 bundle」。
-const eqNames = exportedNamesOf(path.join(RENDERER_JS, 'player', 'eq.js'));
-if (eqNames) {
-  const readJsDir = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) return readJsDir(full);
-    return /\.js$/.test(e.name) ? [full] : [];
-  });
+//     ② ESM-only —— 其余导出**得有人用**，但"用"有两种：别的渲染模块 import 它，
+//        或它被本模块内部调用（增量187 的 matchPresetName 是后者 —— 导出只为可测性，
+//        压缩器不会丢内部调用点）。旧判据只数前者，于是从 187 起这一支天天红；
+//        真正的死导出（只有声明处提到自己）现在照样咬得住，见 smoke-checks 的注释。
+const eqSrcPath = path.join(RENDERER_JS, 'player', 'eq.js');
+if (fs.existsSync(eqSrcPath)) {
+  const eqSrc = fs.readFileSync(eqSrcPath, 'utf8');
+  const eqNames = exportedNamesOf(eqSrc);
   const playerSrc = fs.readFileSync(path.join(RENDERER_JS, 'player.js'), 'utf8');
   const bridgeM = playerSrc.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/player\/eq\.js'/);
   const bridgeNames = bridgeM
     ? bridgeM[1].split(',').map((s) => s.trim().split(/\s+as\s+/).pop().trim()).filter(Boolean)
     : [];
-  const otherSrc = readJsDir(RENDERER_JS)
+  const otherSrc = walkFiles(RENDERER_JS, (n) => /\.js$/.test(n))
     .filter((p) => path.basename(p) !== 'eq.js')
     .map((p) => fs.readFileSync(p, 'utf8'))
     .join('\n');
   const missingMount = bridgeNames.filter((n) => !new RegExp(`window\\.${n}\\s*=`).test(bundleNoComments));
   const esmOnly = eqNames.filter((n) => !bridgeNames.includes(n));
-  const orphans = esmOnly.filter((n) => !new RegExp(`\\b${n}\\b`).test(otherSrc));
+  const orphans = unownedEsmExports({ selfSrc: eqSrc, otherSrc, names: esmOnly });
   const VIZ_ANCHORS = ['音频图初始化失败，频谱不可用'];
   const missingAnchor = VIZ_ANCHORS.filter((s) => !bundle.includes(s));
   const ok = bridgeNames.length === 6
@@ -253,11 +284,12 @@ if (eqNames) {
     `桥接 ${bridgeNames.length} 个`,
     esmOnly.length ? `ESM-only: ${esmOnly.join(', ')}` : '无 ESM-only 导出',
     missingMount.length ? '缺 window 挂载: ' + missingMount.join(', ') : '',
-    orphans.length ? '无人 import: ' + orphans.join(', ') : '',
-    missingAnchor.length ? 'bundle 缺消费方锚: ' + missingAnchor.join(' / ') : '',
+    orphans.length ? '无人使用（跨模块 import 与本模块内部调用都没有）: ' + orphans.join(', ') : '',
+    missingAnchor.length ? `bundle(${resolvedBundle.from}) 缺消费方锚: ` + missingAnchor.join(' / ') : '',
   ].filter(Boolean).join(' — ');
   check('渲染层 bundle：EQ 桥接函数全挂 window、ESM-only 导出仍被消费', ok, detail);
 }
+
 
 // 8b) syncTo* / 队列恢复 → player-sync.js：**不挂 window**，只被 app.js 内部调用。
 //
