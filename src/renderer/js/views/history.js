@@ -7,7 +7,7 @@ import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
-import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText } from '../historyFilters.js';
+import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText, deadRetryPayload, deadRetrySummary } from '../historyFilters.js';
 import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
 import { dlForgetKeys, songDlKey } from '../dlStatus.js';
 let historyPage = 0;
@@ -66,6 +66,9 @@ async function loadHistory() {
 
 function renderHistory(items, stats) {
   _historyItems = items || [];
+  // 「⬇ 重下失效」只在当前页确实有死账时出现：常态不占头部按钮位（头部空间是有限资源）
+  const redlBtn = document.getElementById('historyRedlBtn');
+  if (redlBtn) redlBtn.hidden = !_historyItems.some(s => s && s.missing);
   if (_historyDom.info && stats) {
     _historyDom.info.textContent = `总计 ${stats.total} 首 · 成功 ${stats.done || 0} · 失败 ${stats.error || 0}`;
   }
@@ -259,6 +262,48 @@ async function cleanDeadHistory() {
   }
 }
 
+/**
+ * 失效项批量重新下载（增量154）：「🧹 清理失效」的另一半意图 ——
+ * 文件被我删了但歌还想听 ⇒ 一次扔回下载队列，而不是逐条点 🔄。
+ * 与清理的两处刻意不同：① 不删记录（重下成功后 history.add 原地更新成新路径，
+ * 中途失败也还留着线索）；② 不动徽标集合（这首歌本来就在被重新下载）。
+ * 载荷不带 forceRedownload：确认到入队之间文件可能被同步盘放回来，
+ * 那时主进程查重会跳过它（计成 had），覆盖式重下才是错的。
+ */
+let _redlDeadBusy = false;
+async function redownloadDeadHistory() {
+  if (_redlDeadBusy) return;
+  _redlDeadBusy = true;
+  try {
+    const q = buildHistoryQuery({ keyword: historyFilter, status: 'done', source: _historySource }, 0, CLEAN_SCAN_LIMIT);
+    const r = await api.queryHistory({ ...q, markMissing: true });
+    const checked = ((r && r.items) || []).length;
+    const dead = (r && r.deadEntries) || [];
+    if (!dead.length) { showToast(deadSummary(0, checked), 'info'); return; }
+    if (!confirm(deadConfirmText(dead, checked, 'redownload'))) return;
+    const saveDir = getState('saveDir');
+    const tally = { added: 0, dup: 0, had: 0, fail: 0 };
+    for (const d of dead) {
+      const payload = deadRetryPayload(d, saveDir);
+      if (!payload) { tally.fail += 1; continue; }
+      try {
+        const res = await api.addToQueue(payload);
+        tally[classifyRetryResult(res)] += 1;
+      } catch (_e) {
+        tally.fail += 1;
+      }
+    }
+    showToast(deadRetrySummary(tally), tally.added ? 'success' : 'info', 5000);
+    if (tally.added) loadHistory(); // 页面上的 🚫 之外还多了「下载中」，列表得跟上
+    if (tally.added && typeof switchDlSubTab === 'function') switchDlSubTab('queue');
+  } catch (e) {
+    logger.warn('[history] 失效项重新下载失败:', e.message);
+    showToast('失效项重新下载失败：' + e.message, 'error');
+  } finally {
+    _redlDeadBusy = false;
+  }
+}
+
 function filterHistory() {
   const input = document.getElementById('historyFilter');
   historyFilter = input?.value?.trim() || '';
@@ -438,6 +483,7 @@ export {
   deleteHistoryItem,
   retryFailedFromHistory,
   cleanDeadHistory,
+  redownloadDeadHistory,
 }
 
 // ── 全局桥接（HTML onclick 兼容） ──────────────────────
@@ -454,6 +500,7 @@ window.playHistoryItem = playHistoryItem;
 window.exportHistoryM3u = exportHistoryM3u;
 window.retryFailedFromHistory = retryFailedFromHistory;
 window.cleanDeadHistory = cleanDeadHistory;
+window.redownloadDeadHistory = redownloadDeadHistory;
 
 // ── DOM 缓存初始化 ──────────────────────────────────
 _cacheHistoryDom();

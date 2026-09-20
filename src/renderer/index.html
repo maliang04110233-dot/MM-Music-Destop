@@ -373,6 +373,7 @@
               <button class="tab" onclick="exportHistoryM3u()" title="把本页已完成下载导出为 m3u 播放列表">⤴ 导出m3u</button>
               <button class="tab" id="historyRetryBtn" onclick="retryFailedFromHistory()" title="把所有失败记录重新入队（尊重当前关键词/来源筛选，最多 200 条）">🔁 重试失败项</button>
               <button class="tab" id="historyCleanBtn" onclick="cleanDeadHistory()" title="删除「文件已不在磁盘上」的成功记录（只清记录，不动任何文件；最多核对 2000 条）">🧹 清理失效</button>
+              <button class="tab" id="historyRedlBtn" onclick="redownloadDeadHistory()" title="把这些歌重新加入下载队列（历史记录先留着，下成后自动更新路径）" hidden>⬇ 重下失效</button>
               <button class="tab" onclick="showTrendPanel()" title="近 14 天按天统计">📊 趋势</button>
               <button class="tab" onclick="clearAllHistory()" data-i18n="history.clearAll">🗑 清空历史</button>
             </div>

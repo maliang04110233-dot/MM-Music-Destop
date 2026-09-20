@@ -68,18 +68,61 @@ function deadSummary(removed, checked) {
 }
 
 /**
- * 清理前确认文案（增量153）。两件事必须写在脸上：
+ * 清理/重下前确认文案（增量153，154 加 mode）。三件事必须写在脸上：
  * 只删记录不动文件；文件"不在"不等于"没了" —— 整库挪盘时全部记录都会被判失效，
- * 这时用户该取消而不是确认，所以把补救办法一起给出（放回原目录 / 扫描后自动接回）。
+ * 这时用户该取消而不是确认，所以把补救办法一起给出（放回原目录 / 扫描后自动接回）；
+ * 以及「删记录」和「重下这首歌」是两个不同意图，别把后者逼进前者。
+ * @param {'delete'|'redownload'} mode
  */
-function deadConfirmText(dead, checked) {
+function deadConfirmText(dead, checked, mode) {
   const list = dead || [];
   const shown = list.slice(0, 5).map(s => `  · ${s.title || s.id}${s.artist ? ' - ' + s.artist : ''}`).join('\n');
   const more = list.length > 5 ? `\n  …共 ${list.length} 条` : '';
-  return `发现 ${list.length} 条记录的文件已不在磁盘上${checked ? `（本轮核对 ${checked} 条）` : ''}：\n${shown}${more}\n\n`
+  const head = `发现 ${list.length} 条记录的文件已不在磁盘上${checked ? `（本轮核对 ${checked} 条）` : ''}：\n${shown}${more}\n\n`;
+  if (mode === 'redownload') {
+    return head
+      + '确认把这些歌重新加入下载队列？\n'
+      + '· 历史记录先留着：重新下成后会自动更新成新路径\n'
+      + '· 只想删记录、不想要这首歌了：改用「🧹 清理失效」\n'
+      + '· 文件其实还在别处：先「取消」，把文件放回原目录或在本地曲库重新扫描（被改名的会自动接回）';
+  }
+  return head
     + '确认删除这些历史记录？\n'
     + '· 只删记录，磁盘上任何文件都不会被改动\n'
-    + '· 歌若只是挪了目录/换了硬盘，请先「取消」：把文件放回原目录，或在本地曲库重新扫描（被改名的文件会自动接回）';
+    + '· 歌若只是挪了目录/换了硬盘，请先「取消」：把文件放回原目录，或在本地曲库重新扫描（被改名的文件会自动接回）\n'
+    + '· 还想再听这些歌：别删记录，用「⬇ 重新下载失效项」（命令面板 Ctrl+K 可搜到）';
 }
 
-export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText };
+/**
+ * 死账行 → addToQueue 载荷（增量154）。
+ * 刻意不带 forceRedownload：判活是点击前那一刻的 stat，从确认到入队之间文件可能被
+ * 同步盘放回来，那时主进程的查重（findDownloaded 自己核磁盘）应当跳过它，
+ * 而不是覆盖式重下一遍。
+ * @returns {object|null} 缺主键 ⇒ null（没 id/source 的歌根本下不了，别造半成品载荷）
+ */
+function deadRetryPayload(entry, saveDir) {
+  if (!entry || typeof entry !== 'object') return null;
+  const id = entry.id == null ? '' : String(entry.id);
+  const source = entry.source == null ? '' : String(entry.source);
+  if (!id || !source) return null;
+  return {
+    id, source,
+    title: String(entry.title || ''),
+    artist: String(entry.artist || ''),
+    album: String(entry.album || ''),
+    saveDir,
+    quality: entry.quality || 'standard',
+    cover: '',
+    duration: 0,
+  };
+}
+
+/** 失效项重下汇总 → toast（一首都没入队时用 ℹ️，不给自己发成功） */
+function deadRetrySummary(tally) {
+  const t = tally || {};
+  const icon = t.added ? '⬇' : 'ℹ️';
+  return `${icon} 失效项重新下载：入队 ${t.added || 0}、已在队列 ${t.dup || 0}、`
+    + `文件又回来了跳过 ${t.had || 0}、失败 ${t.fail || 0}`;
+}
+
+export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText, deadRetryPayload, deadRetrySummary };

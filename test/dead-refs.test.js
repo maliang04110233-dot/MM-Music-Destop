@@ -111,9 +111,12 @@ test('pickDeadEntries：只挑判死且认得出身份的行，按 source:id 去
     null,
     'junk',
   ]);
+  // 增量154 起载荷多两个字段（重下要用 album/quality）：不变量随消费方扩了，
+  // 改的是期望值而不是放松断言 —— 键集仍需逐字对上，多一个少一个都算漂移。
+  // 注意 quality 是空串不是 'standard'：默认值归入队载荷那一家管，这里只搬运
   assert.deepEqual(picked, [
-    { id: '1', source: 'netease', title: '晴天', artist: '周杰伦' },
-    { id: '2', source: 'qq', title: '', artist: '' },
+    { id: '1', source: 'netease', title: '晴天', artist: '周杰伦', album: '', quality: '' },
+    { id: '2', source: 'qq', title: '', artist: '', album: '', quality: '' },
   ]);
   for (const bad of [null, undefined, 'x', {}]) {
     assert.deepEqual(pickDeadEntries(bad), []);
