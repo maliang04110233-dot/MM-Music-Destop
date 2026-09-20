@@ -674,6 +674,9 @@ async function doNaturalSearch() {
 
 // ── 歌手渲染 ─────────────────────────────────────────
 function renderSingerList(list) {
+  // 非单曲视图：清空徽标重绘锚点。否则队列/屏蔽变化（:171/:179/:888/:893）会把
+  // 本列表盖成上次的单曲搜索结果——四处重绘入口只判 `if (_dlLastList)`，不判视图类型。
+  _dlLastList = null;
   const el = document.getElementById('songList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state">
@@ -713,6 +716,7 @@ function renderSingerPagination(page, count, total) {
 
 // ── 专辑渲染 ─────────────────────────────────────────
 function renderAlbumList(list) {
+  _dlLastList = null; // 非单曲视图：同上，防止被陈旧单曲列表覆盖
   const el = document.getElementById('songList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state">
@@ -801,6 +805,7 @@ async function downloadAlbum(albumMid, source) {
 let _singerDetailTab = 'songs'; // 'songs' | 'albums'
 
 async function openSingerDetail(singerMid, singerName, source) {
+  _dlLastList = null; // 歌手详情外壳（头部+页签）也是非单曲视图
   const el = document.getElementById('songList');
   el.innerHTML = `
     <div class="singer-detail-header">
@@ -868,6 +873,7 @@ async function loadSingerDetail(singerMid, tab) {
 }
 
 function backToSearch() {
+  _dlLastList = null; // 退出歌手/专辑视图：锚点失效（有 kw 时 doSearch→renderSingerList 会再清一次）
   const kw = getState('currentKeyword');
   if (kw) {
     _searchType = 'singer';
