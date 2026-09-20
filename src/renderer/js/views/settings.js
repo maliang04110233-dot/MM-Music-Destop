@@ -495,6 +495,8 @@ const GENERAL_PREFS = {
   autoCover:     { key: 'autoCover',     default: true,          el: 'settingAutoCover' },
   notifications: { key: 'notifications',  default: true,          el: 'settingNotifications' },
   clipboardWatch: { key: 'clipboardWatch', default: true,         el: 'settingClipboardWatch' },
+  // 订阅新歌的周期检查间隔（主进程 _intervalMs 读，档位与上下限的家在 subscriptions.js）
+  subscriptionCheckIntervalHours: { key: 'subscriptionCheckIntervalHours', default: 6, el: 'settingSubCheckInterval' },
   playProgressMemory: { key: 'playProgressMemory', default: true, el: 'settingPlayProgressMemory' },
   globalShortcuts: { key: 'globalShortcuts', default: true, el: 'settingGlobalShortcuts' },
   theme:         { key: 'theme',         default: 'default',     el: 'settingTheme' },

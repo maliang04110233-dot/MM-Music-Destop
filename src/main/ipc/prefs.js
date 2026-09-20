@@ -18,10 +18,14 @@ const { DIR_PREF_KEYS } = approvedDirs;
 
 // H9: Whitelist of allowed preference keys to prevent arbitrary key injection
 // 键全集 = 主进程 prefs.get() 读取的键 ∪ 渲染层 getPref/setPref 使用的键（见 src/renderer/js/）
+// 白名单只登记「有消费方、且有写入口」的键（增量189）：挂了名字却没代码读的键，
+// set-pref 照样回 true，等于对调用方承诺"设置已保存"而这件事永远不会发生；被代码
+// 读着却进不了白名单的键，则是谁都改不动的死旋钮。两个方向由
+// test/prefs-key-reconciliation.test.js 双向对账，新键与它的消费方/控件必须同一次落地。
 const ALLOWED_PREF_KEYS = new Set([
   // 目录 / 通用
   'saveDir', 'localDirPath', 'theme', 'language',
-  'quality', 'downloadQuality', 'concurrency', 'speedLimit', 'notifications',
+  'quality', 'concurrency', 'speedLimit', 'notifications',
   // 命名模板（统一键名：下载页与设置页共用 namingTemplate）
   'namingTemplate',
   // 分平台音质覆盖表：平台 id → standard/hq/lossless，未列出的平台沿用 quality
@@ -33,7 +37,6 @@ const ALLOWED_PREF_KEYS = new Set([
   // 下载完成钩子开关（autoLyric/autoCoverOnDone.js 读，设置页写）
   'autoLyric', 'autoCover',
   // 播放行为
-  'autoPlay', 'showLyrics', 'miniPlayerAlwaysOnTop',
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
   'playbackRate', 'globalShortcuts',
   // 播放淡入/淡出档位（ms，player/fade.js 读写）
@@ -44,6 +47,8 @@ const ALLOWED_PREF_KEYS = new Set([
   'dismissedSongs',
   // 剪贴板链接识别开关（主进程 clipboardWatch 每 tick 读取）
   'clipboardWatch',
+  // 订阅新歌的周期检查间隔（小时，主进程 subscriptions._intervalMs 读，设置页写）
+  'subscriptionCheckIntervalHours',
   // 下载队列全部完成后的动作（none/quit/sleep/shutdown，渲染层 afterQueueDone.js 读写）
   'afterQueueDone',
   // 定时下载任务列表（渲染层 scheduledDownload.js 读写：[{id, at, lines}]）

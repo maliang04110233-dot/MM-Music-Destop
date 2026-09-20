@@ -161,6 +161,8 @@
   "settings.general.autoCover": "下载完成后自动获取封面嵌入音频文件（已有封面不覆盖）",
   "settings.general.notifications": "下载完成时显示通知",
   "settings.general.clipboardWatch": "识别剪贴板中的音乐链接并弹出下载提示",
+  "settings.general.subCheckInterval": "订阅新歌检查间隔（小时）",
+  "settings.general.subCheckIntervalHint": "后台每隔多久检查一次已订阅的歌单/歌手有无新歌（1–168 小时）",
   "settings.general.playbackBehaviorTitle": "播放行为",
   "settings.general.playProgressMemory": "记忆播放进度（关闭后下次从断点继续）",
   "settings.general.dlPathTemplateTitle": "下载路径模板",

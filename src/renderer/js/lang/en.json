@@ -161,6 +161,8 @@
   "settings.general.autoCover": "After download, fetch cover art and embed it into the audio file (existing covers are kept)",
   "settings.general.notifications": "Show notification when download completes",
   "settings.general.clipboardWatch": "Detect copied music links and show a download prompt",
+  "settings.general.subCheckInterval": "New-song check interval (hours)",
+  "settings.general.subCheckIntervalHint": "How often subscribed playlists/artists are checked for new songs (1–168 hours)",
   "settings.general.playbackBehaviorTitle": "Playback Behaviour",
   "settings.general.playProgressMemory": "Remember play progress (resume after restart)",
   "settings.general.dlPathTemplateTitle": "Download Path Template",

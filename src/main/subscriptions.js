@@ -18,6 +18,8 @@
  *     到达时整单变「新增」，正是本文件头一条要防的刷屏）。判定收成
  *     applyCheckToEntry 一家：空/非数组只记账，不碰快照与未读。
  *   - 调度器与 playCache GC 同风格：unref 定时器，不阻止进程退出。
+ *   - 检查间隔是用户可设的档位（设置页写 subscriptionCheckIntervalHours），本模块
+ *     只信"有限、正数、夹在可用区间内"三个条件；不信任输入，因为写入口是 IPC 边界。
  */
 
 const api = require('../api');
@@ -31,6 +33,11 @@ const MAX_NEW_SONGS = 100;          // 单订阅保留的新歌列表上限（�
 const PLAYLIST_LIMIT = 200;
 const SINGER_LIMIT = 50;
 const DEFAULT_CHECK_INTERVAL_HOURS = 6;
+// 间隔可由用户在设置页改（subscriptionCheckIntervalHours），夹在这里而不是信任输入：
+// 下限取调度器醒来粒度的整数倍（比这更快也更快不了，等于给用户一个假档位），
+// 上限一星期（再大就事实上关掉了自动检查，却没有任何地方写着"已关闭"）。
+const MIN_CHECK_INTERVAL_HOURS = 1;
+const MAX_CHECK_INTERVAL_HOURS = 168;
 const INITIAL_CHECK_DELAY_MS = 30 * 1000;
 const CHECK_TICK_MS = 60 * 1000;    // 调度器醒来的粒度
 /** 一次"什么都没取到"的检查对用户说的那句话（渲染层直接显示，与 main 侧其它中文文案同源） */
@@ -93,7 +100,7 @@ function diffSongs(songs, lastSeenIds, cap = MAX_NEW_SONGS) {
 /**
  * 一次检查的写回（纯函数，无 I/O）：把「拿到了但没新歌」与「根本没拿到清单」分开记账。
  * 空数组 / 非数组 = 这次没取到数据 —— 只写 lastCheckError 并推进 lastCheckedAt
- * （不推进就会因为 _isDue 立刻到期，从每 6 小时退化成每 60s 打一次平台），
+ * （不推进就会因为 _isDue 立刻到期，从默认档的每 6 小时退化成每 60s 打一次平台），
  * 快照与未读红点一字不动：前者不能被空播成"已播种"，后者归用户"看过了"管。
  * @param {number} now 本次写回的时间戳（由调用方给，测试可确定）
  * @returns {{entry: object, freshCount: number, toEnqueue: Array<object>, empty: boolean}}
@@ -268,8 +275,9 @@ function _isDue(entry, now) {
 }
 
 function _intervalMs() {
-  const hours = Number(prefs.get('subscriptionCheckIntervalHours', DEFAULT_CHECK_INTERVAL_HOURS));
-  return (Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_CHECK_INTERVAL_HOURS) * 3600 * 1000;
+  const raw = Number(prefs.get('subscriptionCheckIntervalHours', DEFAULT_CHECK_INTERVAL_HOURS));
+  const hours = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CHECK_INTERVAL_HOURS;
+  return Math.min(MAX_CHECK_INTERVAL_HOURS, Math.max(MIN_CHECK_INTERVAL_HOURS, hours)) * 3600 * 1000;
 }
 
 // ── 调度器（main/index.js 在 whenReady 里 start）─────────
@@ -360,5 +368,9 @@ function unreadCount() {
 module.exports = {
   list, add, remove, update, markSeen, checkNow, unreadCount,
   startScheduler, stopScheduler, runCheck,
-  _internal: { buildKey, validateAdd, diffSongs, applyCheckToEntry, makeEntry, _isDue, _intervalMs, MAX_NEW_SONGS, EMPTY_CHECK_ERROR },
+  _internal: {
+    buildKey, validateAdd, diffSongs, applyCheckToEntry, makeEntry, _isDue, _intervalMs,
+    MAX_NEW_SONGS, EMPTY_CHECK_ERROR, CHECK_TICK_MS,
+    DEFAULT_CHECK_INTERVAL_HOURS, MIN_CHECK_INTERVAL_HOURS, MAX_CHECK_INTERVAL_HOURS,
+  },
 };

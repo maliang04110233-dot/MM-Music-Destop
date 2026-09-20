@@ -850,6 +850,11 @@
               <label class="setting-check"><input type="checkbox" id="settingNotifications" checked><span data-i18n="settings.general.notifications">下载完成时显示通知</span></label>
               <label class="setting-check"><input type="checkbox" id="settingClipboardWatch" checked><span data-i18n="settings.general.clipboardWatch">识别剪贴板中的音乐链接并弹出下载提示</span></label>
             </div>
+            <div class="setting-row">
+              <label class="setting-label" data-i18n="settings.general.subCheckInterval">订阅新歌检查间隔（小时）</label>
+              <input class="setting-input setting-input--num" id="settingSubCheckInterval" type="number" min="1" max="168" step="1" value="6">
+              <span class="setting-hint" data-i18n="settings.general.subCheckIntervalHint">后台每隔多久检查一次已订阅的歌单/歌手有无新歌（1–168 小时）</span>
+            </div>
             <button class="btn ghost" style="margin-top:8px" onclick="showWelcome()">📖 重新查看新手引导</button>
           </div>
         </div>
