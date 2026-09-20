@@ -32,7 +32,7 @@
   "search.singer": "🎤 歌手",
   "search.placeholder": "搜索歌曲、歌手、专辑...",
   "search.welcome.text": "输入关键词开始搜索",
-  "search.welcome.hint": "支持歌名、歌手、专辑，三大平台同时检索",
+  "search.welcome.hint": "支持歌名、歌手、专辑，多平台同时检索",
   "search.selectAll": "全选",
   "search.batchDownload": "⬇ 加入下载队列",
   "search.batchPlay": "▶ 批量播放",

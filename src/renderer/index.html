@@ -113,7 +113,7 @@
       <div class="home-hero">
         <div class="home-search-row">
           <input class="home-search-input" id="homeSearchInput"
-            placeholder="搜索歌曲、歌手、专辑…（支持直接粘贴网易云/QQ/B站/酷狗链接）"
+            placeholder="搜索歌曲、歌手、专辑…（支持直接粘贴各平台歌曲/歌单/专辑链接）"
             onkeydown="if(event.key==='Enter')homeHeroSearch(this.value)">
           <button class="home-search-btn" onclick="homeHeroSearch(document.getElementById('homeSearchInput').value)">🔍 搜索</button>
         </div>
@@ -189,7 +189,7 @@
                           <button class="tab" data-type="singer" onclick="switchSearchType('singer',this)" data-i18n="search.singer">🎤 歌手</button>
                         </div>
                         <div class="search-input-wrap">
-              <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴网易云/QQ/B站/酷狗链接）"
+              <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴各平台歌曲/歌单/专辑链接）"
                 onkeydown="searchInputKey(event)" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
               <button class="search-btn" onclick="doSearch()">🔍</button>
               <button class="search-btn" onclick="doNaturalSearch()" title="AI 搜索：用一句话描述想听的歌（需在 AI 音乐配置 API Key）">✨</button>
@@ -219,7 +219,7 @@
                 <div class="empty-state" id="welcomeScreen">
                   <div class="empty-icon">🎵</div>
                   <div class="empty-text" data-i18n="search.welcome.text">输入关键词开始搜索</div>
-                  <div class="empty-hint" data-i18n="search.welcome.hint">支持歌名、歌手、专辑，三大平台同时检索</div>
+                  <div class="empty-hint" data-i18n="search.welcome.hint">支持歌名、歌手、专辑，多平台同时检索</div>
                 </div>
               </div>
               <div class="pagination" id="pagination" style="display:none;"></div>

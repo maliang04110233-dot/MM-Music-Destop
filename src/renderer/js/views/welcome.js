@@ -31,9 +31,9 @@ function showWelcome() {
       <div class="welcome-title">🎧 欢迎使用 MusicDL</div>
       <div class="welcome-sub">三步上手，下载无损音乐</div>
       ${welcomeCard('📋', '复制或拖入链接，自动识别',
-        '把网易云 / QQ 音乐 / B 站的歌曲、歌单、专辑链接复制出来（或直接拖进窗口），应用会自动弹出识别条，一键加入队列。')}
+        '把各音乐平台的歌曲、歌单、专辑链接复制出来（或直接拖进窗口），应用会自动弹出识别条，一键加入队列。')}
       ${welcomeCard('🔐', '登录账号，解锁高音质',
-        '扫码登录后即可下载 HQ / 无损音质，未登录只能下载标准音质。',
+        '部分平台的高音质 / 无损需扫码登录解锁；免登录可直接下载的平台在「设置 → 平台账号」里标出。',
         `<button class="btn welcome-btn" onclick="welcomeGoto('accounts')">去登录</button>`)}
       ${welcomeCard('📂', '下载目录与命名规则',
         '默认保存到「音乐/MusicDownloader」，可修改目录、文件命名模板、并发数与限速。',
