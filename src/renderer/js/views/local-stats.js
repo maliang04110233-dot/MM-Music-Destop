@@ -26,7 +26,7 @@ export function setLibraryChangeHandler(fn) {
 export function showLibraryStats() {
   const localSongs = getState('localSongs');
   if (!localSongs || !localSongs.length) {
-    showToast('请先扫描本地音乐库', 'warn');
+    showToast('请先扫描本地曲库', 'warn');
     return;
   }
 
@@ -148,7 +148,7 @@ function showStatsModal(html) {
   overlay.innerHTML = `
     <div class="stats-panel">
       <div class="stats-header">
-        <span>📊 音乐库统计</span>
+        <span>📊 曲库统计</span>
         <button onclick="document.getElementById('statsModal').remove()">✕</button>
       </div>
       <div class="stats-body">${html}</div>
@@ -170,7 +170,7 @@ const _dupState = {
 export function detectDuplicateSongs() {
   const localSongs = getState('localSongs');
   if (!localSongs || !localSongs.length) {
-    showToast('请先扫描本地音乐库', 'warn');
+    showToast('请先扫描本地曲库', 'warn');
     return;
   }
 
