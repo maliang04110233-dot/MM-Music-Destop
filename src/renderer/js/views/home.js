@@ -463,7 +463,7 @@ function renderSection(meta, data) {
     // 只能把它包成 `{ok:true, data:[]}`，home.js 走的是**成功分支**。
     // 纯渲染层无法区分「真无数据」与「源失败」，故文案用「可能」而不断言
     // （断言会把「某榜今日确实为空」误报成故障），并复用重试能力。
-    renderSectionError(meta, _tr('home.sectionUnavailable', '该区块暂无内容（音源可能暂时不可用）'));
+    renderSectionError(meta, _tr('home.sectionUnavailable', '该区块暂无内容（平台可能暂时不可用）'));
     return;
   }
 

@@ -133,7 +133,7 @@ function loadAccountPlatforms() {
 function renderAccountSummary(split) {
   const el = document.getElementById('accountsSummary');
   if (!el) return;
-  el.innerHTML = '共 ' + esc(split.cookie.length + split.anonymous.length) + ' 个音源：' +
+  el.innerHTML = '共 ' + esc(split.cookie.length + split.anonymous.length) + ' 个平台：' +
     '<b>' + esc(split.cookie.length) + '</b> 个支持登录（VIP / 高品质下载），' +
     '<b>' + esc(split.anonymous.length) + '</b> 个免登录可用';
 }
@@ -184,14 +184,14 @@ function renderAccountCards(list) {
   grid.innerHTML = list.map(_accountCardHtml).join('');
 }
 
-/** 免登录音源只展示可用性，不给登录入口（避免点了无反应的按钮） */
+/** 免登录平台只展示可用性，不给登录入口（避免点了无反应的按钮） */
 function renderAnonymousPlatforms(list) {
   const wrap = document.getElementById('accountsAnonymous');
   if (!wrap) return;
   if (!list.length) { wrap.innerHTML = ''; return; }
   wrap.innerHTML =
     '<div class="accounts-anon-title">' +
-      esc(list.length + ' 个音源免登录直接下载') +
+      esc(list.length + ' 个平台免登录直接下载') +
     '</div>' +
     '<div class="accounts-anon-chips">' +
       list.map(p =>
@@ -450,7 +450,7 @@ function analyzeCookieUI(platform) {
 async function openLoginWindowUI(platformId, btn) {
   if (!btn) btn = event.target;
   if (!hasLoginWindow(platformId)) {
-    // 免登录音源没有登录入口，卡片也不会渲染这个按钮；这里兜底提示
+    // 免登录平台没有登录入口，卡片也不会渲染这个按钮；这里兜底提示
     showToast(platformName(platformId) + ' 免登录，不需要 Cookie', 'info');
     return;
   }

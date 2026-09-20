@@ -19,7 +19,7 @@
   "home.viewFullChart": "查看完整榜单（共 {n} 首）",
   "home.trackCount": "{n} 首",
   "home.filteredCount": "{m} / {n} 首 · 已筛选「{kw}」",
-  "home.sectionUnavailable": "该区块暂无内容（音源可能暂时不可用）",
+  "home.sectionUnavailable": "该区块暂无内容（平台可能暂时不可用）",
   "home.close": "关闭",
   "home.subtab.tops": "飙升榜",
   "home.subtab.hot": "热歌榜",
@@ -265,7 +265,7 @@
   "settings.general.globalShortcuts": "全局媒体键（键盘上的 ⏯ ⏮ ⏭ 键控制播放）",
   "settings.general.playbackBehaviorHint": "记忆播放进度：下次从断点继续；全局媒体键：用键盘上的 ⏯ ⏮ ⏭ 控制播放",
   "settings.sources.probeTitle": "源可用性",
-  "settings.sources.probeHint": "检测四个音源当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。",
+  "settings.sources.probeHint": "检测各音源（即歌曲所在的平台）当前是否可达。下载失败会自动换源，这里显示各源近期取流成功率（换源时优先选择健康的源）。",
   "settings.sources.probeBtn": "🔍 立即探测",
   "toast.probeDone": "探测完成：{ok}/{total} 个源可用"
 }

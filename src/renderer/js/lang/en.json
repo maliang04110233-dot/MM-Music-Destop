@@ -19,7 +19,7 @@
   "home.viewFullChart": "View full chart ({n} tracks)",
   "home.trackCount": "{n} tracks",
   "home.filteredCount": "{m} / {n} tracks · filtered by \"{kw}\"",
-  "home.sectionUnavailable": "No content in this section (the source may be temporarily unavailable)",
+  "home.sectionUnavailable": "No content in this section (the platform may be temporarily unavailable)",
   "home.close": "Close",
   "home.subtab.tops": "Trending",
   "home.subtab.hot": "Hot Songs",
@@ -265,7 +265,7 @@
   "settings.general.globalShortcuts": "Global media keys (control playback with ⏯ ⏮ ⏭ keys on your keyboard)",
   "settings.general.playbackBehaviorHint": "Resume progress: continue from where you left off. Global media keys: control playback with ⏯ ⏮ ⏭ on your keyboard",
   "settings.sources.probeTitle": "Source Availability",
-  "settings.sources.probeHint": "Check whether the four music sources are reachable. Failed downloads fall back to other sources automatically; this shows each source's recent success rate (healthy sources are preferred when switching).",
+  "settings.sources.probeHint": "Check whether each audio source (i.e. the platform a song is on) is reachable. Failed downloads fall back to other sources automatically; this shows each source's recent success rate (healthy sources are preferred when switching).",
   "settings.sources.probeBtn": "🔍 Probe Now",
   "toast.probeDone": "Probe finished: {ok}/{total} sources available"
 }
