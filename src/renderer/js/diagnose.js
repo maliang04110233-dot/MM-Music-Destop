@@ -12,6 +12,10 @@
  * 增量162 起「是什么」那一侧也搬了进来：行内失败徽标的短标签与颜色就是 DIAG_TABLE
  * 的字段，failureTagHtml 是全仓唯一的徽标渲染（队列行与历史行共用），
  * 「重试也没用、得先去设置」的鉴权判定同样只有 AUTH_CODES 一处定义。
+ *
+ * 增量164 起「最近的失败」不再只住队列（队列重启即清空，开机后两条 ⌘K 入口只会说
+ * 「没有失败任务」，而历史里全是红的）：失败清单由 pickFailureSource 定谁提供 ——
+ * 队列优先、队列没有才用历史兜底，两个入口共用 _failureSources 一份取数。
  */
 
 /** 码表：cause=给用户看的原因，advice=下一步建议，heal=可一键执行的动作，tag=行内徽标（短标签+语义色） */
@@ -166,12 +170,31 @@ function diagnoseFailure(taskId) {
   showDiagnosis(task, { retry: () => { if (typeof window.retryQueueItem === 'function') window.retryQueueItem(task.taskId); } });
 }
 
-/** 命令面板入口：诊断最近一个失败任务 */
-function diagnoseLatestFailure() {
+/**
+ * 命令面板入口：诊断最近一个失败任务。
+ * 队列是易失的（重启即清空），所以队列没有失败时退到下载历史 —— 历史里的 errorCode
+ * 从 158 起就在，162 起行内也有徽标，缺的只是让这两个入口够得着它。
+ */
+async function diagnoseLatestFailure() {
+  const { items, origin, latest } = await _failureSources();
+  if (!items.length) { showToast('队列和历史里都没有失败任务', 'info', 2000); return; }
+  if (origin === 'queue') { diagnoseFailure(latest.taskId); return; }
+  // 历史条目没有 taskId：照样弹同一份诊断，但不给「立即重试」（158 的规矩：缺动作就少一个按钮）
+  showDiagnosis(latest, {});
+}
+
+/**
+ * 取数：队列快照 + 最近的历史失败，交给 pickFailureSource 定谁说了算。
+ * 两个入口共用这一份 —— 各自查一遍的话，一个改了边界（limit）另一个就会拿旧口径说话。
+ */
+async function _failureSources() {
   const queue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
-  const failed = queue.filter(q => q.status === 'error');
-  if (!failed.length) { showToast('队列里没有失败任务', 'info', 2000); return; }
-  diagnoseFailure(failed[failed.length - 1].taskId);
+  let hist = [];
+  try {
+    const r = await api.queryHistory({ status: 'error', sort: 'recent', limit: 200 });
+    hist = (r && r.items) || [];
+  } catch (_e) { /* 历史读不到时只剩队列那一半 —— 别让整个入口失灵 */ }
+  return pickFailureSource(queue, hist);
 }
 
 /** 鉴权/VIP 类：自动重试没有意义，须先去设置处理（全仓唯一定义处，判定走 isAuthFailure） */
@@ -188,6 +211,8 @@ export function isAuthFailure(code) {
 
 /**
  * 纯聚合：error 任务按 classifyFailure 分组。
+ * 队列行与历史行都吃这个函数：分组只认 status/errorCode/error/title，
+ * taskId 缺就缺着（下面的 retryableFailureCount 因此能把"够不着重试的"筛出去）。
  * @returns {Array<{code,cause,advice,heal,songs:Array}>} 按数量降序
  */
 export function groupFailures(items) {
@@ -202,9 +227,29 @@ export function groupFailures(items) {
   return Array.from(groups.values()).sort((a, b) => b.songs.length - a.songs.length);
 }
 
+/**
+ * 纯取数规则：失败清单由谁提供 —— 队列优先，队列空（重启后必然）才由历史兜底。
+ * 刻意不相加去重：队列的 taskId 与历史的 id 不同源（一个是下载任务号、一个是平台曲目号），
+ * 拿 title 去凑是猜，宁可只在队列没有时兜底。
+ * `latest` 在这里算，不在调用处算：两个来源的次序正好相反（队列快照按入队顺序，
+ * 最新在尾；历史查询按 recent 排，最新在头），这条差别让每个入口各记一遍迟早记错。
+ * @returns {{items:Array, origin:?string, latest:?Object}}
+ */
+export function pickFailureSource(queueItems, historyItems) {
+  const q = (queueItems || []).filter(i => i && i.status === 'error');
+  if (q.length) return { items: q, origin: 'queue', latest: q[q.length - 1] };
+  const h = (historyItems || []).filter(i => i && i.status === 'error');
+  if (h.length) return { items: h, origin: 'history', latest: h[0] };
+  return { items: [], origin: null, latest: null };
+}
+
 /** 可自动重试（非鉴权类）的任务总数 */
 export function retryableFailureCount(groups) {
-  return groups.reduce((n, g) => n + (isAuthFailure(g.code) ? 0 : g.songs.length), 0);
+  // 两道闸门：鉴权类重试也没用（isAuthFailure）；历史来源没有 taskId，按下去就是空转
+  return groups.reduce(
+    (n, g) => n + (isAuthFailure(g.code) ? 0 : g.songs.filter(s => s.taskId).length),
+    0,
+  );
 }
 
 function _closeFailReport() {
@@ -212,7 +257,7 @@ function _closeFailReport() {
   if (el && el.parentNode) el.parentNode.removeChild(el);
 }
 
-function _renderFailReport(groups) {
+function _renderFailReport(groups, origin) {
   _closeFailReport();
   const total = groups.reduce((n, g) => n + g.songs.length, 0);
   const overlay = document.createElement('div');
@@ -227,7 +272,9 @@ function _renderFailReport(groups) {
   header.className = 'edit-header';
   const title = document.createElement('span');
   title.className = 'edit-title';
-  title.textContent = `🩹 失败诊断报告（${total} 首 · ${groups.length} 类原因）`;
+  // 出处要如实说出来：队列重启就空了，这份清单是历史里翻出来的，别让用户以为是当前队列
+  title.textContent = `🩹 失败诊断报告（${total} 首 · ${groups.length} 类原因）`
+    + (origin === 'history' ? ' · 来自下载历史' : '');
   const close = document.createElement('button');
   close.className = 'edit-close';
   close.textContent = '✕';
@@ -262,10 +309,22 @@ function _renderFailReport(groups) {
       for (const g of groups) {
         if (isAuthFailure(g.code)) continue;
         for (const s of g.songs) {
+          if (!s.taskId) continue; // 与 retryableFailureCount 同一条闸门：数进去的才按得动
           try { const r = await api.retryDownload(s.taskId); if (r && r.ok) ok++; } catch (_e) { /* 单个失败不影响整体 */ }
         }
       }
       showToast(ok ? `已重试 ${ok} 项` : '重试未成功，可稍后再试', ok ? 'success' : 'warn', 3000);
+    });
+    foot.appendChild(b);
+  }
+  if (origin === 'history') {
+    // 历史来源：逐首诊断/重下都在历史页那一行上，报告只负责说清"为什么红了一堆"
+    const b = document.createElement('button');
+    b.className = retryable > 0 ? 'btn' : 'btn btn-primary';
+    b.textContent = '📜 转到下载历史';
+    b.addEventListener('click', () => {
+      _closeFailReport();
+      if (typeof switchDlSubTab === 'function') switchDlSubTab('history');
     });
     foot.appendChild(b);
   }
@@ -276,12 +335,12 @@ function _renderFailReport(groups) {
   document.body.appendChild(overlay);
 }
 
-/** 入口：聚合队列里所有失败任务并弹报告 */
-function openFailureReport() {
-  const queue = (typeof getState === 'function' && getState('queueSnapshot')) || [];
-  const groups = groupFailures(queue);
-  if (!groups.length) { showToast('队列里没有失败任务', 'info', 2000); return; }
-  _renderFailReport(groups);
+/** 入口：聚合失败任务并弹报告（队列优先，队列空了看历史） */
+async function openFailureReport() {
+  const { items, origin } = await _failureSources();
+  const groups = groupFailures(items);
+  if (!groups.length) { showToast('队列和历史里都没有失败任务', 'info', 2000); return; }
+  _renderFailReport(groups, origin);
 }
 
 if (typeof document !== 'undefined') {
