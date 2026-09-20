@@ -517,7 +517,7 @@ async function doSearchByType(type, page, keyword, source, reqId = ++_typeSearch
     return items;
   } catch (e) {
     clearLoading();
-    showLoadError(e.message);
+    showLoadError(errBrief(e));
     return [];
   }
 }
@@ -714,7 +714,7 @@ async function doNaturalSearch() {
     }
   } catch (e) {
     clearLoading();
-    showLoadError(e.message || String(e));
+    showLoadError(errBrief(e));
   }
 }
 
@@ -826,7 +826,7 @@ async function openAlbumDetail(albumMid, source) {
     showToast(`专辑共 ${songs.length} 首`, 'info', 2000);
   } catch (e) {
     clearLoading();
-    showLoadError(e.message);
+    showLoadError(errBrief(e));
   }
 }
 
@@ -878,7 +878,7 @@ async function openSingerDetail(singerMid, singerName, source) {
     await loadSingerDetail(singerMid, _singerDetailTab);
   } catch (e) {
     clearLoading();
-    showLoadError(e.message);
+    showLoadError(errBrief(e));
   }
 }
 

@@ -19,6 +19,7 @@
 import { pickDroppedText, isLrcFilename, looksLikeLrc, MAX_LRC_BYTES } from '../dragText.js';
 import { planDropSongs, isDropAudioName } from '../dropPlay.js';
 import { playQueueIdx } from '../player.js';
+import { errBrief } from '../errBrief.js';
 
 let _depth = 0; // dragenter/dragleave 计数：子元素间穿梭不误隐藏
 
@@ -142,7 +143,7 @@ async function _handleLrcDrop(dt) {
   if (!f || !isLrcFilename(f.name)) return false; // 非歌词候选：维持原「文件不接管」语义
   if (f.size > MAX_LRC_BYTES) { showToast(`歌词文件过大（${Math.round(f.size / 1024)} KB）`, 'warn'); return true; }
   let lrc;
-  try { lrc = await f.text(); } catch (e2) { showToast('读取歌词文件失败：' + e2.message, 'error'); return true; }
+  try { lrc = await f.text(); } catch (e2) { showToast('读取歌词文件失败：' + errBrief(e2), 'error'); return true; }
   if (!lrc || !lrc.trim()) { showToast('歌词文件是空的', 'warn'); return true; }
   // .txt 名称无信息量，必须内容像 LRC（≥3 行时间戳）才敢覆盖 sidecar
   if (/\.txt$/i.test(f.name) && !looksLikeLrc(lrc)) { showToast(`「${f.name}」看起来不是歌词文本`, 'warn'); return true; }
@@ -155,7 +156,7 @@ async function _handleLrcDrop(dt) {
     if (typeof window.parseLrc === 'function') window.parseLrc(lrc);
     showToast('🎼 歌词已写入并生效', 'success');
   } catch (e2) {
-    showToast('写入失败：' + e2.message, 'error');
+    showToast('写入失败：' + errBrief(e2), 'error');
   }
   return true;
 }

@@ -101,9 +101,10 @@ test('errBrief.js 零依赖：不 import、不碰 api/window/document（纯函�
 
 const WIRED_VIEWS = ['playlist.js', 'history.js', 'subscriptions.js', 'ai-music.js',
   'download.js', 'settings.js', 'local.js', 'home.js', 'search.js',
-  'local-stats.js', 'nameBatch.js'];
+  'local-stats.js', 'nameBatch.js', 'dragdrop.js'];
 const WIRED_JS = ['abClip.js', 'app.js', 'artistGroups.js', 'converter-core.js', 'favorites.js',
-  'folderGroups.js', 'historyTrend.js', 'lyricEditor.js', 'm3uToPlaylist.js', 'playRetry.js'];
+  'folderGroups.js', 'historyTrend.js', 'lyricEditor.js', 'm3uToPlaylist.js', 'playRetry.js',
+  'updater.js'];
 
 test('全部接线视图各自 import errBrief（views 走 ../、js 走 ./）', () => {
   for (const f of WIRED_VIEWS) {
@@ -127,23 +128,31 @@ test('四视图各自 import errBrief，且 showToast 拼接里不再出现裸 e
   }
 });
 
-test('全局反向钉：整个渲染层任何 showToast 行不得再直拼 e.message（新代码同样受辖）', () => {
+test('全局反向钉：任何用户可见弹层/横幅调用行不得直拼异常 .message（不限变量名，新代码同样受辖）', () => {
+  // 170/171 的巡扫钉只认死变量名 `e.message`——dragdrop 的 e2、playlist 的 err、
+  // updater 的模板串插值就这样从钉眼下漏过去。教训与 168「点名必腐化」同源：
+  // 钉按形状扫，不按名字扫。
+  // 白名单 info|result 是"数据对象自带人话字段"（更新服务器/导入结果的 message），
+  // 不是异常栈文本；新增数据源撞钉时必须显式记账加名，而不是把钉改窄。
   const offenders = [];
   const walk = (dir) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, ent.name);
       if (ent.isDirectory()) { walk(p); continue; }
       if (!ent.name.endsWith('.js')) continue;
+      if (ent.name === 'errBrief.js') continue; // 人话层自身的 text = e.message 是定义处
       const src = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
       for (const line of src.split('\n')) {
-        if (/showToast\(/.test(line) && /\+ *(\(e\.message \|\| e\)|e\.message)/.test(line)) {
-          offenders.push(path.relative(R(), p));
-        }
+        if (/logger\./.test(line)) continue; // 开发日志留真话，保护钉另有专测
+        const sinks = /show[A-Z]\w*\(/.test(line) || /textContent\s*=\s*[^=\n]*\.message/.test(line);
+        const raw = /(?:^|[^\w.])(?!info\.|result\.)[A-Za-z_$][\w$]*\.message\b/.test(line)
+          && !/errBrief\(/.test(line);
+        if (sinks && raw) offenders.push(path.relative(R(), p));
       }
     }
   };
   walk(R('js'));
-  assert.deepEqual([...new Set(offenders)], [], '仍有 toast 直拼原始 e.message');
+  assert.deepEqual([...new Set(offenders)], [], '仍有弹层直拼原始 .message');
 });
 
 test('渲染进列表区的错误文案也走 errBrief（esc 包的是人话不是栈文本）', () => {

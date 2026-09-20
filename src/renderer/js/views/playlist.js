@@ -281,7 +281,7 @@ async function persistPlaylistOrder(from, to) {
     setState('userPlaylists', playlists);
     renderPlaylistList(playlists);
   } catch (err) {
-    showToast('排序保存失败: ' + (err.message || err), 'error');
+    showToast('排序保存失败: ' + errBrief(err), 'error');
     renderPlaylistDetailSongs(pl.songs || []);
   }
 }
@@ -768,7 +768,7 @@ async function restoreTrashedPlaylist(playlistId) {
       showToast((r && r.error) || '恢复失败', 'error');
     }
   } catch (err) {
-    showToast('恢复失败: ' + err.message, 'error');
+    showToast('恢复失败: ' + errBrief(err), 'error');
   }
 }
 
@@ -788,7 +788,7 @@ async function purgeTrashedPlaylist(playlistId) {
       showToast((r && r.error) || '删除失败', 'error');
     }
   } catch (err) {
-    showToast('删除失败: ' + err.message, 'error');
+    showToast('删除失败: ' + errBrief(err), 'error');
   }
 }
 

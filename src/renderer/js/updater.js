@@ -2,6 +2,8 @@
  * 自动更新 UI 模块
  * 监听主进程更新事件，显示更新提示弹窗
  */
+import { errBrief } from './errBrief.js';
+
 const _updateState = { checking: false, available: false, downloading: false, percent: 0 };
 
 // 保留转发：更新流程需要 toast 但本模块不直接依赖 toast.js
@@ -82,7 +84,7 @@ async function checkForUpdate() {
       showUpdate(`<div style="color:var(--neon-orange);">检查失败：${result.error || '未知错误'}</div>`);
     }
   } catch (err) {
-    showUpdate(`<div style="color:var(--neon-orange);">检查失败：${err.message}</div>`);
+    showUpdate(`<div style="color:var(--neon-orange);">检查失败：${errBrief(err)}</div>`);
   }
   _updateState.checking = false;
 }
@@ -117,7 +119,7 @@ async function downloadUpdate() {
     }
   } catch (err) {
     _updateState.downloading = false;
-    showUpdate(`<div style="color:var(--neon-orange);">下载失败：${err.message}</div>`);
+    showUpdate(`<div style="color:var(--neon-orange);">下载失败：${errBrief(err)}</div>`);
   }
 }
 
