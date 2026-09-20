@@ -24,6 +24,7 @@ import { openSongRowMenu } from '../songMenu.js';
 import { filterHomeSection } from '../homeFilter.js';
 import { platIdsOf, normalizePlatTab, nextPlatTab, HOME_PLAT_LS_KEY } from '../homePlatTabs.js';
 import { buildFallbackNotice } from '../fallbackNotice.js';
+import { PLAY_ALL_LIMIT, planSectionPlay, playAllToastText } from '../homePlayAll.js';
 
 // 首页榜单过滤词（会话级；小写化在 filterHomeSection 内统一处理）
 let _homeFilterStr = '';
@@ -576,7 +577,12 @@ function listHtml(meta, pairs, total) {
   const more = total > LIST_FOLD
     ? `<button class="list-more-btn" onclick="openHomeChartModal('${escQ(meta.sec)}')">${esc(_tr('home.viewFullChart', `查看完整榜单（共 ${total} 首）`, { n: total }))} ▸</button>`
     : '';
-  return songRowsHtml(meta, shown) + more;
+  // 折叠视图只画 8 行，整单连播走 planSectionPlay 从原始数据重取 ——
+  // 按钮若只播 shown，用户点的「播放全部」就永远只有前 8 首。
+  // 超出入队上限时按钮写「前 N 首」：写「共 233 首」却只连播 100 首等于骗人。
+  const playAllCount = total > PLAY_ALL_LIMIT ? `前 ${PLAY_ALL_LIMIT}` : `共 ${total}`;
+  const playAll = `<button class="list-more-btn" onclick="playAllHomeChart('${escQ(meta.sec)}')">${esc(_tr('home.playAllChart', `▶ 播放全部（${playAllCount} 首）`, { n: total }))}</button>`;
+  return playAll + songRowsHtml(meta, shown) + more;
 }
 
 /**
@@ -765,6 +771,7 @@ function openHomeChartModal(sec) {
       <div class="playlist-modal-header">
         <span class="playlist-modal-title">${esc(_tr(meta.i18n, meta.title))} · ${esc(platformName(_platOf(sec)))}</span>
         <span class="home-chart-count">${esc(countText)}</span>
+        <button class="btn-sm" onclick="playAllHomeChart('${escQ(sec)}')">${esc(_tr('home.playAllChartBtn', '▶ 播放全部'))}</button>
         <button class="playlist-modal-close" aria-label="${escAttr(_tr('home.close', '关闭'))}" onclick="closeHomeChartModal()">✕</button>
       </div>
       <div class="playlist-modal-body" id="homeChartBody">${songRowsHtml(meta, pairs)}</div>
@@ -1028,6 +1035,32 @@ async function playAllRecent() {
   }
 }
 
+/**
+ * 榜单整单连播（分区卡片与完整榜单弹层共用一个入口）。
+ *
+ * 数据从 _getSection 原始数组重取，而不是读 DOM：折叠视图只有 8 行、弹层是快照，
+ * 两者都可能与 live 数组错位。过滤词与 planSectionPlay 里复用同一个纯函数，
+ * 所以「筛完再播放全部」与用户当下看到的列表严格一致。
+ */
+async function playAllHomeChart(sec) {
+  try {
+    const meta = _findMeta(sec);
+    if (!meta) return;
+    closeHomeChartModal(); // 弹层若开着先关掉，否则遮罩会压在播放器上面
+    const { songs, total, truncated } = planSectionPlay(_getSection(sec), _homeFilterStr);
+    if (!songs.length) return;
+    setState('songs', songs);
+    setState('playQueue', songs);
+    setState('playIdx', 0);
+    setState('currentPlaying', songs[0]);
+    await loadAndPlay(songs[0]);
+    showToast(playAllToastText(_tr(meta.i18n, meta.title), songs.length, total, truncated), 'success', 2500);
+  } catch (e) {
+    logger.warn('[playAllHomeChart] error:', e);
+    showToast('播放失败：' + (e.message || e), 'error', 3000);
+  }
+}
+
 // ── ES Module 导出 ────────────────────────────────────────
 export {
   HOME_PLATFORMS,
@@ -1048,6 +1081,7 @@ export {
   homeHeroSearch,
   loadHomeStats,
   playAllRecent,
+  playAllHomeChart,
   playRecentSong,
   renderRecentlyPlayed,
 };
@@ -1067,6 +1101,7 @@ window.quickSearch = quickSearch;
 window.homeHeroSearch = homeHeroSearch;
 window.loadHomeStats = loadHomeStats;
 window.playAllRecent = playAllRecent;
+window.playAllHomeChart = playAllHomeChart;
 window.playRecentSong = playRecentSong;
 window.renderRecentlyPlayed = renderRecentlyPlayed;
 
