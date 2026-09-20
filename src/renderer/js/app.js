@@ -19,6 +19,7 @@ import { retryAfterPlayFailure } from './playRetry.js';
 import { pickQueueCopyRows, queueCopyToastText } from './queueCopy.js';
 import { toTrackLines } from './songListText.js';
 import { copyText } from './songShare.js';
+import { skeletonHtml, SKEL_ROWS } from './skeleton.js';
 import './router.js';
 
 // 播放器和快捷键
@@ -714,7 +715,7 @@ async function openPlaylistModal(platform, id, name) {
   document.getElementById('playlistModalTitle').textContent = '📀 ' + name;
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
+  body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载中...');
 
   state.setPlaylistMeta({ platform, id, name });
   state.setPlaylistSongs([]);
@@ -1096,7 +1097,7 @@ async function openAlbumView(albumMid, source, albumName) {
   document.getElementById('playlistModalTitle').textContent = '💿 ' + (albumName || '专辑');
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div> 加载专辑中...</div>';
+  body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载专辑中...');
 
   state.setPlaylistMeta({ platform: source, id: albumMid, name: albumName || '专辑' });
   state.setPlaylistSongs([]);

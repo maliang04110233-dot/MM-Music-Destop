@@ -23,6 +23,7 @@ import { resolveQuality } from '../quality.js';
 import { openSongRowMenu } from '../songMenu.js';
 import { filterHomeSection } from '../homeFilter.js';
 import { platIdsOf, normalizePlatTab, nextPlatTab, HOME_PLAT_LS_KEY } from '../homePlatTabs.js';
+import { skeletonHtml } from '../skeleton.js';
 import { buildFallbackNotice } from '../fallbackNotice.js';
 import { PLAY_ALL_LIMIT, planSectionPlay, playAllToastText } from '../homePlayAll.js';
 
@@ -188,19 +189,14 @@ function _platState(plat) {
 }
 
 /**
- * 骨架屏由 JS 生成，避免在 HTML 里重复几十段同样标记。
- *
- * 行数取 LIST_FOLD（而非写死的 5）：骨架的作用是**占位** ——
- * 它和真实内容的高度差会表现为「数据到位的瞬间页面跳一下」。
- * 榜单折叠到 8 行后，这里也同步成 8 行，跳变才真正消失。
- * 封面尺寸同理，必须与 .top-song-cover 的 36px 一致。
+ * 首页这一节该出哪种骨架。标记本身在 js/skeleton.js（全站唯一实现），
+ * 这里只保留首页的两个决定：
+ *   - 行数取 LIST_FOLD 而非写死：骨架的作用是占位，它和真实内容的高度差
+ *     会表现为「数据到位的瞬间页面跳一下」；榜单折叠到 8 行，这里就同步 8 行。
+ *   - 封面 36px 是 skeleton.js 的基准形状（与 .top-song-cover 一致），故不传修饰。
  */
-function _skeletonHtml(kind) {
-  if (kind === 'grid') return '<div class="skel-card"></div>'.repeat(6);
-  const row = '<div class="skel-row"><div class="skel-avatar"></div>'
-    + '<div class="skel-lines"><div class="skel-line w60"></div>'
-    + '<div class="skel-line w40"></div></div></div>';
-  return row.repeat(LIST_FOLD);
+function _homeSkel(kind) {
+  return kind === 'grid' ? skeletonHtml('grid', 6) : skeletonHtml('list', LIST_FOLD);
 }
 
 // ── 骨架构建 ──────────────────────────────────────────────
@@ -230,7 +226,7 @@ function renderHomeShell() {
           ${p.sections.map((s, i) => `<button class="plat-chip${i === 0 ? ' active' : ''}" role="tab" aria-selected="${i === 0}" data-sec="${escAttr(s.sec)}" onclick="showHomeSection('${escQ(p.plat)}','${escQ(s.sec)}',this)">${esc(_tr(s.i18n, s.title))}</button>`).join('')}
         </div>
       </div>
-      ${p.sections.map((s, i) => `<div class="home-sec home-sec--${s.kind}" id="${_domId(s.sec)}" data-sec="${escAttr(s.sec)}"${i === 0 ? '' : ' hidden'}>${_skeletonHtml(s.kind)}</div>`).join('')}
+      ${p.sections.map((s, i) => `<div class="home-sec home-sec--${s.kind}" id="${_domId(s.sec)}" data-sec="${escAttr(s.sec)}"${i === 0 ? '' : ' hidden'}>${_homeSkel(s.kind)}</div>`).join('')}
     </section>`;
   }).join('');
 
@@ -367,7 +363,7 @@ async function reloadPlatform(plat) {
   homeState.plat[plat] = { status: 'idle', sections: {}, ok: 0, fail: 0 };
   def.sections.forEach(s => {
     const el = document.getElementById(_domId(s.sec));
-    if (el) el.innerHTML = _skeletonHtml(s.kind);
+    if (el) el.innerHTML = _homeSkel(s.kind);
   });
   _refreshPlatformState(plat);
   await loadPlatform(plat);

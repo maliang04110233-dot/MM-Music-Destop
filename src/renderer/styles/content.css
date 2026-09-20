@@ -934,18 +934,37 @@
 .stat-body { min-width: 0; display: flex; flex-direction: column; }
 
 /* ══════════════════════════════════════════════════════════
-   推荐区骨架屏（替代转圈 spinner，减少加载跳变）
+   骨架屏（替代转圈 spinner，减少加载跳变）
+   生成逻辑在 js/skeleton.js，这里只有形状。
    ══════════════════════════════════════════════════════════ */
 .skel-row {
   display: flex; align-items: center; gap: var(--sp-3);
   padding: var(--sp-1) var(--sp-2); border-radius: var(--r-md);
 }
-/* 尺寸对齐 .top-song-cover 的 36px：骨架与真实内容高度一致，加载完不跳 */
+/* 基准 36px 对齐首页榜单的 .top-song-cover；其余形状由修饰类换 --skel-thumb，
+   数值必须与容器里真实行的封面同尺寸 —— 差几个像素就会表现为"加载完页面一跳"，
+   而跳变正是骨架屏要消灭的东西。钉测 test/skeleton-loading.test.js 逐条比对数值。 */
 .skel-avatar {
-  width: 36px; height: 36px; border-radius: var(--r-sm); flex-shrink: 0;
+  width: var(--skel-thumb, 36px); height: var(--skel-thumb, 36px);
+  border-radius: var(--r-sm); flex-shrink: 0;
   background: linear-gradient(90deg, var(--bg-deep) 25%, var(--bg-hover) 50%, var(--bg-deep) 75%);
   background-size: 200% 100%;
   animation: skel-shimmer 1.4s infinite linear;
+}
+/* 搜索结果曲目行 = .song-row（44px 封面，padding 8/12） */
+.skel-row--song { --skel-thumb: 44px; padding: 8px 12px; }
+/* 专辑行 = .album-row（56px 封面，padding 10/12） */
+.skel-row--album { --skel-thumb: 56px; padding: 10px 12px; }
+/* 歌手行 = .singer-row（48px 圆头像，padding 10/16） */
+.skel-row--singer { --skel-thumb: 48px; padding: 10px 16px; }
+.skel-row--singer .skel-avatar { border-radius: 50%; }
+/* 本地曲库行 = .local-row（40px 封面，gap 10，padding 8/10） */
+.skel-row--local { --skel-thumb: 40px; gap: 10px; padding: 8px 10px; }
+/* 加载状态文字：保留原 spinner 的文案（骨架不发声，靠它说明"在等什么"），
+   分量刻意低于内容 —— 用正文弱化色，不抢 empty-state 的层级。 */
+.skel-cap {
+  font-size: 12px; color: var(--neon-dim);
+  padding: 4px 12px 8px;
 }
 .skel-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .skel-line {

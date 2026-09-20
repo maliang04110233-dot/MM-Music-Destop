@@ -16,6 +16,7 @@ import { VirtualScroller } from '../virtualList.js';
 // 转码共用弹窗 + 批量 runner（下载页/转换页/本地库三处共用）
 import { openConvertModal, runConvertBatch } from '../converter-core.js';
 import { showContextMenu } from '../contextMenu.js';
+import { skeletonHtml, SKEL_ROWS } from '../skeleton.js';
 import {
   collectProbeTargets, runSequentialScan, summarizeProbe,
   probeReportLine, showProbeReportModal,
@@ -140,7 +141,7 @@ async function _doScanLocalDir() {
   }
 
   const list = document.getElementById('localList');
-  list.innerHTML = '<div class="loading"><div class="spinner"></div> 扫描中...</div>';
+  list.innerHTML = skeletonHtml('local', SKEL_ROWS, '扫描中...');
 
   try {
     const result = await api.scanLocalLibrary(localDirPath);

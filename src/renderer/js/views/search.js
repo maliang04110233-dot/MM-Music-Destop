@@ -12,6 +12,7 @@ import { nextSortMode, sortLabel, sortPairs } from '../searchSort.js';
 import { markTerm } from '../highlight.js';
 import { buildFallbackNotice } from '../fallbackNotice.js';
 import { dismissedKeySet, filterDismissedPairs, onDismissChanged } from '../dismissed.js';
+import { skeletonHtml, SKEL_ROWS } from '../skeleton.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -598,7 +599,7 @@ async function openAlbumSongsModal(platform, albumId) {
   document.getElementById('playlistModalTitle').textContent = '📀 ' + (nameMap[platform] || '专辑');
   document.getElementById('playlistModal').classList.remove('hidden');
   const body = document.getElementById('playlistModalBody');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
+  body.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载中...');
   state.setPlaylistSongs([]);
   state.setPlaylistChecked(new Set());
   try {
@@ -631,9 +632,20 @@ async function doSearch(page = 1) {
   // 若等 handleLinkInput 返回后再占号，并发的两次搜索就会由「谁先返回」决定谁赢：
   // 先发起的那次若后返回，会用陈旧结果覆盖新视图（输入框是新词、列表是旧词）。
   const reqId = ++_typeSearchReqId;
+  // 发起即出骨架：链接识别本身也是一次网络往返（getSongByLink），
+  // 占位若写在 await 之后，粘贴链接搜索的整个等待期间界面毫无反应。
+  // 先记下旧内容：骨架写进去之后，若链接改由弹窗展示（专辑/歌单链接），
+  // 列表区不会再有新内容——不撤掉提前写下的骨架，弹窗一关就停在假加载中。
+  const prevHtml = _dom.songList ? _dom.songList.innerHTML : '';
+  const skelHtml = skeletonHtml(_searchType, SKEL_ROWS, '搜索中...');
+  if (_dom.songList) _dom.songList.innerHTML = skelHtml;
   // 粘贴链接智能识别：输入是平台链接（含分享文案）→ 直接拉歌，不走关键词搜索
   // 必须 await：handleLinkInput 首个语句就是网络请求，同步读返回值恒 false
-  if (await handleLinkInput(keyword, reqId)) return;
+  if (await handleLinkInput(keyword, reqId)) {
+    // 只在列表仍是本次骨架时还原——单曲链接分支会自己写列表，不能覆盖
+    if (_dom.songList && _dom.songList.innerHTML === skelHtml) _dom.songList.innerHTML = prevHtml;
+    return;
+  }
   // 识别未接管，但期间已有更新的搜索发起 → 本次整体作废，不做关键词搜索
   if (reqId !== _typeSearchReqId) return;
 
@@ -645,9 +657,6 @@ async function doSearch(page = 1) {
   if (_searchBatchMode) exitSearchBatchMode();
   hideSearchHistory();
 
-  if (_dom.songList) {
-    _dom.songList.innerHTML = '<div class="loading"><div class="spinner"></div> 搜索中...</div>';
-  }
   if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
   if (_dom.pagination) _dom.pagination.style.display = 'none';
 
@@ -675,7 +684,7 @@ async function doNaturalSearch() {
   hideSearchHistory();
 
   if (_dom.songList) {
-    _dom.songList.innerHTML = '<div class="loading"><div class="spinner"></div> AI 理解中，正在聚合搜索...</div>';
+    _dom.songList.innerHTML = skeletonHtml('song', SKEL_ROWS, 'AI 理解中，正在聚合搜索...');
   }
   if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
   if (_dom.pagination) _dom.pagination.style.display = 'none';
@@ -802,7 +811,7 @@ function renderAlbumPagination(page, count, total) {
 // ── 打开专辑详情 ─────────────────────────────────────
 async function openAlbumDetail(albumMid, source) {
   const el = document.getElementById('songList');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> 加载专辑中...</div>';
+  el.innerHTML = skeletonHtml('song', SKEL_ROWS, '加载专辑中...');
   // 与搜索共享请求序号域：迟到的旧专辑结果不得覆盖更新的视图（连点两张专辑时）
   const reqId = ++_typeSearchReqId;
   try {
@@ -861,7 +870,7 @@ async function openSingerDetail(singerMid, singerName, source) {
       <button class="tab ${_singerDetailTab === 'songs' ? 'active' : ''}" onclick="switchSingerTab('songs', this)">热门歌曲</button>
       <button class="tab ${_singerDetailTab === 'albums' ? 'active' : ''}" onclick="switchSingerTab('albums', this)">全部专辑</button>
     </div>
-    <div id="singerDetailContent"><div class="loading"><div class="spinner"></div> 加载中...</div></div>
+    <div id="singerDetailContent">${skeletonHtml('song', SKEL_ROWS, '加载中...')}</div>
   `;
   state.set('currentSinger', { mid: singerMid, source: source || 'qq' });
   try {
@@ -890,7 +899,7 @@ async function loadSingerDetail(singerMid, tab) {
   // 后者会把头部（返回/订阅）与页签一起 innerHTML 掉，用户被卡在详情页里出不来，
   // switchSingerTab 也随之不可达。
   const el = document.getElementById('singerDetailContent');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> 加载中...</div>';
+  el.innerHTML = skeletonHtml(tab === 'songs' ? 'song' : 'album', SKEL_ROWS, '加载中...');
   const singer = state.get('currentSinger');
   const source = singer ? singer.source : 'qq';
   // 与搜索共享请求序号域：快速连点歌手/切页签时，迟到的旧结果不得覆盖新视图
