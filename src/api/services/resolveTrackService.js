@@ -32,25 +32,7 @@
 const logger = require('../../utils/logger');
 const { ERROR_CODES } = require('../../shared/errors');
 const { normalizeSong, normalizeTrackResult, isTrackSuccess } = require('../../shared/dto');
-
-/**
- * 触发换源的错误码集合。
- *
- * 判定原则：**「换个平台有救」才换源**。
- *   - VIP / 需登录 / 版权 / 下架 / 无音频流 / CDN 空 —— 换源可能拿到别家的免费流 ⇒ 换；
- *   - 网络类错误（超时/断网）不换 —— 整体网络问题换源同样失败，只白费请求；
- *   - 未知平台不换 —— 歌本身可能不存在，换源无意义。
- */
-const FALLBACK_CODES = Object.freeze(new Set([
-  ERROR_CODES.VIP_REQUIRED,
-  ERROR_CODES.LOGIN_REQUIRED,
-  ERROR_CODES.AUTH_EXPIRED,
-  ERROR_CODES.COOKIE_INVALID,
-  ERROR_CODES.COPYRIGHT_RESTRICTED,
-  ERROR_CODES.UNAVAILABLE,
-  ERROR_CODES.NO_AUDIO_STREAM,
-  ERROR_CODES.CDN_EMPTY,
-]));
+const { shouldFallbackByCode, FALLBACK_CODES } = require('./fallbackCodes');
 
 /** CDN 签名过期类 HTTP 错误：无 code 但也值得换源（直链临时失效，换源常能拿到新链） */
 const FALLBACK_HTTP_RE = /HTTP\s*(403|404|410)/i;
@@ -67,7 +49,8 @@ const FALLBACK_HTTP_RE = /HTTP\s*(403|404|410)/i;
  */
 function shouldFallbackToOtherSource(result) {
   if (isTrackSuccess(result)) return false;
-  if (result && result.code && FALLBACK_CODES.has(result.code)) return true;
+  // 优先使用新模块的判定（白名单集中管理）
+  if (shouldFallbackByCode(result && result.code)) return true;
   // 无 code 的失败（如 HTTP 403/404/410 CDN 签名过期）也换源重试
   if (result && FALLBACK_HTTP_RE.test(String(result.error || ''))) return true;
   // 未知数据源（B 站 id 传错等）不换——歌本身可能不存在
