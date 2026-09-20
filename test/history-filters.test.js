@@ -47,7 +47,8 @@ test('sourceOptions：全部来源打头，脏平台条目剔除，缺 name 用 
 });
 
 test('classifyRetryResult：四态归类，null/无标志视为成功入队', async () => {
-  const { classifyRetryResult } = await fresh();
+  // 增量155：归类跟着"入队"这件事搬到了 enqueuePayload.js —— 载荷与回话同一处规则
+  const { classifyRetryResult } = await import(`../src/renderer/js/enqueuePayload.js?ck=${Math.random()}`);
   assert.equal(classifyRetryResult(null), 'added');
   assert.equal(classifyRetryResult({}), 'added');
   assert.equal(classifyRetryResult({ duplicated: true }), 'dup');

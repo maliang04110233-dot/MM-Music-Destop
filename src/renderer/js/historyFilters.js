@@ -46,15 +46,6 @@ function sourceOptions(platforms) {
   return list;
 }
 
-/** addToQueue 返回值归类（批量重试计数用）：dup=已在队列 / had=已下载跳过 / fail=出错 */
-function classifyRetryResult(r) {
-  if (!r) return 'added';
-  if (r.duplicated) return 'dup';
-  if (r.alreadyDownloaded) return 'had';
-  if (r.error) return 'fail';
-  return 'added';
-}
-
 /** 重试汇总 → toast 文案 */
 function retrySummary(tally) {
   const t = tally || {};
@@ -93,30 +84,6 @@ function deadConfirmText(dead, checked, mode) {
     + '· 还想再听这些歌：别删记录，用「⬇ 重新下载失效项」（命令面板 Ctrl+K 可搜到）';
 }
 
-/**
- * 死账行 → addToQueue 载荷（增量154）。
- * 刻意不带 forceRedownload：判活是点击前那一刻的 stat，从确认到入队之间文件可能被
- * 同步盘放回来，那时主进程的查重（findDownloaded 自己核磁盘）应当跳过它，
- * 而不是覆盖式重下一遍。
- * @returns {object|null} 缺主键 ⇒ null（没 id/source 的歌根本下不了，别造半成品载荷）
- */
-function deadRetryPayload(entry, saveDir) {
-  if (!entry || typeof entry !== 'object') return null;
-  const id = entry.id == null ? '' : String(entry.id);
-  const source = entry.source == null ? '' : String(entry.source);
-  if (!id || !source) return null;
-  return {
-    id, source,
-    title: String(entry.title || ''),
-    artist: String(entry.artist || ''),
-    album: String(entry.album || ''),
-    saveDir,
-    quality: entry.quality || 'standard',
-    cover: '',
-    duration: 0,
-  };
-}
-
 /** 失效项重下汇总 → toast（一首都没入队时用 ℹ️，不给自己发成功） */
 function deadRetrySummary(tally) {
   const t = tally || {};
@@ -125,4 +92,4 @@ function deadRetrySummary(tally) {
     + `文件又回来了跳过 ${t.had || 0}、失败 ${t.fail || 0}`;
 }
 
-export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText, deadRetryPayload, deadRetrySummary };
+export { HISTORY_STATUS_TABS, normalizeHistoryFilter, buildHistoryQuery, sourceOptions, retrySummary, deadSummary, deadConfirmText, deadRetrySummary };

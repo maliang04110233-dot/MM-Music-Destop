@@ -72,7 +72,8 @@ test('缺曲名/缺 code 的脏组合不炸，且每句都带"下一曲"提示�
 
 test('接线：app.js 唯一调用点改用分流文案，本地失败展示更久，零新 IPC 通道', async () => {
   const app = read('src/renderer/js/app.js');
-  assert.match(app, /import \{ describePlayError \} from '\.\/playError\.js';/, '模块没被加载');
+  // 花括号留白：155 给同一模块加了兄弟导出（playFailureRetry 等），钉住"名字在里面"即可
+  assert.match(app, /import \{[^}]*\bdescribePlayError\b[^}]*\} from '\.\/playError\.js';/, '模块没被加载');
   assert.match(app, /describePlayError\(cur, _audio\.error\.code\)/, '错误监听没吃到 MediaError.code');
   assert.match(app, /e\.local \? 5500 : 3000/, '本地文件失效要说得更久（用户要去翻下载目录）');
   assert.equal((app.match(/音源播放出错，自动播放下一曲/g) || []).length, 0, '通用文案只该活在 playError.js 里');

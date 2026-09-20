@@ -14,7 +14,8 @@ import './state.js';
 import './toast.js';
 import './utils.js';
 import { buildFallbackNotice } from './fallbackNotice.js';
-import { describePlayError } from './playError.js';
+import { describePlayError, playFailureRetry, playFailureRetryText } from './playError.js';
+import { retryAfterPlayFailure } from './playRetry.js';
 import { pickQueueCopyRows, queueCopyToastText } from './queueCopy.js';
 import { toTrackLines } from './songListText.js';
 import { copyText } from './songShare.js';
@@ -381,7 +382,16 @@ async function init() {
         const cur = getState('currentPlaying');
         if (!cur || !_audio.error) return;
         const e = describePlayError(cur, _audio.error.code);
-        showToast(e.text, e.kind, e.local ? 5500 : 3000);
+        // 增量155：本地文件行播不出来 = 盘和记录的引用断了，就地给一口「⬇ 重新下载」，
+        // 不必让人翻到下载历史页去找那一行。判据（哪些行真有源可下）在 playError.js。
+        const retry = playFailureRetry(cur, _audio.error.code);
+        if (retry) {
+          showActionToast({
+            text: playFailureRetryText(cur), btnLabel: '⬇ 重新下载', ttl: 9000, onConfirm: () => retryAfterPlayFailure(retry),
+          });
+        } else {
+          showToast(e.text, e.kind, e.local ? 5500 : 3000);
+        }
         if (typeof window.nextSong === 'function') window.nextSong();
       });
       // 25s 加载超时守卫（借鉴 lx usePlayEvent）：一直没等到可播数据则跳下一曲，

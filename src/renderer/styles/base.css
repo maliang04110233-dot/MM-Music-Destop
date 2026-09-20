@@ -386,16 +386,16 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .toast-success { border-left-color: var(--c-ok); }
 .toast-warn    { border-left-color: var(--c-warn); }
 .toast-error   { border-left-color: var(--c-danger); }
-/* 重复下载确认 toast：文案+按钮横排，按钮不换行挤压文本 */
-.toast-redownload { display: flex; align-items: center; gap: var(--sp-3); max-width: 420px; }
-.toast-redownload-text { flex: 1; min-width: 0; }
-.toast-redownload-btn {
+/* 带动作按钮的 toast（utils.showActionToast）：文案+按钮横排，按钮不换行挤压文本 */
+.toast-action { display: flex; align-items: center; gap: var(--sp-3); max-width: 420px; }
+.toast-action-text { flex: 1; min-width: 0; }
+.toast-action-btn {
   flex-shrink: 0; border: 1px solid var(--stroke-2); border-radius: var(--r-sm);
   padding: 5px var(--sp-3); background: var(--elev-1); color: var(--c-warn);
   font-size: var(--fs-sm); font-weight: var(--fw-semi); cursor: pointer;
   transition: background var(--dur-1) var(--ease);
 }
-.toast-redownload-btn:hover { background: var(--elev-2); }
+.toast-action-btn:hover { background: var(--elev-2); }
 @keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes toast-out { to { transform: translateX(20px); opacity: 0; } }
 

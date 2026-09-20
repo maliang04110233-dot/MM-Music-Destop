@@ -97,7 +97,7 @@ function pickDeadEntries(items) {
       id, source,
       title: String(it.title || ''), artist: String(it.artist || ''),
       // 增量154：重下要用的字段也在这里补齐 —— 「哪些行算死账」与「死账带什么上路」
-      // 同属一处规则。注意只搬运、不设默认值：音质默认归 deadRetryPayload 一家管
+      // 同属一处规则。注意只搬运、不设默认值：音质默认归 enqueuePayloadFor 一家管
       album: String(it.album || ''),
       quality: String(it.quality || ''),
     });

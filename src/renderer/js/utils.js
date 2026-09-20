@@ -202,7 +202,40 @@ function fmtHistoryTime(ts) {
   return Math.floor(diff / 86400000) + '天前';
 }
 
-// ── 重复下载确认 Toast ────────────────────────────────
+// ── 可交互 Toast（带一个动作按钮）────────────────────
+/**
+ * 唯一一份"带按钮的 toast"实现：正文 + 一个动作 + 到点自己消失。
+ *
+ * 增量155 收口：此前只有「已下载过，仍要下载」用到这套结构（手造 div + 按钮 + 定时消失），
+ * 播放失败就地重下是第二个消费方 —— 这套结构不许有第二份实现。
+ * @param {object}   opts
+ * @param {string}   opts.text       正文
+ * @param {string}   opts.btnLabel   按钮文字
+ * @param {function} opts.onConfirm  点按钮后的回调（点击即关掉这条 toast）
+ * @param {number}   [opts.ttl=6000] 停留时长 ms
+ */
+function showActionToast({ text, btnLabel, onConfirm, ttl = 6000 } = {}) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast toast-warn toast-action';
+  const span = document.createElement('span');
+  span.className = 'toast-action-text';
+  span.textContent = String(text || '');
+  const btn = document.createElement('button');
+  btn.className = 'toast-action-btn';
+  btn.type = 'button';
+  btn.textContent = String(btnLabel || '');
+  el.appendChild(span);
+  el.appendChild(btn);
+  container.appendChild(el);
+  btn.addEventListener('click', () => { el.remove(); if (onConfirm) onConfirm(); });
+  setTimeout(() => {
+    el.style.animation = 'toast-out .25s ease forwards';
+    setTimeout(() => el.remove(), 250);
+  }, ttl);
+}
+
 /**
  * 显示"已下载过，是否重下"的可交互 Toast（跨会话下载去重）
  *
@@ -211,28 +244,12 @@ function fmtHistoryTime(ts) {
  * @param {function} onConfirm 用户点击「仍要下载」后的回调（由调用方带 forceRedownload 重发）
  */
 function showRedownloadToast(title, finishedAt, onConfirm) {
-  const container = document.getElementById('toastContainer');
-  if (!container) return;
   const when = finishedAt ? fmtHistoryTime(finishedAt) : '';
-  const el = document.createElement('div');
-  el.className = 'toast toast-warn toast-redownload';
-  const text = document.createElement('span');
-  text.className = 'toast-redownload-text';
-  text.textContent = when
-    ? `「${title}」${when}已下载过`
-    : `「${title}」已下载过`;
-  const btn = document.createElement('button');
-  btn.className = 'toast-redownload-btn';
-  btn.type = 'button';
-  btn.textContent = '仍要下载';
-  el.appendChild(text);
-  el.appendChild(btn);
-  container.appendChild(el);
-  btn.addEventListener('click', () => { el.remove(); if (onConfirm) onConfirm(); });
-  setTimeout(() => {
-    el.style.animation = 'toast-out .25s ease forwards';
-    setTimeout(() => el.remove(), 250);
-  }, 6000);
+  showActionToast({
+    text: when ? `「${title}」${when}已下载过` : `「${title}」已下载过`,
+    btnLabel: '仍要下载',
+    onConfirm,
+  });
 }
 
 // ── ES Module 导出 ──────────────────────────────────────
@@ -254,6 +271,7 @@ export {
   statusLabel,
   formatPlayCount,
   fmtHistoryTime,
+  showActionToast,
   showRedownloadToast,
   playReferer,
 };
@@ -277,4 +295,5 @@ window.badgeCls = badgeCls;
 window.statusLabel = statusLabel;
 window.formatPlayCount = formatPlayCount;
 window.fmtHistoryTime = fmtHistoryTime;
+window.showActionToast = showActionToast;
 window.showRedownloadToast = showRedownloadToast;

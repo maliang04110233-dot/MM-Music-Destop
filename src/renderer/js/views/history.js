@@ -7,7 +7,8 @@ import { logger } from '../logger.js';
 import { showContextMenu } from '../contextMenu.js';
 import { registerFavSong, isFavorite, toggleFavoriteByKey } from '../favorites.js';
 import { favKey } from '../state.js';
-import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, classifyRetryResult, retrySummary, deadSummary, deadConfirmText, deadRetryPayload, deadRetrySummary } from '../historyFilters.js';
+import { HISTORY_STATUS_TABS, buildHistoryQuery, sourceOptions, retrySummary, deadSummary, deadConfirmText, deadRetrySummary } from '../historyFilters.js';
+import { enqueuePayloadFor, classifyRetryResult } from '../enqueuePayload.js';
 import { DEFAULT_SORT, nextSortMode, sortLabel } from '../historySort.js';
 import { dlForgetKeys, songDlKey } from '../dlStatus.js';
 let historyPage = 0;
@@ -284,7 +285,7 @@ async function redownloadDeadHistory() {
     const saveDir = getState('saveDir');
     const tally = { added: 0, dup: 0, had: 0, fail: 0 };
     for (const d of dead) {
-      const payload = deadRetryPayload(d, saveDir);
+      const payload = enqueuePayloadFor(d, saveDir);
       if (!payload) { tally.fail += 1; continue; }
       try {
         const res = await api.addToQueue(payload);

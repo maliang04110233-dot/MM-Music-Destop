@@ -21,38 +21,9 @@ const { pickDeadEntries } = require('../src/utils/deadRefs');
 const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const loadFilters = async () => import(`../src/renderer/js/historyFilters.js?ck=${Math.random()}`);
 
-test('deadRetryPayload：死账行 → 完整的 addToQueue 入队载荷', async () => {
-  const { deadRetryPayload } = await loadFilters();
-  const p = deadRetryPayload(
-    { id: '12', source: 'netease', title: '晴天', artist: '周杰伦', album: '叶惠美', quality: 'lossless' },
-    'D:/Music',
-  );
-  assert.deepEqual(p, {
-    id: '12', source: 'netease', title: '晴天', artist: '周杰伦', album: '叶惠美',
-    saveDir: 'D:/Music', quality: 'lossless', cover: '', duration: 0,
-  });
-});
-
-test('deadRetryPayload：缺字段兜底成空串/标准音质（脏记录也得能重下）', async () => {
-  const { deadRetryPayload } = await loadFilters();
-  const p = deadRetryPayload({ id: '7', source: 'qq', title: 'X' }, 'D:/Music');
-  assert.equal(p.album, '');
-  assert.equal(p.artist, '');
-  assert.equal(p.quality, 'standard');
-});
-
-test('deadRetryPayload：不得带 forceRedownload —— 文件回来了就该被主进程跳过', async () => {
-  const { deadRetryPayload } = await loadFilters();
-  const p = deadRetryPayload({ id: '7', source: 'qq', title: 'X' }, 'D:/Music');
-  assert.equal(p.forceRedownload, undefined);
-});
-
-test('deadRetryPayload：没有主键的行返回 null（没主键就重下不了，别构造半成品载荷）', async () => {
-  const { deadRetryPayload } = await loadFilters();
-  assert.equal(deadRetryPayload({ id: '', source: 'qq', title: 'X' }, 'D:/Music'), null);
-  assert.equal(deadRetryPayload({ id: '1', source: '', title: 'X' }, 'D:/Music'), null);
-  assert.equal(deadRetryPayload(null, 'D:/Music'), null);
-});
+// 载荷构造（deadRetryPayload）在增量155 挪进了中性的 enqueuePayload.js（第二个消费方 =
+// 播放失败就地重下）。它的行为测试跟着模块搬去 test/play-failure-retry.test.js，
+// 本文件只留历史页这一侧的汇总文案 / 确认文案 / 接线。
 
 test('deadRetrySummary：四种去向各报各的数，"文件又回来了"要说明白', async () => {
   const { deadRetrySummary } = await loadFilters();
@@ -101,8 +72,8 @@ test('接线：历史页重下入口二次判活、用 deadEntries、确认之�
   assert.ok(fn.length > 200 && fn.length < src.length, '函数体必须被正确截取');
   assert.match(fn, /markMissing: true/);          // 重新判活，而不是信页面上的旧结论
   assert.match(fn, /deadEntries/);                // 死账集合由主进程给（153 的单一规则之家）
-  assert.match(fn, /deadRetryPayload/);           // 载荷构造走纯函数
-  assert.match(fn, /classifyRetryResult/);        // 去向分类复用 153 之前那套
+  assert.match(fn, /enqueuePayloadFor/);          // 载荷构造走共用纯函数（155 起住 enqueuePayload.js）
+  assert.match(fn, /classifyRetryResult/);        // 去向分类同样只有一家在 enqueuePayload.js
   const enqueueAt = fn.indexOf('api.addToQueue');
   const confirmAt = fn.indexOf('confirm(');
   assert.ok(confirmAt > -1 && enqueueAt > confirmAt, '确认必须在入队之前');
