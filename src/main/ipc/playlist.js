@@ -9,7 +9,7 @@
 
 const prefs = require('../../utils/prefs');
 const { handle } = require('./register');
-const { trashRemove, trashRestore, purgeExpired } = require('../../utils/playlistTrash');
+const { trashRemove, trashRestore, purgeExpired, trashView, trashPurge } = require('../../utils/playlistTrash');
 
 // 回收站单独一个 prefs 键，不掺进 userPlaylists（见 utils/playlistTrash.js 头注）。
 // 主进程内部键，与 userPlaylists 同待遇：不进 set-pref 白名单、不进云同步。
@@ -55,8 +55,11 @@ function register() {
   const { trash: alive, purged } = purgeExpired(trashNow, Date.now());
   if (purged.length) prefs.set(TRASH_KEY, alive);
 
-  // 获取所有用户歌单
-  handle('get-user-playlists', () => {
+  // 获取所有用户歌单；增量157 起支持 opts.trash —— 带 {trash:true} 返回回收站视图
+  // （含剩余天数，主进程算好，TTL 默认值不给渲染层抄第二份）。
+  // 本频道契约无 args 规格（normalizeArgs 原样放行），零新通道、契约零改动。
+  handle('get-user-playlists', (_, opts) => {
+    if (opts && opts.trash) return trashView(_trash(), Date.now());
     return ensureFavorites();
   });
 
@@ -104,13 +107,20 @@ function register() {
     return { success: true, playlist: newPlaylist };
   });
 
-  // 删除歌单（增量155：硬删改挪回收站，5 秒内可撤销、30 天内可恢复）
+  // 删除歌单（增量156：硬删改挪回收站，5 秒内可撤销、30 天内可恢复）
   handle('delete-user-playlist', (_, playlistId) => {
     if (!playlistId) return { success: false, error: '缺少歌单ID' };
     const playlists = ensureFavorites();
     const pl = playlists.find(p => p.id === playlistId);
-    if (!pl) return { success: false, error: '歌单不存在' };
-    if (pl.system) return { success: false, error: '收藏歌单不能删除' };
+    if (pl && pl.system) return { success: false, error: '收藏歌单不能删除' };
+    // 列表里没有、回收站里倒是有 ⇒ 这次"再删一次"就是回收站的彻底删除
+    // （增量157；同一频道同一 args 形状，不另开 purge 通道）
+    if (!pl) {
+      const pr = trashPurge(_trash(), playlistId);
+      if (!pr.purged) return { success: false, error: '歌单不存在' };
+      prefs.set(TRASH_KEY, pr.trash);
+      return { success: true, purged: true };
+    }
     const res = trashRemove(playlists, _trash(), playlistId, Date.now());
     if (!res.removed) return { success: false, error: '歌单不存在' };
     prefs.set('userPlaylists', res.playlists);

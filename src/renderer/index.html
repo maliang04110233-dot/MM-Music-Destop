@@ -469,6 +469,7 @@
         <button class="tab" id="playlistCardSortBtn" title="切换歌单卡片排序：默认 / 名称 / 曲数 / 最近更新（收藏恒置顶）" onclick="cyclePlCardSort()">↕ 默认</button>
         <button class="tab" title="扫描全部歌单，揪出同一身份散落在 ≥2 个歌单的歌（本地认文件路径、在线认来源+ID）" onclick="scanCrossPlaylistDupes()" style="white-space:nowrap;">🧮 跨单查重</button>
         <button class="tab" title="选择 .m3u/.m3u8 文件，按本地曲库匹配（路径优先、曲名+歌手兜底）直接建为歌单，导入即可播" onclick="pickM3uForPlaylist()" style="white-space:nowrap;">📥 导入 m3u</button>
+        <button class="tab" id="plTrashBtn" title="已删除的歌单在这里保留 30 天，可恢复或彻底删除" onclick="openPlaylistTrash()" style="display:none;white-space:nowrap;">🗑 回收站</button>
         <button class="btn-primary" onclick="openPlaylistEditor(null)" style="white-space:nowrap;">➕ 新建歌单</button>
       </div>
       <div id="userPlaylistGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;"></div>
@@ -1280,6 +1281,18 @@
         <button class="btn-secondary" id="playlistCoverPick" style="display:none;margin-top:2px;font-size:12px;" onclick="useFirstSongCover()">🖼 用歌内首曲封面</button>
       </div>
       <button class="btn-primary" onclick="savePlaylist()" style="margin-top:4px;">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 我的歌单：回收站弹窗（增量157：删除兜底，30 天内可恢复 / 彻底删除） -->
+<div class="playlist-modal-overlay hidden" id="playlistTrashModal" onclick="event.target === this && closePlaylistTrash()">
+  <div class="playlist-modal" style="min-width:380px;max-width:460px;">
+    <div class="playlist-modal-header">
+      <span class="playlist-modal-title">🗑 回收站</span>
+      <button class="playlist-modal-close" onclick="closePlaylistTrash()">✕</button>
+    </div>
+    <div class="playlist-modal-body" id="playlistTrashList" style="max-height:56vh;overflow-y:auto;">
     </div>
   </div>
 </div>

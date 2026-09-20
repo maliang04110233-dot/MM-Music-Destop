@@ -21,6 +21,9 @@ const TRASH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** 回收站条数上限：删得再多也只留最近这些，防 prefs.json 无限膨胀 */
 const MAX_TRASH = 200;
 
+/** 天数换算基准（trashView 的 daysLeft 用） */
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 function _arr(x) {
   return Array.isArray(x) ? x : [];
 }
@@ -81,4 +84,32 @@ function purgeExpired(trash, now) {
   return { trash: kept, purged };
 }
 
-module.exports = { trashRemove, trashRestore, purgeExpired, TRASH_TTL_MS, MAX_TRASH };
+/**
+ * 回收站列表视图（增量157）：脏条目就地丢弃、新删的排前面，并替渲染层把
+ * "还剩几天"算好 —— TTL 的默认值只有本模块一个家，渲染层不许自己拿 30 去减。
+ * playlist 保持原样嵌套（不摊平）：恢复走 save-user-playlist 时传的就是这份原货，
+ * 掺进 daysLeft 之类的视图字段会把它污染进 userPlaylists。
+ */
+function trashView(trash, now) {
+  return _arr(trash)
+    .filter(e => e && e.playlist && typeof e.deletedAt === 'number')
+    .slice()
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+    .map(e => ({
+      playlist: e.playlist,
+      deletedAt: e.deletedAt,
+      daysLeft: Math.max(1, Math.ceil((e.deletedAt + TRASH_TTL_MS - now) / DAY_IN_MS)),
+    }));
+}
+
+/** 从回收站彻底删除（渲染层对已进站 id 再调一次 delete-user-playlist 即触发） */
+function trashPurge(trash, id) {
+  const tr = _arr(trash);
+  const idx = tr.findIndex(e => e && e.playlist && e.playlist.id === id);
+  if (idx < 0) return { trash: tr, purged: null };
+  const next = tr.slice();
+  const [entry] = next.splice(idx, 1);
+  return { trash: next, purged: entry };
+}
+
+module.exports = { trashRemove, trashRestore, purgeExpired, trashView, trashPurge, TRASH_TTL_MS, MAX_TRASH };

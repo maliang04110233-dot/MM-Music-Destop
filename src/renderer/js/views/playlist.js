@@ -55,6 +55,8 @@ async function loadUserPlaylists() {
     logger.error('加载歌单失败:', e);
     showToast('加载歌单失败: ' + e.message, 'error');
   }
+  // 回收站徽标跟着列表一起刷新（删除/撤销/恢复都经过这里；自身带 try/catch，不打扰主流程）
+  refreshPlTrash();
 }
 
 // ── 渲染歌单列表 ──────────────────────────────────────
@@ -694,6 +696,102 @@ async function undoDeletePlaylist(pl) {
   }
 }
 
+// ── 回收站视图（增量157：F2 第三层兜底 —— 没赶上 5 秒撤销的歌单在这里找回）──
+// 数据源仍是既有 get-user-playlists 频道（opts.trash=true 换视图），零新 IPC 通道；
+// 恢复走 save-user-playlist 的"带 id 却不在列表 ⇒ 从回收站放回"分支，
+// 彻底删除走 delete-user-playlist 的"再删一次回收站里的 id"分支。
+let _plTrash = [];
+
+async function refreshPlTrash() {
+  try {
+    _plTrash = (await api.getUserPlaylists({ trash: true })) || [];
+  } catch (e) {
+    // 徽标刷新失败不该惊动用户主流程，静默保持上一次状态
+    logger.warn('回收站计数刷新失败:', e);
+    return;
+  }
+  const btn = document.getElementById('plTrashBtn');
+  if (btn) {
+    btn.style.display = _plTrash.length ? '' : 'none';
+    btn.textContent = `🗑 回收站 ${_plTrash.length}`;
+  }
+  const modal = document.getElementById('playlistTrashModal');
+  if (modal && !modal.classList.contains('hidden')) renderPlTrashList();
+}
+
+/** 渲染弹窗内容：每行「歌单名 · N 首歌 · 剩余 X 天」+ 恢复 / 彻底删除 */
+function renderPlTrashList() {
+  const box = document.getElementById('playlistTrashList');
+  if (!box) return;
+  if (!_plTrash.length) {
+    box.innerHTML = '<div class="empty" style="padding:24px 0;">回收站是空的</div>';
+    return;
+  }
+  box.innerHTML = _plTrash.map(e => {
+    const pl = e.playlist || {};
+    const n = Array.isArray(pl.songs) ? pl.songs.length : 0;
+    const when = new Date(e.deletedAt || 0);
+    const dateStr = `${when.getMonth() + 1}月${when.getDate()}日`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line);">
+      <div style="flex:1;min-width:0;">
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;">${esc(pl.name || '未命名歌单')}</div>
+        <div style="font-size:12px;color:var(--fg-3);">${n} 首歌 · ${dateStr}删除 · 剩余 ${e.daysLeft ?? '?'} 天</div>
+      </div>
+      <button class="btn-sm" onclick="restoreTrashedPlaylist('${escQ(pl.id)}')">↩️ 恢复</button>
+      <button class="btn-sm" style="color:var(--c-danger);" onclick="purgeTrashedPlaylist('${escQ(pl.id)}')">彻底删除</button>
+    </div>`;
+  }).join('');
+}
+
+function openPlaylistTrash() {
+  const modal = document.getElementById('playlistTrashModal');
+  if (!modal) return;
+  renderPlTrashList();
+  modal.classList.remove('hidden');
+  refreshPlTrash();
+}
+
+function closePlaylistTrash() {
+  document.getElementById('playlistTrashModal').classList.add('hidden');
+}
+
+async function restoreTrashedPlaylist(playlistId) {
+  const e = _plTrash.find(t => t.playlist && t.playlist.id === playlistId);
+  if (!e) { showToast('该歌单已不在回收站，请刷新重试', 'warn'); return; }
+  try {
+    const r = await api.saveUserPlaylist(e.playlist);
+    if (r && r.success) {
+      await loadUserPlaylists();
+      showToast(`✅ 歌单「${e.playlist.name}」已恢复`, 'success');
+    } else {
+      showToast((r && r.error) || '恢复失败', 'error');
+    }
+  } catch (err) {
+    showToast('恢复失败: ' + err.message, 'error');
+  }
+}
+
+async function purgeTrashedPlaylist(playlistId) {
+  // 增量157：彻底删除是真正不可逆的一层，确认框照 F2 纪律点名歌单与歌数
+  const e = _plTrash.find(t => t.playlist && t.playlist.id === playlistId);
+  if (!e) { showToast('该歌单已不在回收站，请刷新重试', 'warn'); return; }
+  const pl = e.playlist;
+  const n = Array.isArray(pl.songs) ? pl.songs.length : 0;
+  if (!confirm(`彻底删除歌单「${pl.name}」？\n\n• 歌单里有 ${n} 首歌，彻底删除后无法再找回（仍在 30 天期限内的其他歌单不受影响）\n• 歌曲文件与红心收藏不受影响`)) return;
+  try {
+    const r = await api.deleteUserPlaylist(playlistId);
+    if (r && r.success) {
+      await refreshPlTrash();
+      showToast(`歌单「${pl.name}」已彻底删除`, 'success');
+    } else {
+      showToast((r && r.error) || '删除失败', 'error');
+    }
+  } catch (err) {
+    showToast('删除失败: ' + err.message, 'error');
+  }
+}
+
+
 // ── 快速添加到歌单（搜索结果右键/批量工具条调用；单曲或数组皆可）──
 async function quickAddToPlaylist(songOrList) {
   try {
@@ -1295,6 +1393,12 @@ window.closePlaylistEditor = closePlaylistEditor;
 window.savePlaylist = savePlaylist;
 window.editPlaylist = editPlaylist;
 window.deletePlaylist = deletePlaylist;
+// 增量157：回收站视图（弹窗行内按钮经 onclick 全局调用）
+window.refreshPlTrash = refreshPlTrash;
+window.openPlaylistTrash = openPlaylistTrash;
+window.closePlaylistTrash = closePlaylistTrash;
+window.restoreTrashedPlaylist = restoreTrashedPlaylist;
+window.purgeTrashedPlaylist = purgeTrashedPlaylist;
 window.quickAddToPlaylist = quickAddToPlaylist;
 window.closePlaylistSelectModal = closePlaylistSelectModal;
 window.addToSelectedPlaylist = addToSelectedPlaylist;
