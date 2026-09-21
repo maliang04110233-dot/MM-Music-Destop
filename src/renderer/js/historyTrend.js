@@ -90,6 +90,7 @@ function _renderTrendModal(buckets, total) {
   const overlay = document.createElement('div');
   overlay.id = 'trendOverlay';
   overlay.className = 'edit-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeTrendPanel(); });
 
   const panel = document.createElement('div');

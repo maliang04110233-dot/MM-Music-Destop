@@ -187,6 +187,7 @@ function openSleepCustomDialog() {
   const overlay = document.createElement('div');
   overlay.id = 'sleepCustomOverlay';
   overlay.className = 'edit-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeCustomDialog(); });
 
   const panel = document.createElement('div');

@@ -763,6 +763,7 @@ function openHomeChartModal(sec) {
   const overlay = document.createElement('div');
   overlay.className = 'playlist-modal-overlay';
   overlay.id = 'homeChartModal';
+  overlay.setAttribute('data-modal', '');
   overlay.innerHTML = `
     <div class="playlist-modal home-chart-modal" role="dialog" aria-modal="true" aria-label="${escAttr(_tr(meta.i18n, meta.title))}">
       <div class="playlist-modal-header">

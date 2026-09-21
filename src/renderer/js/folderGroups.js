@@ -123,6 +123,7 @@ function _renderPanel(groups, songs) {
   const overlay = document.createElement('div');
   overlay.id = PANEL_ID;
   overlay.className = 'edit-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closePanel(); });
 
   const panel = document.createElement('div');

@@ -1046,6 +1046,7 @@ function openBatchRename() {
   overlay = document.createElement('div');
   overlay.id = 'renameModal';
   overlay.className = 'stats-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="stats-panel rename-panel">

@@ -103,6 +103,7 @@ function _overlay() {
   el = document.createElement('div');
   el.id = 'afterQueueOverlay';
   el.className = 'edit-overlay hidden';
+  el.setAttribute('data-modal', '');
   el.innerHTML = `
     <div class="edit-panel" style="width:400px;">
       <div class="edit-header">

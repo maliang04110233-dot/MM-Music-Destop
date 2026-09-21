@@ -303,6 +303,7 @@ function showReportModal(html) {
   overlay = document.createElement('div');
   overlay.id = 'reportModal';
   overlay.className = 'stats-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="stats-panel report-panel">

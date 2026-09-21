@@ -95,6 +95,7 @@ function _renderGroupsModal() {
   const overlay = document.createElement('div');
   overlay.className = 'edit-overlay';
   overlay.id = 'songGroupsOverlay';
+  overlay.setAttribute('data-modal', '');
   overlay.innerHTML = `
     <div class="edit-panel">
       <div class="edit-header">

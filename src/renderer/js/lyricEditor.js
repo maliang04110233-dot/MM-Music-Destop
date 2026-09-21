@@ -80,7 +80,7 @@ function _modalEl() {
 
 function _close() {
   const el = document.getElementById('lyricEditorModal');
-  if (el) el.style.display = 'none';
+  if (el) { el.style.display = 'none'; el.removeAttribute('data-modal'); }
 }
 
 async function _save() {
@@ -104,6 +104,8 @@ function openLyricEditor() {
   const ta = document.getElementById('lyricEditorText');
   ta.value = getState('_currentLyricRaw') || '';
   el.style.display = 'flex';
+  // 常驻 DOM 的 display 切换单例：身份随开合挂摘，收起状态不得留在守卫面里
+  el.setAttribute('data-modal', '');
   ta.focus();
   ta.setSelectionRange(0, 0);
 }

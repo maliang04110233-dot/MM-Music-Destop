@@ -23,6 +23,7 @@ function _ensureOverlay() {
   el = document.createElement('div');
   el.id = 'batchImportOverlay';
   el.className = 'edit-overlay hidden';
+  el.setAttribute('data-modal', '');
   el.innerHTML = `
     <div class="edit-panel" style="width:520px;">
       <div class="edit-header">

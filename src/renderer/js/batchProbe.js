@@ -83,6 +83,7 @@ function showProbeReportModal(items) {
   const overlay = document.createElement('div');
   overlay.id = 'probeReportOverlay';
   overlay.className = 'edit-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeProbeReport(); });
 
   const panel = document.createElement('div');

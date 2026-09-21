@@ -74,6 +74,7 @@ export function askConfirm(opts) {
 
   const overlay = document.createElement('div');
   overlay.className = 'confirm-dialog-overlay';
+  overlay.setAttribute('data-modal', '');
   const box = document.createElement('div');
   box.className = 'confirm-dialog' + (model.danger ? ' danger' : '');
   box.setAttribute('role', 'dialog');

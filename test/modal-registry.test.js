@@ -1,6 +1,7 @@
 /**
  * 增量198：浮层注册表——data-attribute 契约（148/151/185「手抄清单必漏」律的第四次立法）
  * 增量199：偿还建层时登记的六浮层 Esc 债 + ⑩ 把 HTML 契约属性送上实弹桥接
+ * 增量201：把注册表推到动态层——⑪ 形状巡扫钉住「造浮层必自报」，⑫ 实弹选样
  *
  * 来龙：_anyModalOpen() 与 closeActiveModal() 各自手抄了一份浮层 id 清单。
  * 195 实测抓到活体证据：cmdkOverlay 从来不在两份清单里——背景键守卫与 Esc
@@ -330,3 +331,76 @@ test('⑩ HTML 契约实弹桥接：叠层浮层按 HTML 所定次序逐层关',
   assert.deepEqual(calls, ['closePlaylistTrash'], '独开一枚缺省 pri 的浮层也关得动');
   assert.equal(sc._anyModalOpen(), false, '关闭函数挂 hidden 即离场（契约与守卫面同一事实源）');
 });
+
+// ── ⑪ 动态浮层自报钉（形状巡扫）：198 的律在动态层的第五次适用 ──
+// 来龙：198/199 收口的都是 index.html 里的静态浮层。巡扫照出动态层的同型盲区：
+// 20 个 JS 文件用 createElement + className/id 赋 '…Overlay/…Modal' 造浮层挂 body，
+// 一个都不自报 data-modal——它们在各自视图里开着时，_anyModalOpen 一律失明，
+// Space 全局播放/暂停与其余背景键从探雷器、睡眠定时、批量导入……背后漏过。
+// 修法与 198 同构：不建第三份清单（那正是被拆掉的东西），钉按形状判定——
+// 凡是「给元素赋 overlay/modal 名 + 挂 body」的文件，自报数必须盖过创建点数。
+// 新写一个浮层忘了自报，CI 即红，不需要任何人记得往哪份名单补一行。
+// contextMenu.js 故意不在打击面：右键菜单是瞬态指针跟随物（mousedown 即散），
+// 归它自己的 _onKey/detach 管，与"模态挡背景"不是同一语义——如日后改判
+// 需要入守卫面，届时它以自报过钉，无需动本测。
+test('⑪ 动态浮层自报钉（形状巡扫）：造 overlay/modal 挂 body 的文件必须自报 data-modal', async () => {
+  const JS_ROOT = R('js');
+  const files = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.js')) files.push(p);
+    }
+  };
+  walk(JS_ROOT);
+  const CREATE = /(?:^|\s)(\w+)\.(?:className|id)\s*=\s*['"][^'"]*(?:[Oo]verlay|[Mm]odal)[^'"]*['"]/;
+  const SELF = /setAttribute\(\s*['"]data-modal['"]/;
+  const leaks = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    if (!CREATE.test(src) || !src.includes('document.body.appendChild')) continue;
+    // 点级对账：数「创建点」（同变量的 id/className 连续赋值算一块）。只按文件级
+    // 判"有自报即绿"的话，同文件第二枚新浮层忘自报会漏网（变异 M4 首轮实证的短板）。
+    const lines = src.split('\n');
+    let sites = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const m = CREATE.exec(lines[i]);
+      if (!m) continue;
+      const blockRe = new RegExp('^\\s*' + m[1] + '\\.(?:id|className)\\s*=');
+      let j = i;
+      while (j + 1 < lines.length && blockRe.test(lines[j + 1])) j++;
+      sites += 1;
+      i = j;
+    }
+    const selfs = (src.match(new RegExp(SELF.source, 'g')) || []).length;
+    if (selfs < sites) leaks.push(path.relative(JS_ROOT, f).replace(/\\/g, '/') + '（创建点 ' + sites + ' > 自报 ' + selfs + '）');
+  }
+  assert.deepEqual(leaks, [], '动态创建的浮层必须逐点自报守卫身份（开着时背景键不得漏过）：\n' + leaks.join('\n'));
+});
+
+// ── ⑫ 动态浮层实弹选样：确认弹层（全应用最高频模态）在守卫面进得场、出得干净 ──
+// ⑪ 是创建点级对账钉，防的是「忘了自报」；⑫ 防的是「自报了却不对」——生命周期
+// 真实走一遭：askConfirm 挂 body → _anyModalOpen 真 → 走它自己的取消钮收起
+// （overlay.remove()，非 hidden 切换）→ 守卫面即刻清空。remove 与 hidden 两条
+// 离场路都要被 :not(.hidden) 扫描正确消化，这里钉 remove 这条（动态层的常态）。
+test('⑫ 动态浮层实弹选样：确认弹层开着守卫必须看得见，remove 收起即刻离场', async () => {
+  const doc = makeDomStub();
+  const sc = await loadShortcuts(doc);
+  const cd = await loadFresh(R('js', 'confirmDialog.js'), 'cf');
+  const pending = cd.askConfirm('确认清空所有下载任务？');
+
+  const overlay = doc.querySelector('[data-modal]');
+  assert.ok(overlay, '确认框宿主已自报 data-modal（⑪ 的形状在真创建点生效）');
+  assert.equal(overlay.getAttribute('data-modal-close'), null,
+    '守卫-only：本增量不越权授 Esc 契约——confirm 的键盘归属自成一家（182/186），逐层核实是后账');
+  assert.equal(sc._anyModalOpen(), true, '确认框在场 = Space/背景键让位（此前它开着照样漏）');
+
+  const cancel = doc.body.querySelectorAll('button')
+    .find((b) => (b.className || '').split(/\s+/).includes('confirm-dialog-cancel'));
+  assert.ok(cancel, '取消钮在位');
+  cancel.click();
+  await pending;
+  assert.equal(sc._anyModalOpen(), false, 'overlay.remove() 后守卫面即刻清空');
+});
+

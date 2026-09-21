@@ -802,6 +802,7 @@ function showAiLyricsDetail(json) {
     overlay = document.createElement('div');
     overlay.id = 'aiLyricsDetailModal';
     overlay.className = 'ai-overlay';
+    overlay.setAttribute('data-modal', '');
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     overlay.innerHTML = `<div class="ai-modal"><div class="ai-modal-header"><span>📝 歌词详情</span><button onclick="document.getElementById('aiLyricsDetailModal').remove()">✕</button></div><div class="ai-modal-body"><pre class="ai-lyrics-detail">${esc(lyrics)}</pre></div></div>`;
     document.body.appendChild(overlay);
@@ -945,6 +946,7 @@ async function translateLyricsUI() {
   overlay = document.createElement('div');
   overlay.id = 'aiTranslateModal';
   overlay.className = 'ai-overlay';
+  overlay.setAttribute('data-modal', '');
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="ai-modal">
