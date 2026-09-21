@@ -423,7 +423,6 @@ const LEDGER = {
   'src/renderer/js/lyricNudge.js': 3,
   'src/renderer/js/m3uToPlaylist.js': 6,
   'src/renderer/js/playRetry.js': 6,
-  'src/renderer/js/player-sync.js': 1,
   'src/renderer/js/player.js': 10,
   'src/renderer/js/player/fade.js': 2,
   'src/renderer/js/player/lyrics.js': 2,
@@ -432,7 +431,6 @@ const LEDGER = {
   'src/renderer/js/sleepTimer.js': 7,
   'src/renderer/js/songGroups.js': 1,
   'src/renderer/js/songMenu.js': 3,
-  'src/renderer/js/utils.js': 1,
   'src/renderer/js/views/ai-music.js': 38,
   'src/renderer/js/views/batchImport.js': 2,
   'src/renderer/js/views/clipboard.js': 1,
@@ -574,23 +572,19 @@ test('用到的每个键都中英齐备', () => {
  * clearFailed / cookieCleared / template* / cache* / reset* / export* / importFailed ——
  * 它们本来就是从 settings.js 抄进词典的，只是那次抄完没接线）。增量196 接上 importConfirm +
  * importSuccess（破坏性覆盖加确认守卫顺带消孤儿）。增量197 接上 search.js handleLinkInput 的
- * linkShort / linkRecognized / linkUnsupported / linkFailed（链接识别四处反馈）。剩下 6 条仍分两种，都是债：
- *   ① zh 值恰好等于某处源码字面量 ⇒ 英文界面下**可能**被值匹配撞中（如
- *      toast.saved「已保存」）；但它同时是颗雷：短值会抢走长句的前缀匹配，
- *      把「已保存歌单…」整个改写成「Saved」。
- *   ② 值里带 {占位符}、多行、或与源码字面量不等 ⇒ 值匹配根本撞不到，**永远**是中文
- *      （alreadyDownloaded / alreadyDownloadedAt / queueRestored / redownload / loading）。
- * 直接删掉它们等于把别的文件尚未接线的文案意图一起删了，所以与 LEDGER 同法：
- * 逐字对账，接线一个就少一个，新留孤儿就得加进来。
+ * linkShort / linkRecognized / linkUnsupported / linkFailed（链接识别四处反馈）。
+ *
+ * 增量200 清零收官：alreadyDownloaded / alreadyDownloadedAt / redownload 接上 utils.js 的
+ * showRedownloadToast（一句"已下载过 + 仍要下载"就吃掉三条），queueRestored 接上
+ * player-sync.js（顺带给两边补 {count} —— 原值不含首数，接上去会说谎），
+ * loading / saved 全仓零消费方（既无按键调用也无 data-i18n，grep 只命中本测试名单）
+ * ⇒ 判为死词条**删除**，而不是硬凑一个调用点去消数字。短值「已保存」留着更是负资产：
+ * 它会抢走「已保存歌单…」这类长句的值匹配前缀（191 记过的雷）。
+ *
+ * 从此这张表是**空表常态**：下面的对账测把"任何 toast.* 键都必须有消费方"变成硬门禁
+ * （189 律：白名单只进不出）。新写词条不同一次接线落地即红。
  */
-const ORPHANS = [
-  'toast.alreadyDownloaded',
-  'toast.alreadyDownloadedAt',
-  'toast.loading',
-  'toast.queueRestored',
-  'toast.redownload',
-  'toast.saved',
-];
+const ORPHANS = [];
 
 test('toast.* 孤儿词条与实际逐字相等（接线一个少一个，新写词条必须同时接上）', () => {
   const used = keysUsedAnywhere();
@@ -801,4 +795,46 @@ test('toast.link* 四条不再是孤儿（增量197 接线兑现）', () => {
   for (const k of ['toast.linkShort', 'toast.linkRecognized', 'toast.linkUnsupported', 'toast.linkFailed']) {
     assert.ok(!ORPHANS.includes(k), `${k} 已被 search.js 接线，应从 ORPHANS 删除`);
   }
+});
+
+test('两条无人消费的死词条已删除：toast.loading / toast.saved 不该还躺在词典里（增量200）', () => {
+  // 实测（改动前）：src/ 与 index.html 里没有任何 showToast('加载中…')/showToast('已保存')，
+  // 也没有 data-i18n="toast.loading"/"toast.saved" —— 全仓 grep 只命中本测试的名单。
+  // 留着它们等于让「已保存」这种短值去抢「已保存歌单…」的长句前缀（值匹配的雷，191 记过）。
+  for (const k of ['toast.loading', 'toast.saved']) {
+    assert.equal(zh[k], undefined, `${k} 在 zh 侧仍是死词条`);
+    assert.equal(en[k], undefined, `${k} 在 en 侧仍是死词条`);
+  }
+});
+
+test('utils.js 的「已下载过 / 仍要下载」三句走词典，反馈点不留中文字面量（增量200）', () => {
+  const src = read('src/renderer/js/utils.js');
+  const fn = src.slice(src.indexOf('function showRedownloadToast('));
+  assert.ok(fn.length > 50, 'showRedownloadToast 锚还在');
+  for (const k of ['toast.alreadyDownloadedAt', 'toast.alreadyDownloaded', 'toast.redownload']) {
+    assert.ok(fn.includes(`t('${k}')`) || fn.includes(`t('${k}',`),
+      `showRedownloadToast 应改用 t('${k}') —— 英文界面这里必然漏中文`);
+  }
+  // 参数名必须与词典占位符同名，写错等于把 "{when}" 印给用户。
+  // 注意口径：整段里本来就还有 `const when = ...`，光测 \bwhen\b 永远绿 —— 必须钉参数对象本身。
+  assert.ok(/\{\s*title\s*,\s*when\s*\}/.test(fn) && /\{\s*title\s*\}/.test(fn),
+    't() 的 params 必须恰是 { title, when } / { title}（与词典 {title} {when} 对齐）');
+  // 三条旧硬编码整句不得残留在反馈点
+  assert.ok(!/「\$\{title\}」/.test(fn) && !/btnLabel:\s*['"]仍要下载['"]/.test(fn),
+    'showRedownloadToast 内不应再拼中文整句（值只许留在词典一家）');
+});
+
+test('player-sync.js 恢复队列 toast 走词典并带上首数（增量200）', () => {
+  const src = read('src/renderer/js/player-sync.js');
+  assert.ok(/t\(\s*'toast\.queueRestored'\s*,\s*\{[^}]*\bcount\b/.test(src),
+    '恢复队列 toast 应走 t(\'toast.queueRestored\', { count }) —— 原模板串英文界面必漏中文');
+  assert.ok(!/showToast\(\s*`♻️\s*恢复播放队列/.test(src),
+    '旧的 `♻️ 恢复播放队列 N 首` 模板串不得残留（带变量的整句值匹配永远撞不到）');
+  // 零 import 守卫（drop-play.test.js:110）不许被本增量破掉
+  assert.ok(!/^\s*import\s/m.test(src), 'player-sync.js 仍必须零 import（桥走 window.t 的本模块别名）');
+});
+
+test('toast.queueRestored 两边都得有 {count}（把首数说实，不是"恢复了"含糊带过）（增量200）', () => {
+  assert.ok(/\{count\}/.test(zh['toast.queueRestored']), 'zh 值缺 {count} 占位符');
+  assert.ok(/\{count\}/.test(en['toast.queueRestored']), 'en 值缺 {count} 占位符');
 });

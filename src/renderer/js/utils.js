@@ -248,9 +248,13 @@ function showActionToast({ text, btnLabel, onConfirm, ttl = 6000, tone = 'warn' 
  */
 function showRedownloadToast(title, finishedAt, onConfirm) {
   const when = finishedAt ? fmtHistoryTime(finishedAt) : '';
+  // 取词走 i18n.js 挂上的 window.t —— 本模块被 node 测试直接 ESM import，
+  // 静态 import i18n.js 会把 JSON 拖进模块图（i18n.js 顶部记着这两条替代路都堵死）。
   showActionToast({
-    text: when ? `「${title}」${when}已下载过` : `「${title}」已下载过`,
-    btnLabel: '仍要下载',
+    text: when
+      ? window.t('toast.alreadyDownloadedAt', { title, when })
+      : window.t('toast.alreadyDownloaded', { title }),
+    btnLabel: window.t('toast.redownload'),
     onConfirm,
   });
 }

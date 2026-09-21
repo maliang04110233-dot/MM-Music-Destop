@@ -126,5 +126,7 @@ export function restorePlayQueueFromSaved(saved) {
   if (saved.queue[idx]) {
     if (typeof updatePlayerCard === 'function') updatePlayerCard(saved.queue[idx]);
   }
-  showToast(`♻️ 恢复播放队列 ${saved.queue.length} 首`, 'info', 2000);
+  // 取词走 i18n.js 挂的 window.t：本文件被守卫测试钉死零 import，
+  // 而带变量的整句模板串在英文界面下永远撞不到值匹配（191 实测）。
+  showToast(window.t('toast.queueRestored', { count: saved.queue.length }), 'info', 2000);
 }
