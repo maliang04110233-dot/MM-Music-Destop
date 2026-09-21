@@ -445,7 +445,7 @@ const LEDGER = {
   'src/renderer/js/views/local.js': 48,
   'src/renderer/js/views/nameBatch.js': 5,
   'src/renderer/js/views/playlist.js': 98,
-  'src/renderer/js/views/search.js': 40,
+  'src/renderer/js/views/search.js': 36,
   'src/renderer/js/views/subscriptions.js': 22,
 };
 
@@ -573,23 +573,19 @@ test('用到的每个键都中英齐备', () => {
  * 增量194 把 settings.js 接上线，吃掉了这张表里的 17 条（probeDone / cookieSaved /
  * clearFailed / cookieCleared / template* / cache* / reset* / export* / importFailed ——
  * 它们本来就是从 settings.js 抄进词典的，只是那次抄完没接线）。增量196 接上 importConfirm +
- * importSuccess（破坏性覆盖加确认守卫顺带消孤儿）。剩下 10 条仍分两种，都是债：
+ * importSuccess（破坏性覆盖加确认守卫顺带消孤儿）。增量197 接上 search.js handleLinkInput 的
+ * linkShort / linkRecognized / linkUnsupported / linkFailed（链接识别四处反馈）。剩下 6 条仍分两种，都是债：
  *   ① zh 值恰好等于某处源码字面量 ⇒ 英文界面下**可能**被值匹配撞中（如
  *      toast.saved「已保存」）；但它同时是颗雷：短值会抢走长句的前缀匹配，
  *      把「已保存歌单…」整个改写成「Saved」。
  *   ② 值里带 {占位符}、多行、或与源码字面量不等 ⇒ 值匹配根本撞不到，**永远**是中文
- *      （importConfirm / importSuccess / alreadyDownloaded / alreadyDownloadedAt /
- *       linkRecognized / linkFailed / linkUnsupported）。
+ *      （alreadyDownloaded / alreadyDownloadedAt / queueRestored / redownload / loading）。
  * 直接删掉它们等于把别的文件尚未接线的文案意图一起删了，所以与 LEDGER 同法：
  * 逐字对账，接线一个就少一个，新留孤儿就得加进来。
  */
 const ORPHANS = [
   'toast.alreadyDownloaded',
   'toast.alreadyDownloadedAt',
-  'toast.linkFailed',
-  'toast.linkRecognized',
-  'toast.linkShort',
-  'toast.linkUnsupported',
   'toast.loading',
   'toast.queueRestored',
   'toast.redownload',
@@ -784,4 +780,25 @@ test('importConfig 的成功/失败 toast 走词典不透传中文（增量196 �
 test('toast.importConfirm 与 toast.importSuccess 不再是孤儿（增量196 接线兑现）', () => {
   assert.ok(!ORPHANS.includes('toast.importConfirm'), 'importConfirm 已被 settings.js 接线，应从 ORPHANS 删除');
   assert.ok(!ORPHANS.includes('toast.importSuccess'), 'importSuccess 已被 settings.js 接线，应从 ORPHANS 删除');
+});
+
+test('search.js 的 handleLinkInput 四处链接反馈全走词典（增量197 收编）', () => {
+  const src = read('src/renderer/js/views/search.js');
+  const fn = src.slice(src.indexOf('async function handleLinkInput('));
+  assert.ok(fn.length > 50, 'handleLinkInput 锚还在');
+  for (const k of ['toast.linkShort', 'toast.linkRecognized', 'toast.linkUnsupported', 'toast.linkFailed']) {
+    assert.ok(fn.includes(`t('${k}')`) || fn.includes(`t('${k}',`),
+      `handleLinkInput 应改用 t('${k}') —— 英文界面这里会漏中文`);
+  }
+  // 旧的硬编码中文整句不得残留（值匹配兜底会把「已识别」这类前缀抢走改错别的长句）
+  assert.ok(!/showToast\(`🔗 已识别/.test(fn), '识别成功 toast 不得再拼中文字面量模板串');
+  assert.ok(!/showToast\('暂不支持/.test(fn) && !/showToast\('检测到短链/.test(fn),
+    '短链/不支持提示不得再是硬编码中文');
+  assert.ok(!/showToast\('链接识别：'/.test(fn), '失败 toast 应走 t() 只把主进程 error 当变量透传');
+});
+
+test('toast.link* 四条不再是孤儿（增量197 接线兑现）', () => {
+  for (const k of ['toast.linkShort', 'toast.linkRecognized', 'toast.linkUnsupported', 'toast.linkFailed']) {
+    assert.ok(!ORPHANS.includes(k), `${k} 已被 search.js 接线，应从 ORPHANS 删除`);
+  }
 });

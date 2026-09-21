@@ -14,6 +14,7 @@ import { markTerm } from '../highlight.js';
 import { buildFallbackNotice } from '../fallbackNotice.js';
 import { dismissedKeySet, filterDismissedPairs, onDismissChanged } from '../dismissed.js';
 import { skeletonHtml, SKEL_ROWS } from '../skeleton.js';
+import { t } from '../i18n.js';
 
 // ── DOM 缓存（避免重复查询）──────────────────────────
 const _dom = {
@@ -549,7 +550,7 @@ async function handleLinkInput(text, reqId = ++_typeSearchReqId) {
   if (!r || !r.matched) {
     // 平台短链无法本地解析：给出明确指引，同样回退普通搜索
     if (r && r.shortLink) {
-      showToast('检测到短链，请先在浏览器打开后复制完整链接', 'info', 4000);
+      showToast(t('toast.linkShort'), 'info', 4000);
     }
     return false;
   }
@@ -564,7 +565,7 @@ async function handleLinkInput(text, reqId = ++_typeSearchReqId) {
     if (_dom.batchToolbar) _dom.batchToolbar.style.display = 'none';
     if (_dom.pagination) _dom.pagination.style.display = 'none';
     renderSongList([r.song]);
-    showToast(`🔗 已识别 ${srcLabel(r.song.source)}链接：${r.song.title}`, 'success', 3000);
+    showToast(t('toast.linkRecognized', { source: srcLabel(r.song.source), title: r.song.title }), 'success', 3000);
     return true;
   }
 
@@ -581,13 +582,13 @@ async function handleLinkInput(text, reqId = ++_typeSearchReqId) {
       openAlbumSongsModal(link.platform, link.id);
       return true;
     }
-    showToast('暂不支持该平台的歌单链接', 'warn', 3000);
+    showToast(t('toast.linkUnsupported'), 'warn', 3000);
     return false; // 回退普通搜索
   }
 
   // matched 但既无 song 又非专辑/歌单（拉详情失败）
   if (r.error) {
-    showToast('链接识别：' + r.error, 'error', 4000);
+    showToast(t('toast.linkFailed', { msg: r.error }), 'error', 4000);
   }
   return false; // 回退普通搜索，用户至少还能搜歌名
 }
