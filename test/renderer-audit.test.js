@@ -86,8 +86,12 @@ test('settings.js: WebDAV 保存时非本机 http 地址必须提示明文风险
   const src = read('js', 'views', 'settings.js');
   assert.match(src, /startsWith\('http:\/\/'\)/, '以 http:// 前缀判定明文传输');
   assert.match(src, /localhost/, '本机地址（localhost/127.x/[::1]）应豁免提示');
-  assert.match(src, /showToast\([^\n]*明文[^\n]*'warn'/,
+  // 增量194：那句话的家从源码字面量搬进了词典 —— 判据跟着搬，但两截都要钉住：
+  // 调用点得真的按 warn 级把它说出来，词典里那句得真的讲"明文"。
+  assert.match(src, /showToast\(\s*t\('toast\.webdavInsecure'\)\s*,\s*'warn'/,
     '非本机 http:// 保存时应给 warn 级 toast 提示，而不是静默保存');
+  assert.ok(String(require('../src/renderer/js/lang/zh.json')['toast.webdavInsecure']).includes('明文'),
+    '词典里的 webdavInsecure 不再讲明文风险了？');
 });
 
 test('settings.js: filenameTmpl 默认值必须与 naming.js DEFAULT_TEMPLATE 等值（渲染层无法 import，用等值钉）', () => {

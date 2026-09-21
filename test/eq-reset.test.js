@@ -197,9 +197,13 @@ test('设置页「恢复所有设置为默认值」把均衡器算进去（它�
   assert.match(body, /resetEq\s*\(/,
     '均衡器面板就在「播放」tab 里，恢复默认却绕开它 = 又一次半兑现');
   // 钉的是「对用户说的那句话」，不是函数体里我自己的注释 —— 早先按整段 body 找"均衡器"
-  // 时，注释替文案顶了钉，变异（从弹窗文案里删掉均衡器）当场不红，这才改窄到 askConfirm 的入参
-  const said = ((body.match(/askConfirm\(\s*'([\s\S]*?)'\s*\)/) || [])[1] || '');
-  assert.ok(said.length > 10, '没抓到确认弹窗的文案');
+  // 时，注释替文案顶了钉，变异（从弹窗文案里删掉均衡器）当场不红，这才改窄到 askConfirm 的入参。
+  // 增量194 把这句话搬进了词典：入参变成了 t('toast.resetConfirm')，所以钉改成两截 ——
+  // ① 调用点确实按键取词，② 词典里那句仍然点名均衡器。少任何一截都不算兑现承诺。
+  assert.match(body, /askConfirm\(\s*t\('toast\.resetConfirm'\)\s*\)/,
+    '确认弹窗的文案必须按键取自词典（源码里手抄一份中文 = 英文界面照旧漏中文）');
+  const said = String(require('../src/renderer/js/lang/zh.json')['toast.resetConfirm']);
+  assert.ok(said.length > 10, '词典里取不到确认弹窗的文案');
   assert.match(said, /均衡器/,
     '确认弹窗要点名它会复原均衡器（157 的 F2 纪律：承诺要说全）');
 });

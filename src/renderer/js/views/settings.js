@@ -13,6 +13,7 @@ import {
   cookieHint,
 } from '../accountPlatforms.js';
 import { planSettingsSearch } from '../settingsSearch.js';
+import { t } from '../i18n.js';
 
 // ── 平台账号清单 ─────────────────────────────────────
 // 账号页不再持有平台字面量：清单从主进程插件能力派生（插件实现 verifyCookie
@@ -313,13 +314,13 @@ async function probeSourcesUI(btn) {
   const original = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 探测中…'; }
   try {
-    if (typeof api.probeSources !== 'function') { showToast('当前版本不支持探测', 'error'); return; }
+    if (typeof api.probeSources !== 'function') { showToast(t('toast.probeUnsupported'), 'error'); return; }
     const r = await api.probeSources();
     renderSourceHealth(r.health, r.probes);
     const okCount = (r.probes || []).filter(p => p.ok).length;
-    showToast(`探测完成：${okCount}/${r.probes.length} 个源可用`, okCount > 0 ? 'success' : 'warn');
+    showToast(t('toast.probeDone', { ok: okCount, total: r.probes.length }), okCount > 0 ? 'success' : 'warn');
   } catch (e) {
-    showToast('探测失败: ' + errBrief(e), 'error');
+    showToast(t('toast.probeFailed', { msg: errBrief(e) }), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = original; }
   }
@@ -330,17 +331,17 @@ async function saveCookie(platform) {
   const dom = _settingsDom.platforms[platform];
   if (!dom?.textarea) return;
   const val = dom.textarea.value.trim();
-  if (!val) { showToast('请先填入 Cookie', 'error'); return; }
+  if (!val) { showToast(t('toast.cookieMissing'), 'error'); return; }
   try {
     const result = await api.saveCookie(platform, val);
     if (result.saved) {
-      showToast('Cookie 已保存', 'success');
+      showToast(t('toast.cookieSaved'), 'success');
       await loadCookieStatus();
       if (result.verify) showVerifyResult(platform, result.verify);
       dom.textarea.value = '';
     }
   } catch (e) {
-    showToast('保存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -348,20 +349,20 @@ async function clearCookie(platform) {
   try {
     await api.clearCookie(platform);
   } catch (e) {
-    showToast('清除失败：' + errBrief(e), 'error');
+    showToast(t('toast.clearFailed', { msg: errBrief(e) }), 'error');
     return;
   }
   clearVerifyResult(platform);
   // 状态从主进程重新读取，不在本地硬改成「未设置」
   await loadAccountCardStatus(platform);
-  showToast('Cookie 已清除', 'info');
+  showToast(t('toast.cookieCleared'), 'info');
 }
 
 async function verifyCookieUI(platform) {
   const dom = _settingsDom.platforms[platform];
   if (!dom?.textarea) return;
   const val = dom.textarea.value.trim();
-  if (!val) { showToast('请先在输入框中填入 Cookie', 'error'); return; }
+  if (!val) { showToast(t('toast.cookieMissing'), 'error'); return; }
   if (!dom.verifyEl) return;
   dom.verifyEl.textContent = '验证中...';
   dom.verifyEl.className = 'cookie-verify-result ok';
@@ -453,7 +454,7 @@ async function openLoginWindowUI(platformId, btn) {
   if (!btn) btn = event.target;
   if (!hasLoginWindow(platformId)) {
     // 免登录平台没有登录入口，卡片也不会渲染这个按钮；这里兜底提示
-    showToast(platformName(platformId) + ' 免登录，不需要 Cookie', 'info');
+    showToast(t('toast.noLoginNeeded', { platform: platformName(platformId) }), 'info');
     return;
   }
   const platform = _accountPlatforms.cookie.find(p => p.id === platformId);
@@ -461,23 +462,23 @@ async function openLoginWindowUI(platformId, btn) {
   const originalText = btn ? btn.textContent : '🔑 一键登录';
 
   if (btn) { btn.disabled = true; btn.textContent = '🔄 打开登录窗口...'; }
-  showToast(`正在打开 ${name} 登录窗口...`, 'info');
+  showToast(t('toast.loginOpening', { name }), 'info');
 
   try {
     const result = await api.openLoginWindow(platformId);
     if (result.success) {
-      showToast(`✅ ${name} 登录成功！Cookie 已自动保存`, 'success');
+      showToast(t('toast.loginSuccess', { name }), 'success');
       const dom = _settingsDom.platforms[platformId];
       if (dom?.textarea) dom.textarea.value = result.cookie;
       if (result.verify) showVerifyResult(platformId, result.verify);
       await loadCookieStatus();
     } else if (result.cancelled) {
-      showToast('已取消登录', 'info');
+      showToast(t('toast.loginCanceled'), 'info');
     } else {
-      showToast('登录失败: ' + (result.error || '未知错误'), 'error');
+      showToast(t('toast.loginFailed', { msg: result.error || t('toast.unknownError') }), 'error');
     }
   } catch (e) {
-    showToast('登录失败: ' + errBrief(e), 'error');
+    showToast(t('toast.loginFailed', { msg: errBrief(e) }), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = originalText; }
   }
@@ -598,7 +599,7 @@ async function resetQualityBySource() {
   setState('qualityBySource', {});
   await saveQualityBySource({});
   renderQualityBySource();
-  showToast('已恢复为全部跟随默认音质', 'info');
+  showToast(t('toast.qualityFollowReset'), 'info');
 }
 
 // ── 换源排除平台（增量126-B）─────────────────────────────
@@ -651,7 +652,7 @@ async function resetFallbackDisabled() {
   _fallbackDisabledIds = [];
   renderFallbackDisabled();
   await api.setPref('fallbackDisabledPlatforms', []);
-  showToast('已恢复为全部平台可参与换源', 'info');
+  showToast(t('toast.sourceSwitchReset'), 'info');
 }
 
 async function loadGeneralSettings() {
@@ -681,11 +682,11 @@ async function loadGeneralSettings() {
 let _themeMediaQuery = null;
 
 function applyTheme(theme) {
-  const t = theme || 'default';
+  const themeId = theme || 'default';
   // 清除之前的系统主题监听
   if (_themeMediaQuery) { _themeMediaQuery.onchange = null; _themeMediaQuery = null; }
 
-  if (t === 'auto') {
+  if (themeId === 'auto') {
     // 跟随系统主题
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     _themeMediaQuery = mq;
@@ -694,10 +695,10 @@ function applyTheme(theme) {
     };
     applySystem(mq.matches);
     mq.onchange = (e) => applySystem(e.matches);
-  } else if (t === 'default') {
+  } else if (themeId === 'default') {
     document.documentElement.removeAttribute('data-theme');
   } else {
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', themeId);
   }
 }
 
@@ -819,8 +820,8 @@ async function setActiveTemplate(templateId) {
     await api.setActiveDownloadTemplate(templateId);
     _dlActiveTemplate = templateId;
     renderDownloadTemplates();
-    const tpl = _dlTemplates.find(t => t.id === templateId);
-    showToast(`已切换到: ${tpl?.name || '默认路径'}`, 'info');
+    const tpl = _dlTemplates.find((x) => x.id === templateId);
+    showToast(t('toast.templateSwitched', { name: tpl?.name || t('toast.templateDefaultName') }), 'info');
   } catch (e) {
     logger.error(`[setActiveTemplate] error:`, e);
   }
@@ -833,7 +834,7 @@ function openDlTemplateEditor(templateId) {
   const titleEl = document.getElementById('dlTemplateEditorTitle');
 
   if (templateId) {
-    const tpl = _dlTemplates.find(t => t.id === templateId);
+    const tpl = _dlTemplates.find((x) => x.id === templateId);
     if (tpl) {
       titleEl.textContent = '✏️ 编辑路径模板';
       nameInput.value = tpl.name;
@@ -934,7 +935,7 @@ async function saveDlTemplate() {
   const name = nameInput.value.trim();
   const path = pathInput.value.trim();
   if (!name || !path) {
-    showToast('名称和路径不能为空', 'warn');
+    showToast(t('toast.templateNameRequired'), 'warn');
     return;
   }
 
@@ -947,23 +948,23 @@ async function saveDlTemplate() {
     if (result.success) {
       await loadDownloadTemplates();
       closeDlTemplateEditor();
-      showToast(editId ? '✅ 模板已更新' : '✅ 模板已创建', 'success');
+      showToast(editId ? t('toast.templateUpdated') : t('toast.templateCreated'), 'success');
     }
   } catch (e) {
-    showToast('保存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
   }
 }
 
 async function deleteDlTemplate(templateId) {
-  if (!await askConfirm('确认删除该路径模板？')) return;
+  if (!await askConfirm(t('toast.templateConfirmDelete'))) return;
   try {
     const result = await api.deleteDownloadTemplate(templateId);
     if (result.success) {
       await loadDownloadTemplates();
-      showToast('✅ 模板已删除', 'success');
+      showToast(t('toast.templateDeleted'), 'success');
     }
   } catch (e) {
-    showToast('删除失败: ' + errBrief(e), 'error');
+    showToast(t('toast.deleteFailedMsg', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -988,16 +989,16 @@ async function updateCacheSize() {
 async function clearPlayCache() {
   try {
     await api.clearPlayCache();
-    showToast('✅ 播放缓存已清理', 'success');
+    showToast(t('toast.cacheCleared'), 'success');
     updateCacheSize();
   } catch (e) {
-    showToast('清理缓存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.cacheClearFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
 // ── 恢复默认设置 ──────────────────────────────────────
 async function resetAllSettings() {
-  if (!await askConfirm('确认恢复所有设置为默认值？\n\n会一并复原：下载/播放/外观全部设置\n（含音量、倍速、淡入淡出、队列完成后动作、均衡器曲线与 EQ 开关）\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史')) return;
+  if (!await askConfirm(t('toast.resetConfirm'))) return;
 
   // 默认值由 GENERAL_PREFS 表派生 —— 手抄清单必然漏项（审计发现的 6/13 缺漏）
   const defaults = {};
@@ -1020,9 +1021,9 @@ async function resetAllSettings() {
     window.resetPlaybackPrefs();
     window.resetFadeSettings();
     window.resetAfterQueueAction();
-    showToast('✅ 设置已恢复默认值', 'success');
+    showToast(t('toast.settingsReset'), 'success');
   } catch (e) {
-    showToast('恢复失败: ' + errBrief(e), 'error');
+    showToast(t('toast.settingsResetFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1044,12 +1045,12 @@ async function exportConfig() {
     const result = await window.ipcRenderer.invoke('export-all-data');
     if (result.canceled) return;
     if (result.success) {
-      showToast('✅ 配置已导出: ' + result.path, 'success');
+      showToast(t('toast.exportSuccess', { path: result.path }), 'success');
     } else {
-      showToast('❌ 导出失败: ' + result.error, 'error');
+      showToast(t('toast.exportFailed', { msg: result.error }), 'error');
     }
   } catch (e) {
-    showToast('导出失败: ' + errBrief(e), 'error');
+    showToast(t('toast.exportFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1063,7 +1064,7 @@ async function importConfig() {
       showToast('❌ ' + result.error, 'error');
     }
   } catch (e) {
-    showToast('导入失败: ' + errBrief(e), 'error');
+    showToast(t('toast.importFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1096,7 +1097,7 @@ async function saveWebdavConfig() {
     // 局域网 NAS（http://192.168.x.x）是 WebDAV 主流部署形态
     const isLocalHost = /^https?:\/\/(localhost|127\.|\[::1\])/i.test(url);
     if (url && url.startsWith('http://') && !isLocalHost) {
-      showToast('⚠️ WebDAV 地址为明文 http 且非本机，密码可能被窃听，建议改用 https', 'warn', 6000);
+      showToast(t('toast.webdavInsecure'), 'warn', 6000);
     }
     const r = await window.ipcRenderer.invoke('cloud-sync-config-set', {
       url,
@@ -1105,31 +1106,33 @@ async function saveWebdavConfig() {
       ...(pass ? { pass } : {}),
     });
     if (r.success) {
-      showToast('WebDAV 配置已保存', 'success');
+      showToast(t('toast.webdavSaved'), 'success');
       loadWebdavConfig();
     } else {
-      showToast('保存失败: ' + r.error, 'error');
+      showToast(t('toast.saveFailedDetail', { msg: r.error }), 'error');
     }
   } catch (e) {
-    showToast('保存失败: ' + errBrief(e), 'error');
+    showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
   }
 }
 
 async function runWebdavSync() {
-  showToast('正在与 WebDAV 同步…');
+  showToast(t('toast.webdavSyncing'));
   try {
     const r = await window.ipcRenderer.invoke('cloud-sync-now');
     if (r.success) {
       showToast(
-        `同步完成：歌单 ${r.summary.playlists} / 模板 ${r.summary.templates} / 历史 ${r.summary.historyTotal}（歌单页重新打开即为最新）`,
+        t('toast.webdavSyncDone', {
+          playlists: r.summary.playlists, templates: r.summary.templates, history: r.summary.historyTotal,
+        }),
         'success', 5000,
       );
     } else {
-      showToast('同步失败: ' + r.error, 'error');
+      showToast(t('toast.webdavSyncFailed', { msg: r.error }), 'error');
     }
     loadWebdavConfig();
   } catch (e) {
-    showToast('同步失败: ' + errBrief(e), 'error');
+    showToast(t('toast.webdavSyncFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1164,7 +1167,7 @@ async function _applyMcpConfig(patch) {
     if (!r.success) { showToast('MCP: ' + r.error, 'error', 5000); loadMcpConfig(); return; }
     loadMcpConfig();
   } catch (e) {
-    showToast('MCP 操作失败: ' + errBrief(e), 'error');
+    showToast(t('toast.mcpFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1174,7 +1177,7 @@ function toggleMcpService() {
 
 function rotateMcpToken() {
   _applyMcpConfig({ rotateToken: true });
-  showToast('令牌已重置，旧令牌立即失效，请在 Agent 配置中更新', 'warn', 5000);
+  showToast(t('toast.mcpTokenRotated'), 'warn', 5000);
 }
 
 // ── 设置项搜索（增量102：settingsSearch.js 纯函数的接线层）────────

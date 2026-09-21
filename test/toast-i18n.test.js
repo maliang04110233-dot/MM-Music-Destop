@@ -227,7 +227,12 @@ test('扫描器覆盖面：被纳管的文件确实在渲染层', () => {
  * 出口（`🔒 无法下载：${title}` 就写在那儿），漏了它等于给全应用最响的那条
  * 错误提示留着中文。
  */
-const CONQUERED = ['src/renderer/js/app.js', 'src/renderer/js/toast.js'];
+const CONQUERED = [
+  'src/renderer/js/app.js',
+  'src/renderer/js/toast.js',
+  // 增量194 按 LEDGER 收编的第一个文件（43 处 → 0，同时接上 17 条早就为它写好的词条）
+  'src/renderer/js/views/settings.js',
+];
 
 test('已收编文件的用户反馈文案零硬编码（本轮兑现的那一面）', () => {
   const bad = [];
@@ -259,6 +264,129 @@ test('toast.js 整文件零中文字面量（出口文件按最严口径，注�
     i = end;
   }
   assert.deepStrictEqual(hits, [], 'toast.js 里仍有中文字面量（文案的家是语言包）：' + JSON.stringify(hits));
+});
+
+// ── D1b：收编进来的文件必须真的接上取词（D1 只保证"没有中文"，不保证"有英文"）──
+
+/**
+ * 「把中文删掉换成 t('键')」这一步，源码侧有两个失败模式是 D1 的零中文钉抓不到的：
+ *   ① 忘了 import，改成读 window.t 或就地攒一个小词典 —— 浏览器里可能照样跑，node 侧与词典侧全瞎；
+ *   ② 文件里另有一个叫 t 的局部变量把取词函数遮蔽掉。settings.js 收编前实测就有三处
+ *      （`const t = theme || 'default'`、两处 `_dlTemplates.find(t => t.id === ...)`），
+ *      遮蔽后的 `t('toast.x')` 是"函数不是函数"的运行时异常，而不是编译错误。
+ * settings.js 与 app.js 的差别决定了它必须单独钉一枚：app.js 是入口（自己就是词典的家），
+ * settings.js 是视图，它只能用 i18n.js 那一家。
+ */
+const T_SHADOW_PATTERNS = [
+  [/\b(?:const|let|var)\s+t\s*[=:,;]/g, '局部变量 t'],
+  [/\bfunction\s+t\s*\(/g, '名为 t 的函数'],
+  [/\bt\s*=>/g, '箭头函数形参 t'],
+  [/[(,]\s*t\s*(?:,[^)]*)?\)\s*=>/g, '箭头函数形参 t'],
+  [/catch\s*\(\s*t\s*\)/g, 'catch 形参 t'],
+];
+
+test('settings.js 的取词走 i18n.js 的 t，且文件内没有名为 t 的局部遮蔽', () => {
+  const src = read('src/renderer/js/views/settings.js');
+  const code = stripComments(src);
+  assert.match(src, /import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*'\.\.\/i18n\.js'/,
+    "settings.js 应静态 import { t } from '../i18n.js'（视图层不许自己攒词典）");
+  assert.ok(!/window\.t\s*\(/.test(code), '不许留 window.t 的旁路（同一事实两个家，见增量191）');
+  const shadows = [];
+  for (const [re, what] of T_SHADOW_PATTERNS) {
+    let m;
+    while ((m = re.exec(code))) shadows.push(`${what} @ ${code.slice(m.index, m.index + 40)}`);
+  }
+  assert.deepStrictEqual(shadows, [], '这些局部 t 会遮蔽取词函数（改名，别改 t 的调用）：\n  ' + shadows.join('\n  '));
+});
+
+/**
+ * 新增/改写的词条逐字对账。
+ *
+ * 为什么还要这一枚：D1 + 孤儿台账只证明"源码里没有中文、词典里有人按键读"，
+ * 它们**不知道** t('toast.probeFailed') 取出来的到底是不是那句"探测失败"。
+ * 收编时键名和值是我在同一轮里写的，接错线（把「删除失败」挂到 saveFailed 键上）
+ * 会一路绿灯到用户屏幕上。所以把这批值的原文抄下来当锚 —— 值一动就得在对账测里红一次。
+ * （全局增量号 194：并发线已把 193 用在引导层键盘契约上，见 git log be3ec33。）
+ */
+const WIRING_194 = {
+  'toast.probeUnsupported': '当前版本不支持探测',
+  'toast.probeDone': '探测完成：{ok}/{total} 个源可用',
+  'toast.probeFailed': '探测失败：{msg}',
+  'toast.cookieMissing': '请先在输入框中填入 Cookie',
+  'toast.cookieSaved': 'Cookie 已保存',
+  'toast.cookieCleared': 'Cookie 已清除',
+  'toast.clearFailed': '清除失败：{msg}',
+  // 「保存失败：{msg}」的家早就在词典里立着了（app.js 两处消费）—— 收编时复用，不再造一个同义键
+  'toast.saveFailedDetail': '保存失败: {msg}',
+  'toast.deleteFailedMsg': '删除失败：{msg}',
+  'toast.noLoginNeeded': '{platform} 免登录，不需要 Cookie',
+  'toast.loginOpening': '正在打开 {name} 登录窗口…',
+  'toast.loginSuccess': '✅ {name} 登录成功！Cookie 已自动保存',
+  'toast.loginCanceled': '已取消登录',
+  'toast.loginFailed': '登录失败：{msg}',
+  'toast.unknownError': '未知错误',
+  'toast.qualityFollowReset': '已恢复为全部跟随默认音质',
+  'toast.sourceSwitchReset': '已恢复为全部平台可参与换源',
+  'toast.templateSwitched': '已切换到：{name}',
+  'toast.templateDefaultName': '默认路径',
+  'toast.templateNameRequired': '名称和路径不能为空',
+  'toast.templateUpdated': '✅ 模板已更新',
+  'toast.templateCreated': '✅ 模板已创建',
+  'toast.templateDeleted': '✅ 模板已删除',
+  'toast.templateConfirmDelete': '确认删除该路径模板？',
+  'toast.cacheCleared': '✅ 播放缓存已清理',
+  'toast.cacheClearFailed': '清理缓存失败：{msg}',
+  'toast.settingsReset': '✅ 设置已恢复默认值',
+  'toast.settingsResetFailed': '恢复失败：{msg}',
+  'toast.resetConfirm': '确认恢复所有设置为默认值？\n\n会一并复原：下载/播放/外观全部设置\n（含音量、倍速、淡入淡出、队列完成后动作、均衡器曲线与 EQ 开关）\n\n此操作不会删除：\n• 已下载的音乐文件\n• 平台登录 Cookie\n• 搜索历史',
+  'toast.exportSuccess': '✅ 数据已导出到 {path}',
+  'toast.exportFailed': '导出失败：{msg}',
+  'toast.importFailed': '导入失败：{msg}',
+  'toast.webdavInsecure': '⚠️ WebDAV 地址为明文 http 且非本机，密码可能被窃听，建议改用 https',
+  'toast.webdavSaved': 'WebDAV 配置已保存',
+  'toast.webdavSyncing': '正在与 WebDAV 同步…',
+  'toast.webdavSyncDone': '同步完成：歌单 {playlists} / 模板 {templates} / 历史 {history}（歌单页重新打开即为最新）',
+  'toast.webdavSyncFailed': '同步失败：{msg}',
+  'toast.mcpFailed': 'MCP 操作失败：{msg}',
+  'toast.mcpTokenRotated': '令牌已重置，旧令牌立即失效，请在 Agent 配置中更新',
+};
+
+test('增量194 接线的词条值逐字对账（键与值的配对不许只靠写代码那一次的手感）', () => {
+  const bad = [];
+  for (const k of Object.keys(WIRING_194)) {
+    if (!(k in zh)) { bad.push(`${k}: zh 缺键`); continue; }
+    if (zh[k] !== WIRING_194[k]) bad.push(`${k}: zh="${zh[k]}" 应为="${WIRING_194[k]}"`);
+  }
+  assert.deepStrictEqual(bad, [], '这些词条的值与源码里搬出来的那句不符：\n  ' + bad.join('\n  '));
+});
+
+test('增量194 的词条两边都带齐占位符（少一个 {x} 就是把变量名印给用户）', () => {
+  const bad = [];
+  for (const k of Object.keys(WIRING_194)) {
+    if (typeof zh[k] !== 'string') { bad.push(`${k}: zh 缺键`); continue; }
+    if (typeof en[k] !== 'string') { bad.push(`${k}: en 缺键`); continue; }
+    const a = placeholdersOf(zh[k]).join(',');
+    const b = placeholdersOf(en[k]).join(',');
+    if (a !== b) bad.push(`${k}: zh[${a}] vs en[${b}]`);
+  }
+  assert.deepStrictEqual(bad, [], '中英占位符集合不等：\n  ' + bad.join('\n  '));
+});
+
+/**
+ * 191 的家法在词典侧的哨兵：值必须是**整句**。
+ * `'保存失败: ' + err` 搬进词典时若写成 `"toast.saveFailed": "保存失败: "`（值以冒号收尾），
+ * 接线处就只剩两种可能 —— 要么源码里仍然拼中文冒号（D1 会红，算抓得到），
+ * 要么拼一个英文冒号进中文界面（哪枚钉都不红，用户看得见）。所以直接在形状侧堵死半句话。
+ */
+test('toast.* 词条不许是半句话（值不得以冒号收尾 —— 拼接的那一段必须进 {占位符}）', () => {
+  const bad = [];
+  for (const k of Object.keys(zh)) {
+    if (!k.startsWith('toast.')) continue;
+    for (const side of ['zh', 'en']) {
+      if (/[:：]\s*$/.test(String(side === 'zh' ? zh[k] : en[k]))) bad.push(`${k}(${side})`);
+    }
+  }
+  assert.deepStrictEqual(bad, [], '这些值以冒号收尾，等于把拼接留在了源码里：\n  ' + bad.join('\n  '));
 });
 
 // ── D2：欠账台账逐字相等（只许被显式改动，不许悄悄长大）──
@@ -316,7 +444,6 @@ const LEDGER = {
   'src/renderer/js/views/nameBatch.js': 5,
   'src/renderer/js/views/playlist.js': 98,
   'src/renderer/js/views/search.js': 40,
-  'src/renderer/js/views/settings.js': 43,
   'src/renderer/js/views/subscriptions.js': 22,
 };
 
@@ -441,47 +568,31 @@ test('用到的每个键都中英齐备', () => {
  * 而渲染层对 t() 的调用数是 **0** —— 全部没人按键读，只能靠 translateMessage 的
  * 值匹配撞运气。本轮 app.js + toast.js 消费掉 47 条（含新增），剩下的记在这里。
  *
- * 这 29 条分两种，都是债：
- *   ① zh 值恰好等于某处源码字面量 ⇒ 英文界面下**可能**被值匹配撞中（19 条，如
+ * 增量194 把 settings.js 接上线，吃掉了这张表里的 17 条（probeDone / cookieSaved /
+ * clearFailed / cookieCleared / template* / cache* / reset* / export* / importFailed ——
+ * 它们本来就是从 settings.js 抄进词典的，只是那次抄完没接线）。剩下 12 条仍分两种，都是债：
+ *   ① zh 值恰好等于某处源码字面量 ⇒ 英文界面下**可能**被值匹配撞中（如
  *      toast.saved「已保存」）；但它同时是颗雷：短值会抢走长句的前缀匹配，
  *      把「已保存歌单…」整个改写成「Saved」。
  *   ② 值里带 {占位符}、多行、或与源码字面量不等 ⇒ 值匹配根本撞不到，**永远**是中文
- *      （10 条：exportSuccess / importConfirm / importSuccess / resetConfirm /
- *       alreadyDownloaded / alreadyDownloadedAt / linkRecognized / linkFailed /
- *       linkUnsupported / probeDone）。
+ *      （importConfirm / importSuccess / alreadyDownloaded / alreadyDownloadedAt /
+ *       linkRecognized / linkFailed / linkUnsupported）。
  * 直接删掉它们等于把别的文件尚未接线的文案意图一起删了，所以与 LEDGER 同法：
  * 逐字对账，接线一个就少一个，新留孤儿就得加进来。
  */
 const ORPHANS = [
   'toast.alreadyDownloaded',
   'toast.alreadyDownloadedAt',
-  'toast.cacheClearFailed',
-  'toast.cacheCleared',
-  'toast.clearFailed',
-  'toast.cookieCleared',
-  'toast.cookieSaved',
-  'toast.exportFailed',
-  'toast.exportSuccess',
   'toast.importConfirm',
-  'toast.importFailed',
   'toast.importSuccess',
   'toast.linkFailed',
   'toast.linkRecognized',
   'toast.linkShort',
   'toast.linkUnsupported',
   'toast.loading',
-  'toast.probeDone',
   'toast.queueRestored',
   'toast.redownload',
-  'toast.resetConfirm',
   'toast.saved',
-  'toast.settingsReset',
-  'toast.settingsResetFailed',
-  'toast.templateConfirmDelete',
-  'toast.templateCreated',
-  'toast.templateDeleted',
-  'toast.templateNameRequired',
-  'toast.templateUpdated',
 ];
 
 test('toast.* 孤儿词条与实际逐字相等（接线一个少一个，新写词条必须同时接上）', () => {

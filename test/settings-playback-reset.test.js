@@ -206,8 +206,11 @@ test('resetAllSettings 叫齐四个家的默认态实现（音量倍速/淡入�
 test('确认弹窗点名它会复原哪些播放偏好（157 的 F2 纪律：承诺要说全）', () => {
   const src = read('src/renderer/js/views/settings.js');
   const body = fnBody(src, 'async function resetAllSettings()');
-  const said = ((body.match(/askConfirm\(\s*'([\s\S]*?)'\s*\)/) || [])[1] || '');
-  assert.ok(said.length > 10, '没抓到确认弹窗的文案');
+  // 增量194：文案的家搬到词典了，所以"叫什么"和"说了什么"分两截钉
+  assert.match(body, /askConfirm\(\s*t\('toast\.resetConfirm'\)\s*\)/,
+    '确认弹窗必须按键取词，不许在源码里手抄中文');
+  const said = String(require('../src/renderer/js/lang/zh.json')['toast.resetConfirm']);
+  assert.ok(said.length > 10, '词典里取不到确认弹窗的文案');
   ['音量', '倍速', '淡入', '淡出', '完成后', '均衡器'].forEach((w) => {
     assert.ok(said.includes(w), `确认文案少了「${w}」——用户会以为恢复默认不会动它`);
   });
