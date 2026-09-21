@@ -1653,7 +1653,7 @@
 
 /* ── 首启动新手引导浮层（views/welcome.js 动态挂载） ─────── */
 .welcome-overlay {
-  position: fixed; inset: 0; z-index: 1500;
+  position: fixed; inset: 0; z-index: var(--z-overlay);
   background: rgba(0, 0, 0, .55); backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   animation: fade-in var(--dur-2) var(--ease);

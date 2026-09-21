@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { makeDomStub, findClass, dispatchKey, flush } from './helpers/dom-stub.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const R = (...p) => path.join(ROOT, 'src', 'renderer', ...p);
@@ -43,69 +44,9 @@ const loadWelcomeFresh = async () => {
   return import(pathToFileURL(R('js', 'views', 'welcome.js')).href + '?tc=' + Math.random());
 };
 
-// ── domStub（形状同 confirm-dialog.test.js 182 段，桩只做被测代码真用到的部分）──
-
-function stubEl(tag, doc) {
-  return {
-    tag, parent: null, children: [], className: '', textContent: '', innerHTML: '', attrs: {}, _l: {},
-    setAttribute(k, v) { this.attrs[k] = String(v); },
-    appendChild(c) { c.parent = this; this.children.push(c); return c; },
-    remove() {
-      if (this.parent) this.parent.children = this.parent.children.filter((x) => x !== this);
-      this.parent = null;
-    },
-    addEventListener(type, fn) { (this._l[type] ||= []).push(fn); },
-    focus() { doc.activeElement = this; },
-    click() { (this._l.click || []).forEach((fn) => fn({ type: 'click', target: this })); },
-  };
-}
-
-function makeDomStub() {
-  const doc = {
-    activeElement: null, _cap: [], _bub: [],
-    createElement: (tag) => stubEl(tag, doc),
-    addEventListener(type, fn, capture) { (capture ? doc._cap : doc._bub).push({ type, fn }); },
-    removeEventListener(type, fn, capture) {
-      const arr = capture ? doc._cap : doc._bub;
-      const i = arr.findIndex((l) => l.type === type && l.fn === fn);
-      if (i >= 0) arr.splice(i, 1);
-    },
-  };
-  doc.body = stubEl('body', doc);
-  return doc;
-}
-
-function findClass(el, cls) {
-  if (el.className.split(/\s+/).includes(cls)) return el;
-  for (const c of el.children) {
-    const hit = findClass(c, cls);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-// 与真实 DOM 一致的相位语义：document capture 按注册序 → 目标 → document 冒泡
-function dispatchKey(doc, key, target) {
-  const ev = {
-    key, type: 'keydown', target,
-    defaultPrevented: false, propagationStopped: false, immediateStopped: false,
-    preventDefault() { this.defaultPrevented = true; },
-    stopPropagation() { this.propagationStopped = true; },
-    stopImmediatePropagation() { this.immediateStopped = true; this.propagationStopped = true; },
-  };
-  const run = (list) => {
-    for (const l of list) {
-      if (ev.immediateStopped) return;
-      if (l.type === 'keydown') l.fn(ev);
-    }
-  };
-  run([...doc._cap]);
-  if (!ev.propagationStopped) run((target && target._l.keydown) || []);
-  if (!ev.propagationStopped) run([...doc._bub]);
-  return ev;
-}
-
-const flush = () => new Promise((r) => setImmediate(r));
+// ── domStub：从 test/helpers/dom-stub.js 取（193 收口：182→186→193 三处手抄
+// 已经漂过一次——welcome 换掉内联 onclick 后本文件的旧桩缺 querySelectorAll，
+// 两个行为测当场炸；桩与被测实现必须同址演进，故收进唯一的家，见该文件头）──
 
 /** 起一层全新引导浮层，返回 { doc, win, overlay } */
 async function openWelcome() {
