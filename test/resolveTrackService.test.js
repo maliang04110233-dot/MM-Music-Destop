@@ -14,6 +14,7 @@ const assert = require('node:assert');
 const {
   createResolveTrackService,
   shouldFallbackToOtherSource,
+  isPreviewClip,
   FALLBACK_CODES,
 } = require('../src/api/services/resolveTrackService');
 const { ERROR_CODES } = require('../src/shared/errors');
@@ -694,4 +695,137 @@ test('探测：_altSource 记忆命中路径零探测', async () => {
   assert.strictEqual(r.url, 'https://cdn/alt.mp3');
   assert.strictEqual(r.fromAltMemory, true);
   assert.deepStrictEqual(probe.calls, []);
+});
+
+// ══════════════════════════════════════════════════════════
+// 试听片段判定（增量205）
+//
+// 2026-09-21 三轮实测取证（详见提交说明）：
+//   - 酷我 antiserver 对**无版权/受限曲**一律返回同一个占位片段：
+//     `.../nf/resource/n1/69/32/588957081.mp3`，181521 B / 11.3 s，
+//     与所请求曲目无关（晴天/孤勇者/起风了/夜曲 四首全一样）；
+//   - 汽水（douyin）分享页给出的是 ~60 s 的 douyinvod 片段；
+//   - 这些链路 HTTP 200 + content-type audio/mpeg，既有 testAudioLink
+//     只验「能拿到音频」，于是**片段被当成整曲判成功**；
+//   - 更致命的是换源放大：QQ / 酷狗 取流失败后跨源命中酷我占位片，
+//     用户体感变成「QQ音乐、酷狗也只有试听」。
+//
+// 判据只用**结果自带的元数据**（size + br + 声明时长），因此：
+//   本源/记忆成功路径零新增网络请求（保住上方「happy path 零探测」约束）。
+// 阈值刻意宽松（<50% 才算片段）：无损/flac 的 br 可能是档位哨兵值而非
+// 实测平均码率，size*8/br 会低估时长 —— 宁可放过片段也绝不砍掉能听的整曲。
+// ══════════════════════════════════════════════════════════
+
+/** 实测值：酷我占位片 181521 B @128k ≈ 11.3 s */
+const KUWO_CLIP = { url: 'https://kw-bj.kuwo.cn/nf/resource/n1/69/32/588957081.mp3', ext: 'mp3', size: 181521, br: 128000 };
+/** 实测值：酷另一节点给的整曲 4964KB @128k ≈ 318 s（312 s 的歌） */
+const KUWO_FULL = { url: 'https://kw-lw.kuwo.cn/full.mp3', ext: 'mp3', size: 5082000, br: 128000 };
+
+test('片段判定：实测长度不足声明时长一半 ⇒ 判为试听片段', () => {
+  assert.strictEqual(isPreviewClip(KUWO_CLIP, 269000), true, '11.3s / 269s 必须是片段');
+  assert.strictEqual(isPreviewClip({ url: 'u', size: 972800, br: 130000 }, 198600), true,
+    '汽水 60s 片段 / 声明 198.6s 必须是片段');
+});
+
+test('片段判定：整曲（含时长略有出入）不判片段', () => {
+  assert.strictEqual(isPreviewClip(KUWO_FULL, 312000), false, '实测 318s vs 声明 312s 是整曲');
+  assert.strictEqual(isPreviewClip({ url: 'u', size: 4462000, br: 128000 }, 269000), false);
+});
+
+test('片段判定：无损 br 是档位哨兵时不得误杀整曲', () => {
+  // size*8/999000 会把 270s 的 flac 低估到 ~153s（0.57 倍）——宽松阈值必须放过。
+  assert.strictEqual(isPreviewClip({ url: 'u', ext: 'flac', size: 19170000, br: 999000 }, 270000), false);
+});
+
+test('片段判定：缺任一证据（时长/字节数/码率）一律放过 —— 只判有把握的', () => {
+  const cases = [
+    [{ url: 'u', size: 181521, br: 128000 }, 0],      // 咪咕/5sing 恒 duration=0
+    [{ url: 'u', size: 181521, br: 128000 }, null],
+    [{ url: 'u', size: 181521 }, 269000],              // 酷狗/QQ/B 站不给 br
+    [{ url: 'u', br: 128000 }, 269000],                // 不给 size
+    [{ url: 'u' }, 269000],
+    [null, 269000],
+  ];
+  for (const [r, d] of cases) {
+    assert.strictEqual(isPreviewClip(r, d), false, `${JSON.stringify(r)}@${d} 无证据应放过`);
+  }
+});
+
+test('片段判定：入参为字符串/数字等脏值不抛错', () => {
+  assert.strictEqual(isPreviewClip('x', 'y'), false);
+  assert.strictEqual(isPreviewClip({ size: 'abc', br: 'def' }, 'ghi'), false);
+});
+
+test('resolve：本源只给占位片段 ⇒ 记失败并换源到整曲源', async () => {
+  const { svc, health } = build(
+    { 'kuwo:w1': KUWO_CLIP, 'kugou:k9': KUWO_FULL },
+    { findCandidates: async () => [{ id: 'k9', source: 'kugou', title: 't' }] },
+  );
+  const r = await svc.resolve(
+    { id: 'w1', source: 'kuwo', title: '晴天', artist: 'a', duration: 269000 }, 'standard');
+  assert.strictEqual(r.url, KUWO_FULL.url, '11s 占位片不能当成整曲交出去');
+  assert.strictEqual(r.source, 'kugou');
+  assert.ok(health.calls.some(([s, ok]) => s === 'kuwo' && ok === false),
+    '给片段的源要记健康度失败，后续 rankByHealth 才会压低它');
+});
+
+test('resolve：换源候选给片段 ⇒ 跳过该候选，继续下下一个', async () => {
+  const { svc } = build(
+    {
+      'qq:1': { error: 'vip', code: 'VIP_REQUIRED' },
+      'kuwo:w1': KUWO_CLIP,
+      'kuwo:w2': KUWO_FULL,
+    },
+    {
+      findCandidates: async () => [
+        { id: 'w1', source: 'kuwo', title: 't' },
+        { id: 'w2', source: 'kuwo', title: 't' },
+      ],
+    },
+  );
+  const r = await svc.resolve(
+    { id: '1', source: 'qq', title: '晴天', artist: 'a', duration: 269000 }, 'standard');
+  assert.strictEqual(r.url, KUWO_FULL.url);
+});
+
+test('resolve：_altSource 记忆指向片段 ⇒ 不吃记忆，回到本源', async () => {
+  const { svc, getUrl } = build(
+    { 'kuwo:w1': KUWO_CLIP, 'netease:1': okResult({ url: 'https://cdn/full.mp3' }) },
+    {},
+  );
+  const r = await svc.resolve(
+    { id: '1', source: 'netease', title: 't', artist: 'a', duration: 269000,
+      _altSource: { source: 'kuwo', id: 'w1' } }, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/full.mp3');
+  assert.strictEqual(r.fromAltMemory, undefined);
+  assert.deepStrictEqual(getUrl.calls, [['kuwo', 'w1'], ['netease', '1']]);
+});
+
+test('resolve：整曲带 size+br ⇒ 原样返回且零探测（happy path 不加延迟）', async () => {
+  const probe = makeProbe();
+  const { svc, getUrl } = build({ 'kuwo:w1': KUWO_FULL }, { probeUrl: probe });
+  const r = await svc.resolve(
+    { id: 'w1', source: 'kuwo', title: 't', artist: 'a', duration: 312000 }, 'standard');
+  assert.strictEqual(r.url, KUWO_FULL.url);
+  assert.deepStrictEqual(probe.calls, [], '片段判定只用元数据，不得新增网络请求');
+  assert.deepStrictEqual(getUrl.calls, [['kuwo', 'w1']]);
+});
+
+test('resolve：声明时长为 0 的平台即使字节数偏小也不误杀', async () => {
+  const { svc } = build({ 'migu:m1': { url: 'https://cdn/migu.mp3', ext: 'mp3', size: 181521, br: 128000 } });
+  const r = await svc.resolve(
+    { id: 'm1', source: 'migu', title: 't', artist: 'a', duration: 0 }, 'standard');
+  assert.strictEqual(r.url, 'https://cdn/migu.mp3', '咪咕搜索恒 duration=0，无参照系不得判片段');
+});
+
+test('resolve：全池只有片段 ⇒ 收敛为无音频流错误并说清是试听', async () => {
+  const { svc } = build(
+    { 'netease:1': KUWO_CLIP, 'kuwo:w1': KUWO_CLIP },
+    { findCandidates: async () => [{ id: 'w1', source: 'kuwo', title: 't' }] },
+  );
+  const r = await svc.resolve(
+    { id: '1', source: 'netease', title: '晴天', artist: 'a', duration: 269000 }, 'standard');
+  assert.ok(!r.url, '全片段时绝不能返回任何一条片段链');
+  assert.strictEqual(r.code, 'NO_AUDIO_STREAM');
+  assert.match(String(r.error), /试听/);
 });

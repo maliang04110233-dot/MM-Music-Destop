@@ -22,7 +22,11 @@
  *       页面内嵌 `_ROUTER_DATA = {...}`，其
  *       loaderData.track_page.audioWithLyricsOption.url 即直链。
  *       ⚠️ 免登录只有这一条路，**不需要签名、不需要 AES 解密**。
- *          实测 206 / audio/mp4 / 完整曲（非试听片段），且**不需要 Referer**。
+ *          实测 206 / audio/mp4，且**不需要 Referer**。
+ *       ⚠️ 2026-09-21 第四轮实测修正：**这条 url 有时只是试听片段**
+ *          （声称 251s 实为 29s、声称 324s 实为 60s），且 `awl.duration`
+ *          给的是曲目标称时长而非片段长度 —— 故取流侧必须核对
+ *          「字节数 ÷ 声称时长」反推的码率，见 isImpliedBitrateImpossible。
  *
  * 歌词  同一个分享页：audioWithLyricsOption.lyrics.sentences[]
  *       → 每句 { startMs, endMs, text, words: [{ text, startMs, endMs }] }
@@ -285,6 +289,33 @@ function estimateBr(sizeBytes, durationSec) {
 }
 
 /**
+ * 音乐流码率下限（bps）。低于它的「平均码率」不可能是完整音轨。
+ *
+ * 依据：本应用触及的免费档实测全是 128kbps 量级（汽水整曲反推 126~129k、
+ * 酷我/咪咕/网易云 standard 均 128k），取 64k 已留一倍余量。
+ * 反例教训（2026-09-21 第五轮实测）：下限一开始取 32k，结果「199s 的歌给 60s」
+ * 这一档漏网 —— 它的反推码率是 39k，仍在音乐编码合理区间之下。
+ */
+const MIN_MUSIC_BITRATE = 64000;
+
+/**
+ * 反推码率是否低到「这些字节装不下这么多秒」⇒ 手里的其实是片段。
+ *
+ * 汽水分享页的 `duration` 是**曲目标称时长**，与 `url` 指向的字节无关；
+ * 而 `estimateBr` 又用这两个数互相推导，使得 size*8/br 恒等于声称时长 ——
+ * 下游任何「拿体积核对长度」的判据都会被这层自洽屏蔽，只有在 soda 本地
+ * 用「码率物理下限」这个**独立**证据才拆得穿（见文件顶部的实测三例）。
+ *
+ * @param {number|null} sizeBytes 预检实测字节数
+ * @param {number|null} durationSec 分享页声称时长（秒）
+ * @returns {boolean}
+ */
+function isImpliedBitrateImpossible(sizeBytes, durationSec) {
+  if (!sizeBytes || !durationSec) return false;
+  return (sizeBytes * 8) / durationSec < MIN_MUSIC_BITRATE;
+}
+
+/**
  * 获取下载 URL
  *
  * 流程：分享页 → audioWithLyricsOption.url → 音频预检。
@@ -314,6 +345,14 @@ async function sodaGetUrl(id, _quality = 'standard') {
       return { error: '汽水音源暂不可用', code: 'CDN_EMPTY', fatal: true };
     }
     const br = estimateBr(probe.sizeBytes, share.duration);
+    if (isImpliedBitrateImpossible(probe.sizeBytes, share.duration)) {
+      logger.warn(`[soda] 声称 ${share.duration}s 只有 ${probe.sizeBytes} 字节，判为试听片段`);
+      return {
+        error: '汽水分享页仅有试听片段（无整曲音源）',
+        code: 'NO_AUDIO_STREAM',
+        fatal: true,
+      };
+    }
     return {
       url,
       ext: probe.ext || 'm4a',
