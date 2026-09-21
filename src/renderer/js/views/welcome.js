@@ -52,6 +52,9 @@ function showWelcome() {
   _overlay.id = 'welcomeOverlay';
   _overlay.setAttribute('role', 'dialog');
   _overlay.setAttribute('aria-modal', 'true');
+  // 浮层注册表（增量197）：legacy 的 _anyModalOpen 靠 '.welcome-overlay' 类名暗号
+  // 认引导层，如今换成属性；Esc 语义住自家 capture 监听（193），不授关闭契约。
+  _overlay.setAttribute('data-modal', '');
   _overlay.innerHTML = `
     <div class="welcome-panel">
       <div class="welcome-title">🎧 欢迎使用 MusicDL</div>

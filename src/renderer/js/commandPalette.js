@@ -205,6 +205,11 @@ function _ensureOverlay() {
   el.className = 'edit-overlay hidden';
   el.setAttribute('role', 'dialog'); // ⑦：读屏须知道"世界换成了面板"
   el.setAttribute('aria-modal', 'true');
+  // 浮层注册表自报家门（增量197，还 195 的账）：手抄清单时代 cmdkOverlay 从来
+  // 不在表里，背景键守卫与 Esc 双双失明；195 的围堵是第二保险，注册表是正源。
+  el.setAttribute('data-modal', '');
+  el.setAttribute('data-modal-close', 'closeCommandPalette');
+  el.setAttribute('data-modal-pri', '95');
   el.innerHTML = `
     <div class="cmdk-panel">
       <input id="cmdkInput" class="cmdk-input" autocomplete="off" spellcheck="false"

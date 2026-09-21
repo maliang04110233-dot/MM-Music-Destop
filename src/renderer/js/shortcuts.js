@@ -150,39 +150,34 @@ function focusTab(tabName, focusElId) {
   }
 }
 
+// ── 浮层注册表（增量197）──
+// 浮层身份写进浮层自己的 DOM，这里只按形状扫描——148/151/185「手抄清单必漏」
+// 的第四次立法：旧版两份手抄 id 清单把 cmdkOverlay/shortcutsHelp/convertModal/
+// dlTemplateEditorModal/playlistTrashModal 全漏了（背景键守卫与 Esc 双双失明），
+// 契约与实弹见 test/modal-registry.test.js。
+//   data-modal            裸属性：计入背景键守卫面
+//   data-modal-close="fn" Esc 可关：调 window[fn]()；'-' 哨兵 = 直接摘除节点
+//   data-modal-pri="N"    多层同开按降序逐层关（缺省 0，同值稳定 = DOM 序）
 function _anyModalOpen() {
-  const ids = ['playlistModal', 'playlistDetailModal', 'playlistSelectModal', 'playlistEditorModal', 'editOverlay', 'settingsOverlay'];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (el && !el.classList.contains('hidden')) return true;
-  }
-  return !!document.querySelector('.welcome-overlay');
+  return !!document.querySelector('[data-modal]:not(.hidden)');
 }
 
 function closeActiveModal() {
-  // 快捷键帮助优先关闭（Esc 关不掉帮助弹窗曾被用户卡住）
-  const shortcutsHelp = document.getElementById('shortcutsHelp');
-  if (shortcutsHelp) {
-    shortcutsHelp.remove();
+  // 稳定排序：pri 降序；querySelectorAll 已按 DOM 序返回，同优先级保持模板序
+  const closables = [...document.querySelectorAll('[data-modal-close]:not(.hidden)')].sort(
+    (a, b) => Number(b.getAttribute('data-modal-pri') || 0) - Number(a.getAttribute('data-modal-pri') || 0)
+  );
+  const top = closables[0];
+  if (!top) return false;
+  const name = top.getAttribute('data-modal-close');
+  if (name === '-') {
+    top.remove();
     return true;
   }
-  // 按优先级关闭：歌单弹窗 > ID3 编辑 > 设置
-  const playlistModal = document.getElementById('playlistModal');
-  if (playlistModal && !playlistModal.classList.contains('hidden')) {
-    if (typeof closePlaylistModal === 'function') closePlaylistModal();
-    return true;
-  }
-  const editOverlay = document.getElementById('editOverlay');
-  if (editOverlay && !editOverlay.classList.contains('hidden')) {
-    if (typeof closeEdit === 'function') closeEdit();
-    return true;
-  }
-  const settingsOverlay = document.getElementById('settingsOverlay');
-  if (settingsOverlay && !settingsOverlay.classList.contains('hidden')) {
-    if (typeof closeSettings === 'function') closeSettings();
-    return true;
-  }
-  return false;
+  // 承 legacy：关闭函数缺席也只认「登记过=关得掉」，返回 true 不连环放行
+  const fn = window[name];
+  if (typeof fn === 'function') fn();
+  return true;
 }
 
 // ── 音量提示 ──
@@ -222,6 +217,12 @@ export function showShortcutsHelp() {
   overlay = document.createElement('div');
   overlay.id = 'shortcutsHelp';
   overlay.className = 'shortcuts-overlay';
+  // 自报家门进浮层注册表（增量197）：此前 _anyModalOpen 清单漏它 → 帮助开着按
+  // Space 会误触全局播放/暂停；「Esc 关不掉帮助曾被用户卡住」的 legacy 优先
+  // 注释，如今属性化为 pri=100 + '-' 哨兵（无导出关闭函数，摘除本体即关）。
+  overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
+  overlay.setAttribute('data-modal-pri', '100');
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="shortcuts-panel">
@@ -267,3 +268,6 @@ export function showShortcutsHelp() {
 
 // ── 全局桥接 ──────────────────────────────────────────
 window.showShortcutsHelp = showShortcutsHelp;
+
+// 浮层注册表契约的测试面（增量197）：只暴露、不改行为——行为契约见 test/modal-registry.test.js
+export { _anyModalOpen, closeActiveModal };

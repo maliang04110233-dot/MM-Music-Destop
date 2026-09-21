@@ -17,10 +17,38 @@
  *    classList.toggle 高亮行、classList.add('hidden') 关面板）；
  * ⑥ el.id 赋值即注册进 doc 的 getElementById 索引（增量195：cmdk 全靠 id 寻物，
  *    模板里解析出的 id 同样入索）。
+ * ⑦ 复合选择器（增量197：浮层注册表按形状扫描 DOM）：'button' | '#id' |
+ *    '[attr]' | '[attr]:not(.cls)' 四种形式，元素级只寻后代、document 级从 body
+ *    起走；[attr] 认「属性存在」（值为空串也命中，与真 DOM 裸属性同义），
+ *    :not(.cls) 按 class token 精确剔除；其余形式直接 throw——桩宁可炸也不静默
+ *    漏答（195-⑦「莫名绿」教训的镜像：静默跳过=另一种说谎）。
  * 182 的 confirm-dialog.test.js 仍自带一份（只喂 confirm 的 createElement 路径，
  * 未触及①②③），并入本家属独立小增量，此处不顺手扩大爆炸半径。
  */
-import assert from 'node:assert/strict';
+
+// 选择器解析（承诺面 ⑦）。未知形式 throw，防桩把不认识的键悄悄当"无一人"。
+function parseSel(sel) {
+  if (sel === 'button') return { kind: 'tag', tag: 'button' };
+  let m = /^#([\w-]+)$/.exec(sel);
+  if (m) return { kind: 'id', id: m[1] };
+  m = /^\[([\w-]+)\](?::not\(\.([\w-]+)\))?$/.exec(sel);
+  if (m) return { kind: 'attr', attr: m[1], notClass: m[2] || null };
+  throw new Error('桩只承诺 button/#id/[attr](:not(.cls)) 形式，收到: ' + sel);
+}
+function selMatches(el, s) {
+  if (s.kind === 'tag') return el.tag === s.tag;
+  if (s.kind === 'id') return el.attrs.id === s.id;
+  if (!(s.attr in el.attrs)) return false;
+  if (s.notClass && el.classList.contains(s.notClass)) return false;
+  return true;
+}
+function findAll(root, sel) {
+  const s = parseSel(sel);
+  const out = [];
+  const walk = (n) => { for (const c of n.children) { if (selMatches(c, s)) out.push(c); walk(c); } };
+  walk(root);
+  return out;
+}
 
 function stubEl(tag, doc) {
   const el = {
@@ -47,21 +75,8 @@ function stubEl(tag, doc) {
       }
       return ev;
     },
-    querySelectorAll(sel) {
-      assert.equal(sel, 'button', '桩只承诺本契约用到的选择器');
-      const out = [];
-      const walk = (n) => { for (const c of n.children) { if (c.tag === 'button') out.push(c); walk(c); } };
-      walk(this);
-      return out;
-    },
-    querySelector(sel) {
-      assert.ok(/^#[\w-]+$/.test(sel), '桩只承诺 #id 形式的选择器');
-      const want = sel.slice(1);
-      let hit = null;
-      const walk = (n) => { for (const c of n.children) { if (hit) return; if (c.attrs.id === want) { hit = c; return; } walk(c); } };
-      walk(this);
-      return hit;
-    },
+    querySelectorAll(sel) { return findAll(this, sel); },
+    querySelector(sel) { return findAll(this, sel)[0] || null; },
   };
   // id 走真 DOM 语义：赋 el.id = 'x' 即写入 attrs 并注册 getElementById 索引
   Object.defineProperty(el, 'id', {
@@ -147,6 +162,9 @@ export function makeDomStub() {
     },
   };
   doc.body = stubEl('body', doc);
+  // document 级寻物从 body 起走（承诺面 ⑦：浮层注册表的 document.querySelector 走这条）
+  doc.querySelector = (sel) => findAll(doc.body, sel)[0] || null;
+  doc.querySelectorAll = (sel) => findAll(doc.body, sel);
   return doc;
 }
 
