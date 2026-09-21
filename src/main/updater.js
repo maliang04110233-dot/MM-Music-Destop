@@ -13,6 +13,7 @@ const { handle } = require('./ipc/register');
 const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
 const { getMirrorFeeds, useMirrorFeed } = require('./updateMirror');
+const { describeUpdateError, shouldReportEventError } = require('./updateError');
 
 // ── 配置 ──────────────────────────────────────────────
 // 更新源固定为本仓库 GitHub Releases，但**不在这里写 URL**。
@@ -35,8 +36,9 @@ const { getMirrorFeeds, useMirrorFeed } = require('./updateMirror');
 // ── 重试 ──────────────────────────────────────────────
 // electron-updater 的 HttpExecutor.retryOnServerError 只在 5xx / EPIPE 上重试，
 // 网络超时（net::ERR_TIMED_OUT、socket 超时、ECONNRESET）**不在其列**——一次
-// 失败就直接抛给调用方，UI 上显示「更新失败：net::ERR_TIMED_OUT」。
-// GitHub 控制面在部分网络下会间歇性丢 TCP，所以调用方必须自己包一层退避。
+// 失败就直接抛给调用方，并且先 emit 一次 'error'（AppUpdater.js:269-272）。
+// GitHub 控制面在部分网络下会间歇性丢 TCP，所以调用方必须自己包一层退避；
+// 也正因为事件是**逐次尝试**级别的，它不许直接当最终结论用（见下方 error 监听）。
 //
 // 次数别贪多：HttpExecutor 的 socket 超时是 60s，挂满最坏情况 3 次就是 3 分钟。
 // 实测 github.com 单次成功率约 20%，3 次尝试 ≈ 49%，20% 的网络从 20% 提到
@@ -53,18 +55,8 @@ function checkForUpdatesWithRetry() {
   });
 }
 
-/**
- * 把裸的 Node 网络错误码翻译成用户能行动的文案。
- * 渲染层直接拼进弹窗，所以这里必须说人话。
- */
-function describeUpdateError(err) {
-  const msg = (err && err.message) || String(err);
-  if (/ERR_TIMED_OUT|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN/i.test(msg)) {
-    return '网络暂时连不上 GitHub（已自动重试多次），请稍后再试，' +
-      '或到 GitHub Releases 页面手动下载最新版本';
-  }
-  return msg;
-}
+// 错误文案与「事件何时该打扰用户」的判据住在 updateError.js（那里有单测：
+// 本文件顶层 require electron，测试环境加载不动）。
 
 // ── 事件绑定 ──────────────────────────────────────────
 autoUpdater.autoDownload = false; // 用户确认后下载
@@ -112,13 +104,22 @@ autoUpdater.on('update-downloaded', (info) => {
 // 用户主动触发标志：初始静默自检的失败只写日志，不打扰用户；
 // 仅用户手动"检查更新"失败时才弹窗提示
 let _userInitiated = false;
+// 受控流程（重试 + 镜像兜底）是否在飞。electron-updater 每次尝试失败都会
+// emit('error') 后才 reject，而一次检查最多有 5 次尝试 —— 事件若在流程在飞时
+// 直接弹窗，用户看到的就是「第 1 次尝试失败」被冒充成「更新失败」，
+// 而镜像兜底还在后台跑（实测：截图那次正是这条路径）。
+let _flowInFlight = false;
+// 本轮是否真的试过镜像源：措辞要跟着事实走，否则「已自动重试多次」变成假话
+let _mirrorTried = false;
 
 autoUpdater.on('error', (err) => {
   logger.warn('[Updater] Error:', err.message);
-  if (!_userInitiated) return;
+  if (!shouldReportEventError({ userInitiated: _userInitiated, flowInFlight: _flowInFlight })) return;
   const { BrowserWindow } = require('electron');
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('update-error', { message: describeUpdateError(err) });
+    win.webContents.send('update-error', {
+      message: describeUpdateError(err, { mirrorTried: _mirrorTried }),
+    });
   }
 });
 
@@ -128,6 +129,7 @@ autoUpdater.on('error', (err) => {
 // 镜像路径每次只做一次尝试：镜像本身是兜底，多试只会让用户等更久。
 async function tryMirrorFeeds(label) {
   const feeds = getMirrorFeeds();
+  if (feeds.length) _mirrorTried = true;
   for (let i = 0; i < feeds.length; i++) {
     try {
       logger.warn(`[Updater] ${label}：直连失败，尝试镜像源 ${i + 1}/${feeds.length}`);
@@ -144,6 +146,8 @@ async function tryMirrorFeeds(label) {
 // ── IPC 端点（直连失败自动落镜像）──────────────────────
 handle('check-for-update', async () => {
   _userInitiated = true;
+  _flowInFlight = true;
+  _mirrorTried = false;
   try {
     try {
       await checkForUpdatesWithRetry();
@@ -152,13 +156,17 @@ handle('check-for-update', async () => {
     }
     return { success: true };
   } catch (err) {
-    return { success: false, error: describeUpdateError(err) };
+    // 最终结论只从这里出（渲染层措辞「检查失败：」）——事件路径在流程在飞时
+    // 被 shouldReportEventError 压掉，就是为了不让第 1 次尝试的失败抢跑这里。
+    return { success: false, error: describeUpdateError(err, { mirrorTried: _mirrorTried }) };
   } finally {
     _userInitiated = false;
+    _flowInFlight = false;
   }
 });
 
 handle('download-update', async () => {
+  _flowInFlight = true;
   try {
     try {
       await withRetry(() => autoUpdater.downloadUpdate(), {
@@ -175,7 +183,9 @@ handle('download-update', async () => {
     }
     return { success: true };
   } catch (err) {
-    return { success: false, error: describeUpdateError(err) };
+    return { success: false, error: describeUpdateError(err, { mirrorTried: _mirrorTried }) };
+  } finally {
+    _flowInFlight = false;
   }
 });
 
