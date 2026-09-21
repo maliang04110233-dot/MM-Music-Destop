@@ -3,6 +3,7 @@
  */
 
 import { errBrief } from '../errBrief.js';
+import { t } from '../i18n.js';
 import { askConfirm } from '../confirmDialog.js';
 import { logger } from '../logger.js';
 import { loadAndPlay } from '../player.js';
@@ -112,7 +113,7 @@ async function batchRetryDl() {
       logger.warn('[batchRetry] 重试失败:', taskId, e.message);
     }
   }
-  showToast(`重试完成：${ok} 项已重新加入队列`, ok > 0 ? 'success' : 'warn', 3000);
+  showToast(t('toast.dlBatchRetried', { count: ok }), ok > 0 ? 'success' : 'warn', 3000);
   exitDlSelectionMode();
 }
 
@@ -127,7 +128,7 @@ async function batchRemoveDl() {
       logger.warn('[batchRemove] 删除失败:', taskId, e.message);
     }
   }
-  showToast(`已删除 ${removed} 项`, 'success', 2500);
+  showToast(t('toast.dlBatchRemoved', { count: removed }), 'success', 2500);
   exitDlSelectionMode();
 }
 
@@ -279,7 +280,7 @@ function toggleDlGroupMode() {
   _dlGroupMode = !_dlGroupMode;
   _renderDlGroupToolbar();
   renderQueue(getState('queueSnapshot') || []);
-  showToast(_dlGroupMode ? '🧩 已按来源平台分组' : '已恢复平铺显示', 'info', 1800);
+  showToast(_dlGroupMode ? t('toast.dlGroupOn') : t('toast.dlGroupOff'), 'info', 1800);
 }
 
 function toggleDlGroupCollapsed(key) {
@@ -294,7 +295,7 @@ function setDlPlatformFilter(key) {
   _dlPlatform = next;
   _renderDlGroupToolbar();
   renderQueue(getState('queueSnapshot') || []);
-  showToast(next ? `👁 只显示 ${platformLabel(next)} 的任务` : '已取消单平台过滤', 'info', 1800);
+  showToast(next ? t('toast.dlOnlyPlatform', { platform: platformLabel(next) }) : t('toast.dlOnlyOff'), 'info', 1800);
 }
 
 function clearDlPlatformFilter() {
@@ -397,10 +398,10 @@ function maskUrl(url) {
 async function retryQueueItem(taskId) {
   try {
     const r = await api.retryDownload(taskId);
-    if (r && r.ok) { showToast('已加入重试队列', 'info', 2000); }
-    else { showToast('重试失败：' + (r?.error || '未知错误'), 'error', 3000); }
+    if (r && r.ok) { showToast(t('toast.dlRetryQueued'), 'info', 2000); }
+    else { showToast(t('toast.dlRetryFailed', { msg: r?.error || t('toast.unknownError') }), 'error', 3000); }
   } catch (e) {
-    showToast('重试失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.dlRetryFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
@@ -408,7 +409,7 @@ async function retryQueueItem(taskId) {
 async function retryAllFailed() {
   const queue = getState('queueSnapshot') || [];
   const failed = queue.filter(s => s.status === 'error');
-  if (!failed.length) { showToast('没有失败的任务', 'info', 1500); return; }
+  if (!failed.length) { showToast(t('toast.dlNoFailed'), 'info', 1500); return; }
 
   // 按错误类型分类统计
   const errors = {};
@@ -417,7 +418,7 @@ async function retryAllFailed() {
     errors[code] = (errors[code] || 0) + 1;
   });
   const summary = Object.entries(errors).map(([k, v]) => `${k}:${v}`).join(' ');
-  showToast(`正在重试 ${failed.length} 个失败任务 (${summary})...`, 'info', 2000);
+  showToast(t('toast.dlRetryingAll', { count: failed.length, summary }), 'info', 2000);
 
   let ok = 0;
   for (const s of failed) {
@@ -431,9 +432,11 @@ async function retryAllFailed() {
 
   const skipped = failed.length - ok;
   if (ok > 0) {
-    showToast(`已重试 ${ok} 项${skipped > 0 ? `，跳过 ${skipped} 项（需登录/VIP）` : ''}`, 'success', 3000);
+    showToast(skipped > 0
+      ? t('toast.dlRetriedSkipped', { count: ok, skipped })
+      : t('toast.dlRetried', { count: ok }), 'success', 3000);
   } else {
-    showToast('所有失败任务均需手动处理（VIP/登录限制）', 'warn', 3000);
+    showToast(t('toast.dlAllNeedManual'), 'warn', 3000);
   }
 }
 
@@ -441,7 +444,7 @@ async function removeQueueItem(taskId) {
   try {
     await api.removeQueueItem(taskId);
   } catch (e) {
-    showToast('删除失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.deleteFailedMsg', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
@@ -466,9 +469,9 @@ function dlProgressText(info) {
 async function reorderQueueItem(taskId, action) {
   try {
     const r = await api.reorderQueueItem(taskId, action);
-    if (r && !r.ok) showToast(r.error || '无法移动该任务', 'info', 1800);
+    if (r && !r.ok) showToast(r.error || t('toast.dlMoveBlocked'), 'info', 1800);
   } catch (e) {
-    showToast('移动失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.dlMoveFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
@@ -492,43 +495,43 @@ function applyQueuePausedUi(paused) {
 async function toggleQueuePause() {
   try {
     const r = await api.setQueuePaused(!_queuePaused);
-    if (!r || !r.ok) { showToast((r && r.error) || '切换失败', 'error'); return; }
+    if (!r || !r.ok) { showToast(t('toast.dlPauseToggleFailed', { msg: (r && r.error) || t('toast.unknownError') }), 'error'); return; }
     applyQueuePausedUi(r.paused);
-    showToast(r.paused ? '⏸ 已暂停下载（在途任务继续完成）' : '▶ 已继续下载', 'info', 2200);
+    showToast(r.paused ? t('toast.dlPaused') : t('toast.dlResumed'), 'info', 2200);
   } catch (e) {
-    showToast('切换失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.dlPauseToggleFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
 async function clearFinishedDownloads() {
   try {
     const r = await api.clearFinishedQueue();
-    showToast(`已清空 ${r.removed} 个已完成任务`, 'success');
+    showToast(t('toast.dlClearedFinished', { count: r.removed }), 'success');
   } catch (e) {
-    showToast('清空失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.dlClearFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
 async function clearAllDownloads() {
-  if (!await askConfirm('确认清空所有下载任务？正在进行的下载也会被取消。')) return;
+  if (!await askConfirm(t('toast.dlConfirmClearAll'))) return;
   try {
     const r = await api.clearAllQueue();
-    showToast(`已清空 ${r.removed} 个任务`, 'success');
+    showToast(t('toast.dlClearedAll', { count: r.removed }), 'success');
   } catch (e) {
-    showToast('清空失败：' + errBrief(e), 'error', 3000);
+    showToast(t('toast.dlClearFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
 
 function openSaveDir() {
   const saveDir = getState('saveDir');
   if (saveDir) api.openFolder(saveDir);
-  else showToast('尚未设置保存目录', 'warn');
+  else showToast(t('toast.dlNoSaveDir'), 'warn');
 }
 
 // ── 下载完成即播（本地 file:// 直放，复用 player 本地分支）───
 async function playDownloadedFile(s) {
   const path = s.filePath || s.savePath;
-  if (!path) { showToast('未找到文件路径', 'error'); return; }
+  if (!path) { showToast(t('toast.dlNoFilePath'), 'error'); return; }
   const song = { ...s, filePath: path };
   setState('playQueue', [song]);
   setState('playIdx', 0);
@@ -537,7 +540,7 @@ async function playDownloadedFile(s) {
     await loadAndPlay(song, 'file://' + String(path).replace(/\\/g, '/'));
   } catch (e) {
     logger.error('[playDownloadedFile]', e);
-    showToast('播放失败: ' + errBrief(e), 'error');
+    showToast(t('toast.playFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -551,7 +554,7 @@ async function playQueueItem(taskId) {
 async function exportCurrentPlaylist() {
   const queue = getState('queueSnapshot') || [];
   if (!queue.length) {
-    showToast('当前没有下载任务', 'warn');
+    showToast(t('toast.dlNoTasks'), 'warn');
     return;
   }
 
@@ -559,7 +562,7 @@ async function exportCurrentPlaylist() {
   // 主进程终态写的是 savePath（filePath 仅个别旧快照有），只按 filePath 筛永远导出为空
   const completedSongs = queue.filter(s => s.status === 'done' && (s.filePath || s.savePath));
   if (!completedSongs.length) {
-    showToast('没有已完成的歌曲可导出', 'warn');
+    showToast(t('toast.dlNoCompleted'), 'warn');
     return;
   }
 
@@ -577,13 +580,13 @@ async function exportCurrentPlaylist() {
 
     if (result.canceled) return;
     if (result.error) {
-      showToast('导出失败: ' + result.error, 'error');
+      showToast(t('toast.exportFailed', { msg: result.error }), 'error');
       return;
     }
 
-    showToast(`✅ 已导出 ${completedSongs.length} 首歌曲`, 'success');
+    showToast(t('toast.dlExported', { count: completedSongs.length }), 'success');
   } catch (e) {
-    showToast('导出失败: ' + errBrief(e), 'error');
+    showToast(t('toast.exportFailed', { msg: errBrief(e) }), 'error');
   }
 }
 

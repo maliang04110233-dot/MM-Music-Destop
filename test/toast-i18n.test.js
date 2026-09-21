@@ -232,6 +232,8 @@ const CONQUERED = [
   'src/renderer/js/toast.js',
   // 增量194 按 LEDGER 收编的第一个文件（43 处 → 0，同时接上 17 条早就为它写好的词条）
   'src/renderer/js/views/settings.js',
+  // 增量203 按 LEDGER 收编的第二个视图文件（30 处 → 0）：一次还完整文件，不留半截
+  'src/renderer/js/views/download.js',
 ];
 
 test('已收编文件的用户反馈文案零硬编码（本轮兑现的那一面）', () => {
@@ -285,18 +287,30 @@ const T_SHADOW_PATTERNS = [
   [/catch\s*\(\s*t\s*\)/g, 'catch 形参 t'],
 ];
 
-test('settings.js 的取词走 i18n.js 的 t，且文件内没有名为 t 的局部遮蔽', () => {
-  const src = read('src/renderer/js/views/settings.js');
-  const code = stripComments(src);
-  assert.match(src, /import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*'\.\.\/i18n\.js'/,
-    "settings.js 应静态 import { t } from '../i18n.js'（视图层不许自己攒词典）");
-  assert.ok(!/window\.t\s*\(/.test(code), '不许留 window.t 的旁路（同一事实两个家，见增量191）');
-  const shadows = [];
-  for (const [re, what] of T_SHADOW_PATTERNS) {
-    let m;
-    while ((m = re.exec(code))) shadows.push(`${what} @ ${code.slice(m.index, m.index + 40)}`);
+/**
+ * 收编过的视图文件（都在 views/ 下，`'../i18n.js'` 相对路径同形）。增量203 起把上面那枚
+ * settings.js 专用钉改成按表循环：同一判据不许为第二个文件抄一份（192 口径，一条规则一个门禁），
+ * 否则收编到第五个文件时就有五条会各自腐烂的近似测。
+ */
+const CONQUERED_VIEWS = [
+  'src/renderer/js/views/settings.js',
+  'src/renderer/js/views/download.js',
+];
+
+test('已收编视图文件的取词走 i18n.js 的 t，且文件内没有名为 t 的局部遮蔽', () => {
+  for (const rel of CONQUERED_VIEWS) {
+    const src = read(rel);
+    const code = stripComments(src);
+    assert.match(src, /import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*'\.\.\/i18n\.js'/,
+      `${rel} 应静态 import { t } from '../i18n.js'（视图层不许自己攒词典）`);
+    assert.ok(!/window\.t\s*\(/.test(code), `${rel} 不许留 window.t 的旁路（同一事实两个家，见增量191）`);
+    const shadows = [];
+    for (const [re, what] of T_SHADOW_PATTERNS) {
+      let m;
+      while ((m = re.exec(code))) shadows.push(`${what} @ ${code.slice(m.index, m.index + 40)}`);
+    }
+    assert.deepStrictEqual(shadows, [], `${rel} 这些局部 t 会遮蔽取词函数（改名，别改 t 的调用）：\n  ` + shadows.join('\n  '));
   }
-  assert.deepStrictEqual(shadows, [], '这些局部 t 会遮蔽取词函数（改名，别改 t 的调用）：\n  ' + shadows.join('\n  '));
 });
 
 /**
@@ -353,26 +367,69 @@ const WIRING_194 = {
   'toast.importSuccess': '✅ 导入成功',
 };
 
-test('增量194 接线的词条值逐字对账（键与值的配对不许只靠写代码那一次的手感）', () => {
-  const bad = [];
-  for (const k of Object.keys(WIRING_194)) {
-    if (!(k in zh)) { bad.push(`${k}: zh 缺键`); continue; }
-    if (zh[k] !== WIRING_194[k]) bad.push(`${k}: zh="${zh[k]}" 应为="${WIRING_194[k]}"`);
-  }
-  assert.deepStrictEqual(bad, [], '这些词条的值与源码里搬出来的那句不符：\n  ' + bad.join('\n  '));
-});
+/**
+ * 增量203（download.js 收编）的接线对账，家法同 WIRING_194：值抄在这里当锚，
+ * 键值配错（把「移动失败」挂到 dlMoveBlocked 上）会在这一枚红，而不是红到用户屏幕上。
+ * 表里既有新建的 toast.dl*，也有**复用**的三条老词条 —— 复用同样需要钉：
+ * 那三条的值是不是这句中文，只有抄下来才知道接没接错线。
+ */
+const WIRING_203 = {
+  'toast.dlBatchRetried': '重试完成：{count} 项已重新加入队列',
+  'toast.dlBatchRemoved': '已删除 {count} 项',
+  'toast.dlGroupOn': '🧩 已按来源平台分组',
+  'toast.dlGroupOff': '已恢复平铺显示',
+  'toast.dlOnlyPlatform': '👁 只显示 {platform} 的任务',
+  'toast.dlOnlyOff': '已取消单平台过滤',
+  'toast.dlRetryQueued': '已加入重试队列',
+  'toast.dlRetryFailed': '重试失败：{msg}',
+  'toast.dlNoFailed': '没有失败的任务',
+  'toast.dlRetryingAll': '正在重试 {count} 个失败任务 ({summary})...',
+  'toast.dlRetried': '已重试 {count} 项',
+  'toast.dlRetriedSkipped': '已重试 {count} 项，跳过 {skipped} 项（需登录/VIP）',
+  'toast.dlAllNeedManual': '所有失败任务均需手动处理（VIP/登录限制）',
+  'toast.dlMoveBlocked': '无法移动该任务',
+  'toast.dlMoveFailed': '移动失败：{msg}',
+  'toast.dlPauseToggleFailed': '切换失败：{msg}',
+  'toast.dlPaused': '⏸ 已暂停下载（在途任务继续完成）',
+  'toast.dlResumed': '▶ 已继续下载',
+  'toast.dlClearedFinished': '已清空 {count} 个已完成任务',
+  'toast.dlClearFailed': '清空失败：{msg}',
+  'toast.dlConfirmClearAll': '确认清空所有下载任务？正在进行的下载也会被取消。',
+  'toast.dlClearedAll': '已清空 {count} 个任务',
+  'toast.dlNoSaveDir': '尚未设置保存目录',
+  'toast.dlNoFilePath': '未找到文件路径',
+  'toast.dlNoTasks': '当前没有下载任务',
+  'toast.dlNoCompleted': '没有已完成的歌曲可导出',
+  'toast.dlExported': '✅ 已导出 {count} 首歌曲',
+  // 复用：词典里早就立着的三家，download.js 这次是第二个消费方（168「同一事实只许一个家」）
+  'toast.deleteFailedMsg': '删除失败：{msg}',
+  'toast.playFailed': '⚠️ 播放失败：{msg}',
+  'toast.exportFailed': '导出失败：{msg}',
+  'toast.unknownError': '未知错误',
+};
 
-test('增量194 的词条两边都带齐占位符（少一个 {x} 就是把变量名印给用户）', () => {
-  const bad = [];
-  for (const k of Object.keys(WIRING_194)) {
-    if (typeof zh[k] !== 'string') { bad.push(`${k}: zh 缺键`); continue; }
-    if (typeof en[k] !== 'string') { bad.push(`${k}: en 缺键`); continue; }
-    const a = placeholdersOf(zh[k]).join(',');
-    const b = placeholdersOf(en[k]).join(',');
-    if (a !== b) bad.push(`${k}: zh[${a}] vs en[${b}]`);
-  }
-  assert.deepStrictEqual(bad, [], '中英占位符集合不等：\n  ' + bad.join('\n  '));
-});
+for (const [table, name] of [[WIRING_194, '194'], [WIRING_203, '203']]) {
+  test(`增量${name} 接线的词条值逐字对账（键与值的配对不许只靠写代码那一次的手感）`, () => {
+    const bad = [];
+    for (const k of Object.keys(table)) {
+      if (!(k in zh)) { bad.push(`${k}: zh 缺键`); continue; }
+      if (zh[k] !== table[k]) bad.push(`${k}: zh="${zh[k]}" 应为="${table[k]}"`);
+    }
+    assert.deepStrictEqual(bad, [], '这些词条的值与源码里搬出来的那句不符：\n  ' + bad.join('\n  '));
+  });
+
+  test(`增量${name} 的词条两边都带齐占位符（少一个 {x} 就是把变量名印给用户）`, () => {
+    const bad = [];
+    for (const k of Object.keys(table)) {
+      if (typeof zh[k] !== 'string') { bad.push(`${k}: zh 缺键`); continue; }
+      if (typeof en[k] !== 'string') { bad.push(`${k}: en 缺键`); continue; }
+      const a = placeholdersOf(zh[k]).join(',');
+      const b = placeholdersOf(en[k]).join(',');
+      if (a !== b) bad.push(`${k}: zh[${a}] vs en[${b}]`);
+    }
+    assert.deepStrictEqual(bad, [], '中英占位符集合不等：\n  ' + bad.join('\n  '));
+  });
+}
 
 /**
  * 191 的家法在词典侧的哨兵：值必须是**整句**。
@@ -435,7 +492,6 @@ const LEDGER = {
   'src/renderer/js/views/batchImport.js': 2,
   'src/renderer/js/views/clipboard.js': 1,
   'src/renderer/js/views/converter.js': 10,
-  'src/renderer/js/views/download.js': 30,
   'src/renderer/js/views/dragdrop.js': 10,
   'src/renderer/js/views/history.js': 24,
   'src/renderer/js/views/home.js': 15,
