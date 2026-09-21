@@ -1142,7 +1142,7 @@
 </div>
 
 <!-- 音频格式转换弹窗（下载页 / 本地库 / 转换页共用，由 converter-core.js 填充） -->
-<div class="playlist-modal-overlay hidden" id="convertModal" onclick="event.target === this && closeConvertModal()" data-modal>
+<div class="playlist-modal-overlay hidden" id="convertModal" onclick="event.target === this && closeConvertModal()" data-modal data-modal-close="closeConvertModal">
   <div class="playlist-modal" style="min-width:360px;max-width:440px;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title" id="convertModalTitle">🔄 转换格式</span>
@@ -1212,7 +1212,7 @@
 </div>
 
 <!-- 下载路径模板编辑器弹窗 -->
-<div class="playlist-modal-overlay hidden" id="dlTemplateEditorModal" onclick="event.target === this && closeDlTemplateEditor()" data-modal>
+<div class="playlist-modal-overlay hidden" id="dlTemplateEditorModal" onclick="event.target === this && closeDlTemplateEditor()" data-modal data-modal-close="closeDlTemplateEditor" data-modal-pri="75">
   <div class="playlist-modal" style="min-width:400px;max-width:520px;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title" id="dlTemplateEditorTitle">➕ 新建路径模板</span>
@@ -1234,7 +1234,7 @@
 </div>
 
 <!-- 我的歌单：歌单详情弹窗 -->
-<div class="playlist-modal-overlay hidden" id="playlistDetailModal" onclick="event.target === this && closePlaylistDetail()" data-modal>
+<div class="playlist-modal-overlay hidden" id="playlistDetailModal" onclick="event.target === this && closePlaylistDetail()" data-modal data-modal-close="closePlaylistDetail" data-modal-pri="88">
   <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:80vh;display:flex;flex-direction:column;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title" id="playlistDetailTitle">歌单</span>
@@ -1265,7 +1265,7 @@
 </div>
 
 <!-- 我的歌单：新建/编辑歌单弹窗 -->
-<div class="playlist-modal-overlay hidden" id="playlistEditorModal" onclick="event.target === this && closePlaylistEditor()" data-modal>
+<div class="playlist-modal-overlay hidden" id="playlistEditorModal" onclick="event.target === this && closePlaylistEditor()" data-modal data-modal-close="closePlaylistEditor" data-modal-pri="92">
   <div class="playlist-modal" style="min-width:360px;max-width:420px;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title" id="playlistEditorTitle">📋 新建歌单</span>
@@ -1291,7 +1291,7 @@
 </div>
 
 <!-- 我的歌单：回收站弹窗（增量157：删除兜底，30 天内可恢复 / 彻底删除） -->
-<div class="playlist-modal-overlay hidden" id="playlistTrashModal" onclick="event.target === this && closePlaylistTrash()" data-modal>
+<div class="playlist-modal-overlay hidden" id="playlistTrashModal" onclick="event.target === this && closePlaylistTrash()" data-modal data-modal-close="closePlaylistTrash">
   <div class="playlist-modal" style="min-width:380px;max-width:460px;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title">🗑 回收站</span>
@@ -1303,7 +1303,7 @@
 </div>
 
 <!-- 我的歌单：添加到歌单选择弹窗 -->
-<div class="playlist-modal-overlay hidden" id="playlistSelectModal" onclick="event.target === this && closePlaylistSelectModal()" data-modal>
+<div class="playlist-modal-overlay hidden" id="playlistSelectModal" onclick="event.target === this && closePlaylistSelectModal()" data-modal data-modal-close="closePlaylistSelectModal" data-modal-pri="93">
   <div class="playlist-modal" style="min-width:320px;max-width:400px;">
     <div class="playlist-modal-header">
       <span class="playlist-modal-title">📋 添加到歌单</span>

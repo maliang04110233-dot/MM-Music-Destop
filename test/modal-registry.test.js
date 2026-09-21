@@ -1,5 +1,6 @@
 /**
- * 增量197：浮层注册表——data-attribute 契约（148/151/185「手抄清单必漏」律的第四次立法）
+ * 增量198：浮层注册表——data-attribute 契约（148/151/185「手抄清单必漏」律的第四次立法）
+ * 增量199：偿还建层时登记的六浮层 Esc 债 + ⑩ 把 HTML 契约属性送上实弹桥接
  *
  * 来龙：_anyModalOpen() 与 closeActiveModal() 各自手抄了一份浮层 id 清单。
  * 195 实测抓到活体证据：cmdkOverlay 从来不在两份清单里——背景键守卫与 Esc
@@ -15,9 +16,8 @@
  *   data-modal-pri="N"        多层同开时按降序逐层关（缺省 0，同序稳定=DOM 序）
  * 两份手抄拆掉，注册表 = DOM 本身。esc-closable 五枚（help 100 / cmdk 95 /
  * playlist 90 / edit 80 / settings 70）完整保住 legacy 的关闭次序；
- * 其余四枚 playlist 子 modal + convert/dlTemplate + welcome 只入守卫面、
- * Esc 语义未逐视图核实前不授关闭权（legacy 里它们本来 Esc 也关不掉，
- * 行为零变化；「六浮层 Esc 不可关」作为已登记债另立增量还）。
+ * 建层时其余只入守卫面——「六浮层 Esc 不可关」作为登记债由 ⑥ 的反裸登记
+ * 钉锁住，199 逐视图核实关闭语义后全额偿还（见 ⑥ CLOSABLE 注释与 ⑩ 实弹桥接）。
  *
  * RED 形状预告：①⑤ 首轮会死在桩的选择器 throw 上——legacy _anyModalOpen 末行
  * 查 '.welcome-overlay' 类选择器，不在承诺面内。桩拒绝为旧清单编造答案，
@@ -160,33 +160,53 @@ test('⑤ 命令面板实弹：195 的账在这里还——面板开，注册表
   assert.equal(sc._anyModalOpen(), false, 'teardown 后离场');
 });
 
-// ── ⑥ index.html 收敛钉：九个静态浮层全部挂身份；三枚授关闭契约；其余是登记债 ──
-test('⑥ index.html 收敛钉：九个静态浮层全部挂身份；三枚授关闭契约；其余是登记债', async () => {
+// ── ⑥ index.html 全量对账：守卫面浮层必有去向——授关闭契约或登记为债（反裸登记） ──
+test('⑥ index.html 全量对账：浮层要么授关闭契约、要么在 DEBT 立债，新漏对账即红', async () => {
   const html = readFile('index.html');
-  const ALL = ['editOverlay', 'settingsOverlay', 'convertModal', 'playlistModal',
-    'dlTemplateEditorModal', 'playlistDetailModal', 'playlistEditorModal',
-    'playlistTrashModal', 'playlistSelectModal'];
   const CLOSABLE = {
     playlistModal: ['closePlaylistModal', '90'],
     editOverlay: ['closeEdit', '80'],
     settingsOverlay: ['closeSettings', '70'],
+    // 199 偿还：六枚关闭语义逐视图核实——函数体全是纯「hidden + 状态复位」，
+    // 无写盘无破坏副作用；且六枚背景早就是「点背景即关」（onclick 里
+    // event.target===this && closeXxx()），Esc 只是既有可供性的键盘同义。
+    // pri 按层叠定：editor/select 会从 detail 之上打开（92/93 > 88），
+    // dlTemplateEditor 在设置页内打开（75 > settingsOverlay 70，否则 Esc 先关宿主、子层悬空）。
+    convertModal: ['closeConvertModal'],
+    dlTemplateEditorModal: ['closeDlTemplateEditor', '75'],
+    playlistDetailModal: ['closePlaylistDetail', '88'],
+    playlistEditorModal: ['closePlaylistEditor', '92'],
+    playlistTrashModal: ['closePlaylistTrash'],
+    playlistSelectModal: ['closePlaylistSelectModal', '93'],
   };
-  for (const id of ALL) {
-    const m = html.match(new RegExp('<div[^>]*id="' + id + '"[^>]*>'));
-    assert.ok(m, id + ' 应存在于 index.html');
-    assert.ok(/ data-modal(=| |>)/.test(m[0] + ' '), id + ' 必须挂 data-modal（背景键守卫面）');
-    const close = CLOSABLE[id];
-    if (close) {
-      assert.ok(m[0].includes('data-modal-close="' + close[0] + '"'),
-        id + ' 应登记关闭契约 data-modal-close="' + close[0] + '"');
-      assert.ok(m[0].includes('data-modal-pri="' + close[1] + '"'),
-        id + ' 应带优先级 ' + close[1]);
-    } else {
-      // 登记债钉：逐视图 Esc 语义未核实前不得授关闭权；核实一个、从这里删一个、
-      // 并在本文件补一枚该浮层的实弹行为测（③⑤ 是形状范例）。
-      assert.ok(!m[0].includes('data-modal-close='),
-        id + ' 的 Esc 可关性尚未逐视图核实——先补行为测再登记，勿裸挂契约');
+  const DEBT = []; // 198 登记六笔，199 还清；新浮层裸挂 data-modal 未授契约必须先在此立债（附核实计划）
+  const seen = new Set();
+  for (const m of html.matchAll(/<div[^>]* data-modal[ >][^>]*>/g)) {
+    const id = /id="([^"]+)"/.exec(m[0])[1];
+    assert.ok(!seen.has(id), id + ' 重复登记？');
+    seen.add(id);
+    if (DEBT.includes(id)) {
+      assert.ok(!m[0].includes('data-modal-close='), id + ' 在债册中，不应已授关闭契约');
+      continue;
     }
+    assert.ok(id in CLOSABLE, id + ' 未对账——新浮层须先补 ⑩ 桥接测再授契约或立债（反裸登记钉）');
+    const [fn, pri] = CLOSABLE[id];
+    assert.ok(m[0].includes('data-modal-close="' + fn + '"'),
+      id + ' 应登记关闭契约 data-modal-close="' + fn + '"');
+    if (pri) assert.ok(m[0].includes('data-modal-pri="' + pri + '"'),
+      id + ' 应带优先级 ' + pri);
+  }
+  for (const id of [...Object.keys(CLOSABLE), ...DEBT]) {
+    assert.ok(seen.has(id), id + ' 在册但 DOM 缺席——浮层被搬走/改名，对账册须同步');
+  }
+  // 契约函数必须真挂在 window 上：注册表按 window[name] 找函数，
+  // 挂空 = 每次 Esc 白吃不放行（closeActiveModal 对缺席函数仍返回 true 的 legacy 语义）
+  const srcs = ['js/app.js', 'js/views/local.js', 'js/views/settings.js',
+    'js/views/playlist.js', 'js/converter-core.js', 'js/commandPalette.js', 'js/shortcuts.js']
+    .map((f) => readFile(f)).join('\n');
+  for (const [fn] of Object.values(CLOSABLE)) {
+    assert.ok(new RegExp('window\\.' + fn + '\\s*=').test(srcs),
+      fn + ' 必须挂 window（注册表按 window 寻函数）');
   }
 });
 
@@ -247,4 +267,66 @@ test('⑨ 桩自测（扫描器自带自测律）：承诺面 ⑦ 的四种形�
   assert.equal(doc.body.querySelectorAll('button')[0], btn, "tag 形式不回归");
   assert.throws(() => doc.querySelector('.welcome-overlay'), /桩只承诺/,
     '未知形式宁可炸，不静默答"无一人"');
+});
+
+// ── ⑩ HTML 契约实弹桥接：从 index.html 读契约属性注入桩，注册表按 HTML 所言实弹关闭 ──
+// 钉住「HTML 属性不是死文本」：⑥ 所定的 pri 层叠必须在 closeActiveModal 一层为真。
+// 属性逐字从 HTML 抄，不手搓——HTML 改了契约，这里的剧本自动跟（或对不上账即红）。
+test('⑩ HTML 契约实弹桥接：叠层浮层按 HTML 所定次序逐层关', async () => {
+  const doc = makeDomStub();
+  const sc = await loadShortcuts(doc); // IIFE 挂 handleKey，全程走实弹 dispatchKey
+  const html = readFile('index.html');
+  const els = {};
+  for (const m of html.matchAll(/<div[^>]* data-modal[ >][^>]*>/g)) {
+    const id = /id="([^"]+)"/.exec(m[0])[1];
+    const el = doc.createElement('div');
+    el.id = id;
+    el.classList.add('hidden');
+    el.setAttribute('data-modal', ''); // 正则已筛过带此属性的 div，原样复刻
+    const cm = /data-modal-close="([^"]+)"/.exec(m[0]);
+    const pm = /data-modal-pri="([^"]+)"/.exec(m[0]);
+    if (cm) el.setAttribute('data-modal-close', cm[1]);
+    if (pm) el.setAttribute('data-modal-pri', pm[1]);
+    doc.body.appendChild(el); // 注入序 = 文档序，② 的稳定排序承诺继续成立
+    els[id] = el;
+  }
+  for (const id of ['playlistDetailModal', 'playlistEditorModal', 'playlistSelectModal',
+    'playlistTrashModal', 'settingsOverlay', 'dlTemplateEditorModal']) {
+    assert.ok(els[id], id + ' 四件套缺席，桥接剧本无主角');
+  }
+  const calls = [];
+  for (const el of Object.values(els)) {
+    const fn = el.getAttribute('data-modal-close');
+    if (fn) global.window[fn] = () => { calls.push(fn); el.classList.add('hidden'); };
+  }
+  const open = (...ids) => {
+    for (const el of Object.values(els)) el.classList.add('hidden');
+    ids.forEach((i) => els[i].classList.remove('hidden'));
+    calls.length = 0;
+  };
+
+  open('playlistDetailModal', 'playlistEditorModal');
+  assert.equal(sc._anyModalOpen(), true, '叠层在场 = 守卫面在场');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closePlaylistEditor'], 'editor 盖在 detail 上：先关顶层（92>88），不是底层的 detail');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closePlaylistEditor', 'closePlaylistDetail'], '再按关底层——逐层退');
+  const ev = dispatchKey(doc, 'Escape', doc.body);
+  assert.equal(ev.defaultPrevented, false, '两层都收起后 Esc 交还自由');
+
+  open('playlistDetailModal', 'playlistSelectModal');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closePlaylistSelectModal'], '加入歌单浮层盖 detail：select 先关（93>88）');
+
+  open('settingsOverlay', 'dlTemplateEditorModal');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closeDlTemplateEditor'], '模板编辑器寄在设置页内：先关子再关母（75>70），否则宿主倒下子层悬空');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closeDlTemplateEditor', 'closeSettings'], '子退位后母才走');
+
+  open('playlistTrashModal');
+  assert.equal(sc._anyModalOpen(), true, '回收站浮层在场');
+  dispatchKey(doc, 'Escape', doc.body);
+  assert.deepEqual(calls, ['closePlaylistTrash'], '独开一枚缺省 pri 的浮层也关得动');
+  assert.equal(sc._anyModalOpen(), false, '关闭函数挂 hidden 即离场（契约与守卫面同一事实源）');
 });
