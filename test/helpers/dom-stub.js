@@ -8,10 +8,15 @@
  * welcome/confirm 的键盘与点击契约测试一律从这里取。
  *
  * 承诺面 = 被测代码真正用到的 DOM 子集，多一个都不给：
- * ① innerHTML 赋值解析出 <button> 子元素（class/data-welcome/文本），钮序=模板序；
+ * ① innerHTML 赋值解析出 <button>/<input>/<div> 子元素（class/id/文本），序=模板序；
  * ② click 沿 parent 链冒泡（委托型宿主因此能收到钮点击）；
  * ③ querySelectorAll('button') 递归收后代（焦点陷阱的寻焦面）；
- * ④ document 监听分 capture/bubble 两队列，removeEventListener 按 (type,fn,capture) 摘除。
+ * ④ document 监听分 capture/bubble 两队列，removeEventListener 按 (type,fn,capture) 摘除；
+ * ⑤ classList（add/remove/toggle(cls,force)/contains）骑在 className 字符串上，
+ *    与真 DOM 同源——直接赋 className 也会反映进 classList（增量195：cmdk 用
+ *    classList.toggle 高亮行、classList.add('hidden') 关面板）；
+ * ⑥ el.id 赋值即注册进 doc 的 getElementById 索引（增量195：cmdk 全靠 id 寻物，
+ *    模板里解析出的 id 同样入索）。
  * 182 的 confirm-dialog.test.js 仍自带一份（只喂 confirm 的 createElement 路径，
  * 未触及①②③），并入本家属独立小增量，此处不顺手扩大爆炸半径。
  */
@@ -20,11 +25,15 @@ import assert from 'node:assert/strict';
 function stubEl(tag, doc) {
   const el = {
     tag, parent: null, children: [], className: '', textContent: '', attrs: {}, _l: {}, _html: '',
-    setAttribute(k, v) { this.attrs[k] = String(v); },
+    setAttribute(k, v) {
+      this.attrs[k] = String(v);
+      if (k === 'id') doc._ids[this.attrs.id] = this;
+    },
     getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
     appendChild(c) { c.parent = this; this.children.push(c); return c; },
     remove() {
       if (this.parent) this.parent.children = this.parent.children.filter((x) => x !== this);
+      if (this.attrs.id && doc._ids[this.attrs.id] === this) delete doc._ids[this.attrs.id];
       this.parent = null;
     },
     addEventListener(type, fn) { (this._l[type] ||= []).push(fn); },
@@ -45,22 +54,80 @@ function stubEl(tag, doc) {
       walk(this);
       return out;
     },
+    querySelector(sel) {
+      assert.ok(/^#[\w-]+$/.test(sel), '桩只承诺 #id 形式的选择器');
+      const want = sel.slice(1);
+      let hit = null;
+      const walk = (n) => { for (const c of n.children) { if (hit) return; if (c.attrs.id === want) { hit = c; return; } walk(c); } };
+      walk(this);
+      return hit;
+    },
   };
+  // id 走真 DOM 语义：赋 el.id = 'x' 即写入 attrs 并注册 getElementById 索引
+  Object.defineProperty(el, 'id', {
+    get() { return this.attrs.id || ''; },
+    set(v) { this.attrs.id = String(v); doc._ids[v] = this; },
+  });
+  Object.defineProperty(el, 'classList', {
+    get() {
+      const tokens = () => (el.className ? el.className.split(/\s+/).filter(Boolean) : []);
+      const put = (list) => { el.className = list.join(' '); };
+      const api = {
+        contains: (c) => tokens().includes(c),
+        add: (...cs) => { const t = tokens(); cs.forEach((c) => { if (!t.includes(c)) t.push(c); }); put(t); },
+        remove: (...cs) => put(tokens().filter((c) => !cs.includes(c))),
+      };
+      api.toggle = (c, force) => {
+        const on = force === undefined ? !api.contains(c) : !!force;
+        if (on) api.add(c); else api.remove(c);
+        return on;
+      };
+      return api;
+    },
+  });
   Object.defineProperty(el, 'innerHTML', {
     get() { return this._html; },
     set(v) {
       this._html = v;
-      const re = /<button([^>]*)>([^<]*)<\/button>/g;
+      // 展平解析（真 DOM 会保留嵌套；本桩的宿主只把后代当 Tab 序/寻焦面，
+      // findClass/querySelectorAll 都递归 children，压平不影响其语义）——
+      // 钮文本、input 属性、空 div（如 cmdkList）各按自身形状收。
       let m;
-      while ((m = re.exec(v))) {
+      const bre = /<button([^>]*)>([^<]*)<\/button>/g;
+      while ((m = bre.exec(v))) {
         const b = stubEl('button', doc);
         const cm = m[1].match(/class="([^"]*)"/);
         b.className = cm ? cm[1] : '';
-        const dw = m[1].match(/data-welcome="([^"]*)"/);
-        if (dw) b.attrs['data-welcome'] = dw[1];
+        for (const attr of ['data-welcome', 'id']) {
+          const am = m[1].match(new RegExp(attr + '="([^"]*)"'));
+          if (am) { b.attrs[attr] = am[1]; if (attr === 'id') doc._ids[am[1]] = b; }
+        }
         b.textContent = m[2].trim();
         b.parent = this;
         this.children.push(b);
+      }
+      const ire = /<input([^>]*?)\/?>/g;
+      while ((m = ire.exec(v))) {
+        const i = stubEl('input', doc);
+        for (const attr of ['id', 'class', 'placeholder', 'autocomplete', 'spellcheck']) {
+          const am = m[1].match(new RegExp(attr + '="([^"]*)"'));
+          if (am) {
+            if (attr === 'class') i.className = am[1];
+            else { i.attrs[attr] = am[1]; if (attr === 'id') doc._ids[am[1]] = i; }
+          }
+        }
+        i.parent = this;
+        this.children.push(i);
+      }
+      const dre = /<div([^>]*)><\/div>/g;
+      while ((m = dre.exec(v))) {
+        const d = stubEl('div', doc);
+        const cm = m[1].match(/class="([^"]*)"/);
+        d.className = cm ? cm[1] : '';
+        const im = m[1].match(/id="([^"]*)"/);
+        if (im) { d.attrs.id = im[1]; doc._ids[im[1]] = d; }
+        d.parent = this;
+        this.children.push(d);
       }
     },
   });
@@ -69,8 +136,9 @@ function stubEl(tag, doc) {
 
 export function makeDomStub() {
   const doc = {
-    activeElement: null, _cap: [], _bub: [],
+    activeElement: null, _cap: [], _bub: [], _ids: {},
     createElement: (tag) => stubEl(tag, doc),
+    getElementById: (id) => doc._ids[id] || null,
     addEventListener(type, fn, capture) { (capture ? doc._cap : doc._bub).push({ type, fn }); },
     removeEventListener(type, fn, capture) {
       const arr = capture ? doc._cap : doc._bub;
@@ -93,23 +161,31 @@ export function findClass(el, cls) {
 
 // 相位语义与真 DOM 一致：document capture 按注册序 → 目标元素 → document 冒泡；
 // stopImmediatePropagation 掐断同队列后续，stopPropagation 掐断后续相位。
-export function dispatchKey(doc, key, target, shiftKey) {
+// 第 4 参承 193 调用方传布尔 shiftKey 的老形状，也接受 {shiftKey,ctrlKey,metaKey,isComposing}。
+export function dispatchKey(doc, key, target, opts) {
+  const o = (opts && typeof opts === 'object') ? opts : { shiftKey: !!opts };
   const ev = {
-    key, type: 'keydown', target, shiftKey: !!shiftKey,
+    key, type: 'keydown', target,
+    shiftKey: !!o.shiftKey, ctrlKey: !!o.ctrlKey, metaKey: !!o.metaKey,
+    isComposing: !!o.isComposing,
     defaultPrevented: false, propagationStopped: false, immediateStopped: false,
     preventDefault() { this.defaultPrevented = true; },
     stopPropagation() { this.propagationStopped = true; },
     stopImmediatePropagation() { this.immediateStopped = true; this.propagationStopped = true; },
   };
+  // 目标元素登记的是裸函数数组（addEventListener 直推 fn），document 队列是 {type,fn}——两形都吃。
+  // 本行曾只认 {type,fn} 形状，目标监听被静默跳过、无一测试踩到（193 的键全走 capture 层）；
+  // 195 第一个消费元素自带 keydown 的文件把它照出来——"莫名绿"也是漂移证据。
   const run = (list) => {
-    for (const l of list) {
+    for (const l of [...list]) {
       if (ev.immediateStopped) return;
-      if (l.type === 'keydown') l.fn(ev);
+      const fn = typeof l === 'function' ? l : (l.type === 'keydown' ? l.fn : null);
+      if (fn) fn(ev);
     }
   };
-  run([...doc._cap]);
+  run(doc._cap);
   if (!ev.propagationStopped) run((target && target._l.keydown) || []);
-  if (!ev.propagationStopped) run([...doc._bub]);
+  if (!ev.propagationStopped) run(doc._bub);
   return ev;
 }
 

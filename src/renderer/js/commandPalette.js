@@ -5,10 +5,29 @@
  * 前缀 > 包含 > ASCII 子序列（中文不做子序列——按字符读音无意义），
  * keywords 兜底拼音/英文/别称。面板本身只是「一个输入框 + 一张表」，
  * 所有动作复用既有 window 桥接，零新增 IPC。
+ *
+ * 键盘契约（增量195，182/193 三件套推广到第三个模态）：
+ * ① open 即同步聚焦输入框——呼出即可打字，不留 30ms 空窗；
+ * ② capture 围堵（承 193「让位优先于围堵」）：hasOpenConfirm() 先让位，
+ *    随后 stopImmediatePropagation 封层——面板开着，一个键都不漏给背景的
+ *    shortcuts.js / 自家 onGlobalKey。shortcuts.js 的 _anyModalOpen() 是手抄
+ *    id 清单（148/151/185 律的活体），cmdkOverlay 从来不在表里，围堵是这条
+ *    漏的第二道保险；
+ * ③ 围堵下必须自留 Ctrl+K 通道：自家 capture 掐死 bubble 层的 onGlobalKey，
+ *    不接就变成"面板开得出关不回"；
+ * ④ isComposing 一律放行不处理：placeholder 明写着可输拼音，合成中的
+ *    Enter/↑↓ 属于输入法选字翻页，面板抢键=中文用户打不完命令就执行；
+ * ⑤ Tab/Shift+Tab 在面板 focusables（输入框+命令行钮）间循环且 preventDefault；
+ *    ↑↓/Enter 的语义从输入框私有监听上收到围堵层一处立法（一个键一个家），
+ *    Enter 恒执行"高亮行"而非"聚焦行"，两种游标不打架；
+ * ⑥ 关闭公共路径：摘监听 + hidden + 焦点归还 opener（182 规矩），
+ *    Esc 与执行与遮罩点三径同源；
+ * ⑦ role=dialog + aria-modal——读屏软件要知道"世界换成了面板"。
  */
 
 import { logger } from './logger.js';
 import { recordRecent, pickRecents } from './paletteRecents.js';
+import { hasOpenConfirm } from './confirmDialog.js';
 
 // ── 纯函数 ───────────────────────────────────────────
 function fuzzyScore(q, text) {
@@ -163,6 +182,8 @@ const COMMANDS = [
 let _open = false;
 let _items = [];
 let _active = 0;
+let _opener = null;   // 唤起面板时的聚焦元素（182 规矩：关闭归还焦点）
+let _capture = null;  // 围堵监听句柄（②③④⑤ 的唯一键位之家）
 
 // 最近使用持久化：localStorage 异常（隐私模式/透明窗禁存储）一律静默
 const RECENTS_KEY = 'cmdkRecents';
@@ -182,6 +203,8 @@ function _ensureOverlay() {
   el = document.createElement('div');
   el.id = 'cmdkOverlay';
   el.className = 'edit-overlay hidden';
+  el.setAttribute('role', 'dialog'); // ⑦：读屏须知道"世界换成了面板"
+  el.setAttribute('aria-modal', 'true');
   el.innerHTML = `
     <div class="cmdk-panel">
       <input id="cmdkInput" class="cmdk-input" autocomplete="off" spellcheck="false"
@@ -193,12 +216,7 @@ function _ensureOverlay() {
   document.body.appendChild(el);
   const input = el.querySelector('#cmdkInput');
   input.addEventListener('input', () => _refresh(input.value));
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); _move(1); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); _move(-1); }
-    else if (e.key === 'Enter') { e.preventDefault(); _execActive(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCommandPalette(); }
-  });
+  // 键位语义全部住进围堵层（⑤"一个键一个家"）——输入框不再自带第二套 keydown
   return el;
 }
 
@@ -270,7 +288,48 @@ function _execActive() {
   if (c) _exec(c);
 }
 
+/** 面板焦点环：输入框 + 全部命令行钮（⑤ Tab 陷阱的循环面） */
+function _focusables() {
+  const el = document.getElementById('cmdkOverlay');
+  if (!el) return [];
+  const input = document.getElementById('cmdkInput');
+  return [input].concat(Array.prototype.slice.call(el.querySelectorAll('button'))).filter(Boolean);
+}
+
+function _cycleFocus(step) {
+  const list = _focusables();
+  if (!list.length) return;
+  const i = list.indexOf(document.activeElement);
+  list[((i < 0 ? 0 : i) + step + list.length) % list.length].focus();
+}
+
+/**
+ * 围堵层：面板开着时全站键盘的唯一入口。
+ * 顺序纪律（193 血账）：让位必须排在围堵前面——确认框叠上时本层连封层都不做，
+ * 否则跑在 confirm 前面的 capture 会把它 182 的键盘契约整个掐死。
+ */
+function _onPanelKey(e) {
+  if (hasOpenConfirm()) return;
+  e.stopImmediatePropagation();
+  e.stopPropagation();
+  if (e.isComposing) return; // ④：合成中的键归输入法，默认动作照常上屏
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
+    e.preventDefault(); // ③：围堵掐死了 bubble 层的 onGlobalKey，toggle 通道必须自留
+    closeCommandPalette();
+    return;
+  }
+  if (e.key === 'Tab') { e.preventDefault(); _cycleFocus(e.shiftKey ? -1 : 1); return; }
+  if (e.key === 'Escape') { e.preventDefault(); closeCommandPalette(); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); _move(1); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); _move(-1); return; }
+  if (e.key === 'Enter') { e.preventDefault(); _execActive(); }
+  // 其余键：不处理也不 preventDefault——打字/Ctrl+A 选字/退格删除等原生默认动作
+  // 不受传播截断影响，输入框照常收字。
+}
+
 function openCommandPalette() {
+  if (_open) return; // 重入会把围堵监听叠着再装一层——一个键一个家
+  _opener = document.activeElement; // ⑥：先记账，关层时还
   const el = _ensureOverlay();
   el.classList.remove('hidden');
   _open = true;
@@ -278,15 +337,23 @@ function openCommandPalette() {
   if (input) {
     input.value = '';
     _refresh('');
-    setTimeout(() => input.focus(), 30);
   }
+  _capture = _onPanelKey;
+  document.addEventListener('keydown', _capture, true);
+  if (input) input.focus(); // ①：同步聚焦，呼出即可打字，不留 30ms 空窗
 }
 
 function closeCommandPalette() {
   if (!_open) return;
   const el = document.getElementById('cmdkOverlay');
   if (el) el.classList.add('hidden');
+  if (_capture) {
+    document.removeEventListener('keydown', _capture, true);
+    _capture = null;
+  }
   _open = false;
+  if (_opener && typeof _opener.focus === 'function') _opener.focus(); // ⑥
+  _opener = null;
 }
 
 function onGlobalKey(e) {
