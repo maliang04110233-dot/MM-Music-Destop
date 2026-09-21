@@ -1055,13 +1055,14 @@ async function exportConfig() {
 }
 
 async function importConfig() {
+  if (!await askConfirm(t('toast.importConfirm'))) return;
   try {
     const result = await api.invoke('import-all-data');
     if (result.canceled) return;
     if (result.success) {
-      showToast('✅ ' + result.message, 'success', 5000);
+      showToast(t('toast.importSuccess'), 'success', 5000);
     } else {
-      showToast('❌ ' + result.error, 'error');
+      showToast(t('toast.importFailed', { msg: result.error }), 'error');
     }
   } catch (e) {
     showToast(t('toast.importFailed', { msg: errBrief(e) }), 'error');

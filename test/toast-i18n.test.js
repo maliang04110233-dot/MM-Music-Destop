@@ -349,6 +349,8 @@ const WIRING_194 = {
   'toast.webdavSyncFailed': '同步失败：{msg}',
   'toast.mcpFailed': 'MCP 操作失败：{msg}',
   'toast.mcpTokenRotated': '令牌已重置，旧令牌立即失效，请在 Agent 配置中更新',
+  'toast.importConfirm': '导入将覆盖现有数据（歌单、设置等），是否继续？',
+  'toast.importSuccess': '✅ 导入成功',
 };
 
 test('增量194 接线的词条值逐字对账（键与值的配对不许只靠写代码那一次的手感）', () => {
@@ -570,7 +572,8 @@ test('用到的每个键都中英齐备', () => {
  *
  * 增量194 把 settings.js 接上线，吃掉了这张表里的 17 条（probeDone / cookieSaved /
  * clearFailed / cookieCleared / template* / cache* / reset* / export* / importFailed ——
- * 它们本来就是从 settings.js 抄进词典的，只是那次抄完没接线）。剩下 12 条仍分两种，都是债：
+ * 它们本来就是从 settings.js 抄进词典的，只是那次抄完没接线）。增量196 接上 importConfirm +
+ * importSuccess（破坏性覆盖加确认守卫顺带消孤儿）。剩下 10 条仍分两种，都是债：
  *   ① zh 值恰好等于某处源码字面量 ⇒ 英文界面下**可能**被值匹配撞中（如
  *      toast.saved「已保存」）；但它同时是颗雷：短值会抢走长句的前缀匹配，
  *      把「已保存歌单…」整个改写成「Saved」。
@@ -583,8 +586,6 @@ test('用到的每个键都中英齐备', () => {
 const ORPHANS = [
   'toast.alreadyDownloaded',
   'toast.alreadyDownloadedAt',
-  'toast.importConfirm',
-  'toast.importSuccess',
   'toast.linkFailed',
   'toast.linkRecognized',
   'toast.linkShort',
@@ -761,4 +762,26 @@ test('零新 IPC：toast/i18n 两家用到的 api 方法不得超出快照', () 
 test('translateMessage 仍作为存量兜底在位（本轮没把它抽走）', () => {
   const code = read('src/renderer/js/toast.js');
   assert.match(code, /translateMessage/, 'toast.js 仍应对未接词典的存量文案保留值匹配兜底');
+});
+
+test('importConfig 是破坏性覆盖，IPC 前必须有 askConfirm（增量196）', () => {
+  const src = read('src/renderer/js/views/settings.js');
+  const fn = src.slice(src.indexOf('async function importConfig()'));
+  const confirmIdx = fn.indexOf('askConfirm');
+  const invokeIdx = fn.indexOf("api.invoke('import-all-data')");
+  assert.ok(confirmIdx >= 0, 'importConfig 缺 askConfirm —— 导入会静默覆盖全部歌单/设置/历史');
+  assert.ok(invokeIdx >= 0, 'importConfig 调 import-all-data 的锚还在');
+  assert.ok(confirmIdx < invokeIdx, '确认必须在 IPC 调用之前');
+});
+
+test('importConfig 的成功/失败 toast 走词典不透传中文（增量196 消 importSuccess 孤儿）', () => {
+  const src = read('src/renderer/js/views/settings.js');
+  const fn = src.slice(src.indexOf('async function importConfig()'));
+  assert.ok(!/['"`]\u2705\s*['"`]\s*\+/.test(fn) && !/["'`]\u274c\s*["'`]\s*\+/.test(fn),
+    'importConfig 内不应再拼 emoji + 主进程中文字面量（走 t() 取词典整句）');
+});
+
+test('toast.importConfirm 与 toast.importSuccess 不再是孤儿（增量196 接线兑现）', () => {
+  assert.ok(!ORPHANS.includes('toast.importConfirm'), 'importConfirm 已被 settings.js 接线，应从 ORPHANS 删除');
+  assert.ok(!ORPHANS.includes('toast.importSuccess'), 'importSuccess 已被 settings.js 接线，应从 ORPHANS 删除');
 });
