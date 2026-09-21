@@ -144,6 +144,7 @@ function _renderDiag(task, d, ctx) {
   overlay.id = 'diagOverlay';
   overlay.className = 'edit-overlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeDiag(); });
 
   const panel = document.createElement('div');
@@ -292,6 +293,8 @@ function _renderFailReport(groups, origin) {
   overlay.id = 'failReportOverlay';
   overlay.className = 'edit-overlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
+  overlay.setAttribute('data-modal-pri', '10');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeFailReport(); });
 
   const panel = document.createElement('div');

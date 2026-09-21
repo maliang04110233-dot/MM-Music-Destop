@@ -52,7 +52,8 @@ function findAll(root, sel) {
 
 function stubEl(tag, doc) {
   const el = {
-    tag, parent: null, children: [], className: '', textContent: '', attrs: {}, _l: {}, _html: '',
+    // style 是承诺面（增量202⑭）：真实模块写 hint.style.cssText，桩缺 style 就 TypeError
+    tag, parent: null, children: [], className: '', textContent: '', attrs: {}, _l: {}, _html: '', style: {},
     setAttribute(k, v) {
       this.attrs[k] = String(v);
       if (k === 'id') doc._ids[this.attrs.id] = this;

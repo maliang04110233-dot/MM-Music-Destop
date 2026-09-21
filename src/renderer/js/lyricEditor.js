@@ -80,7 +80,13 @@ function _modalEl() {
 
 function _close() {
   const el = document.getElementById('lyricEditorModal');
-  if (el) { el.style.display = 'none'; el.removeAttribute('data-modal'); }
+  // 常驻 display 切换单例：身份与契约随开合挂摘——收起后若留 data-modal-close，
+  // 注册表选择器只过滤 .hidden 类不认识 style.display，幽灵浮层会永远吞掉每次 Esc
+  if (el) {
+    el.style.display = 'none';
+    el.removeAttribute('data-modal');
+    el.removeAttribute('data-modal-close');
+  }
 }
 
 async function _save() {
@@ -106,10 +112,13 @@ function openLyricEditor() {
   el.style.display = 'flex';
   // 常驻 DOM 的 display 切换单例：身份随开合挂摘，收起状态不得留在守卫面里
   el.setAttribute('data-modal', '');
+  el.setAttribute('data-modal-close', 'closeLyricEditor');
   ta.focus();
   ta.setSelectionRange(0, 0);
 }
 
 window.openLyricEditor = openLyricEditor;
+// 浮层注册表具名出口（增量202）：收起=隐藏+摘身份，非摘除本体，故不走 '-' 哨兵
+window.closeLyricEditor = _close;
 
 export { getLyricOverride, saveLyricText, openLyricEditor };

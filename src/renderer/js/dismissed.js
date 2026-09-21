@@ -107,6 +107,7 @@ function _renderManager() {
   overlay.id = 'dismissedOverlay';
   overlay.className = 'edit-overlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closeManager(); });
 
   const panel = document.createElement('div');

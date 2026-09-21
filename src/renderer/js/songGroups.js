@@ -96,6 +96,7 @@ function _renderGroupsModal() {
   overlay.className = 'edit-overlay';
   overlay.id = 'songGroupsOverlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', 'closeSongGroupsModal');
   overlay.innerHTML = `
     <div class="edit-panel">
       <div class="edit-header">

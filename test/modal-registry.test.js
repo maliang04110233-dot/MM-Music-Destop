@@ -2,6 +2,9 @@
  * 增量198：浮层注册表——data-attribute 契约（148/151/185「手抄清单必漏」律的第四次立法）
  * 增量199：偿还建层时登记的六浮层 Esc 债 + ⑩ 把 HTML 契约属性送上实弹桥接
  * 增量201：把注册表推到动态层——⑪ 形状巡扫钉住「造浮层必自报」，⑫ 实弹选样
+ * 增量202：动态层 Esc 契约首批偿还——⑬ 全量对账台账（28 枚动态自报点逐枚授契约/立豁免），
+ *          ⑭ '-' 哨兵实弹选样（睡眠定时自定义弹层：开→Esc→离场→守卫清空），
+ *          ⑮ display 切换单例成对摘除钉（M5 变异逃逸后补立：收起只改 display 不摘契约=幽灵浮层永吞 Esc）
  *
  * 来龙：_anyModalOpen() 与 closeActiveModal() 各自手抄了一份浮层 id 清单。
  * 195 实测抓到活体证据：cmdkOverlay 从来不在两份清单里——背景键守卫与 Esc
@@ -402,5 +405,177 @@ test('⑫ 动态浮层实弹选样：确认弹层开着守卫必须看得见，r
   cancel.click();
   await pending;
   assert.equal(sc._anyModalOpen(), false, 'overlay.remove() 后守卫面即刻清空');
+});
+
+// ── ⑬ 动态层全量对账：每一枚 data-modal 自报点都要在台账里安家（授契约或立豁免）──
+// 来龙（增量202）：201 开了守卫面的动态层口子，但「Esc 关得掉吗」仍是欠账——28 枚
+// 动态自报点里只有 2 枚早带契约（cmdk 95 / help 100），3 枚自管豁免
+// （confirmDialog=182/186 的焦点围堵自成一家；welcome=193 的 Esc 走 welcomeLater
+// 有持久写盘，绝非纯摘除，交给注册表反而绕开保守出口；home chart=开合挂卸自己的
+// _chartEscHandler），其余 23 枚本轮逐枚核实后授契约：
+//   · 13 枚授 '-' 哨兵——其背景关闭本体就是 remove()/等价的 getElementById+remove
+//     纯摘除（含 artistGroups 这种 id 动态传入、注册表不可能按名寻函数的），
+//     浮层自身即全部状态，无名可授也无复位可丢；
+//   · 9 枚授具名函数——背景钮 onclick 调的就是该函数（键盘同义），其中
+//     closeBatchImport/closeNameBatch 的 _running/_searching 拦截在函数体内，
+//     Esc 与点背景走同一道闸门，守卫语义零特化；
+//   · lyricEditor 是常驻 DOM 单例，收起=隐藏+摘身份，'-' 会把家拆了——新挂
+//     window.closeLyricEditor 具名出口。
+// 层叠实证仅一对：诊断面板开着时可从内部弹失败报告（_renderFailReport 不关 diag），
+// failReport 授 pri=10 顶层先关；其余「无叠层实证，不臆造优先级」（199 同口径）。
+// 台账格式：文件 → 按创建点出现序的契约列表；null=自管豁免；'-'/具名 加 :pri=N 后缀。
+// 新浮层裸挂不立账=红、契约与账不符=红、具名函数没挂 window=红（注册表按
+// window[fn] 寻函数，挂空=每次 Esc 白吃不放行——⑥ 同款反向钉推到动态层）。
+test('⑬ 动态层 Esc 契约全量对账：28 枚自报点逐枚授契约或立豁免', async () => {
+  const JS_ROOT = R('js');
+  const files = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.js')) files.push(p);
+    }
+  };
+  walk(JS_ROOT);
+  const srcOf = {};
+  for (const f of files) srcOf[path.relative(JS_ROOT, f).replace(/\\/g, '/')] =
+    fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+
+  const GRANTS = {
+    'afterQueueDone.js': ['fn:cancelAfterQueueCountdown'],
+    'artistGroups.js': ['-'],
+    'batchProbe.js': ['fn:closeProbeReport'],
+    'commandPalette.js': ['fn:closeCommandPalette:pri=95'],
+    'confirmDialog.js': [null],
+    'diagnose.js': ['-', '-:pri=10'],
+    'dismissed.js': ['-'],
+    'folderGroups.js': ['-'],
+    'historyTrend.js': ['-'],
+    'lyricEditor.js': ['fn:closeLyricEditor'],
+    'player/stats.js': ['-'],
+    'scheduledDownload.js': ['fn:closeScheduledPanel'],
+    'shortcuts.js': ['-:pri=100'],
+    'sleepTimer.js': ['-'],
+    'songGroups.js': ['fn:closeSongGroupsModal'],
+    'views/ai-music.js': ['-', '-'],
+    'views/batchImport.js': ['fn:closeBatchImport'],
+    'views/home.js': [null],
+    'views/local-stats.js': ['-', '-'],
+    'views/local.js': ['-'],
+    'views/nameBatch.js': ['fn:closeNameBatch'],
+    'views/playlist.js': ['fn:closePlaylistAddSongs', 'fn:closePlaylistMergePicker', '-'],
+    'views/welcome.js': [null],
+  };
+
+  const problems = [];
+  const named = [];
+  for (const [file, src] of Object.entries(srcOf)) {
+    const lines = src.split('\n');
+    const sites = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = /(?:^|\s)(\w+)\.setAttribute\(\s*['"]data-modal['"]\s*,\s*['"]['"]\s*\)/.exec(lines[i]);
+      if (!m) continue;
+      const v = m[1];
+      let close;
+      let pri;
+      for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
+        const c = new RegExp(v + '\\.setAttribute\\(\\s*[\'"]data-modal-close[\'"]\\s*,\\s*[\'"]([^\'"]*)[\'"]').exec(lines[j]);
+        if (c) { close = c[1]; break; }
+      }
+      for (let j = i + 1; j <= Math.min(i + 6, lines.length - 1); j++) {
+        const q = new RegExp(v + '\\.setAttribute\\(\\s*[\'"]data-modal-pri[\'"]\\s*,\\s*[\'"]([0-9]+)[\'"]').exec(lines[j]);
+        if (q) { pri = q[1]; break; }
+      }
+      sites.push({ close, pri });
+    }
+    if (!sites.length) continue;
+    const want = GRANTS[file];
+    if (!want) { problems.push(file + '：新增自报点未立账 ' + JSON.stringify(sites)); continue; }
+    if (want.length !== sites.length) {
+      problems.push(file + '：台账 ' + want.length + ' 枚 ≠ 实际创建点 ' + sites.length + ' 枚');
+      continue;
+    }
+    sites.forEach((s, k) => {
+      const w = want[k];
+      if (w === null) {
+        if (s.close !== undefined) problems.push(file + '#' + k + '：豁免浮层被人授了契约「' + s.close + '」——自管键盘被抢归属');
+        return;
+      }
+      const mm = /^(fn:[^:]+|-)(?::pri=([0-9]+))?$/.exec(w);
+      assert.ok(mm, '台账格式自校验：' + w);
+      const wantClose = mm[1] === '-' ? '-' : mm[1].slice(3);
+      if (s.close !== wantClose) problems.push(file + '#' + k + '：契约「' + s.close + '」≠ 台账「' + w + '」');
+      const wantPri = mm[2];
+      if (s.pri !== wantPri) problems.push(file + '#' + k + '：pri「' + s.pri + '」≠ 台账「' + wantPri + '」');
+      if (wantClose !== '-') named.push(wantClose);
+    });
+  }
+  for (const fn of named) {
+    const mounted = Object.values(srcOf).some((src) => new RegExp('window\\.' + fn + '\\s*=').test(src));
+    assert.ok(mounted, '具名关闭函数必须挂 window（注册表按 window[fn] 寻函数）：' + fn);
+  }
+  assert.deepEqual(problems, [], '动态浮层的 Esc 契约必须逐枚立账——裸挂、擅改、抢自管皆红：\n' + problems.join('\n'));
+});
+
+// ── ⑭ 动态层实弹选样：'-' 哨兵从真创建点到真注册表一枪打穿 ──
+// 选睡眠定时自定义弹层（sleepTimer.openSleepCustomDialog）：纯 createElement、
+// 背景点击=摘除，'-' 契约的标本。RED 阶段死因=契约缺席（201 只入守卫面）。
+test('⑭ 动态层实弹选样：睡眠自定义弹层登记「-」哨兵，Esc 当场摘除守卫清空', async () => {
+  const doc = makeDomStub();
+  const sc = await loadShortcuts(doc);
+  await loadFresh(R('js', 'sleepTimer.js'), 'spt');
+  assert.equal(typeof global.window.openSleepCustomDialog, 'function',
+    'sleepTimer 在桩环境可加载且桥接函数在位');
+  global.window.openSleepCustomDialog();
+  const overlay = doc.querySelector('[data-modal-close]');
+  assert.ok(overlay, '自定义弹层开着且带 Esc 契约（RED 阶段缺的就是这枚属性）');
+  assert.equal(overlay.getAttribute('data-modal-close'), '-',
+    '「-」：纯摘除关闭与背景等价，浮层自身即全部状态');
+  assert.equal(sc._anyModalOpen(), true, '弹层在场=守卫在场');
+  const ev = dispatchKey(doc, 'Escape', doc.body);
+  assert.equal(ev.defaultPrevented, true, 'Esc 被注册表吃掉（顶层摘除）');
+  assert.equal(sc._anyModalOpen(), false, 'remove() 后守卫面即刻清空');
+  const ev2 = dispatchKey(doc, 'Escape', doc.body);
+  assert.equal(ev2.defaultPrevented, false, '无浮层可关时 Esc 交还自由');
+});
+
+// ── ⑮ display 切换单例成对摘除钉（形状巡扫）──
+// M5 变异逃逸补立的账：注册表关闭选择器只过滤 .hidden 类，不认识 style.display——
+// 收起走 display='none' 的常驻单例若把 data-modal-close 留在 DOM 上，就成了永远
+// 在场又关不掉的幽灵浮层，每次全局 Esc 被它白吃。此钉按形状扫全动态层：
+// 同一变量既挂 data-modal 身份、又被 display='none' 收起，收起点 +6 行内必须
+// 成对摘除身份与契约，缺一即红。RED 证据=变异 M5（摘掉 removeAttribute 那行⑮即红）。
+test('⑮ display 切换单例必须成对摘身份与契约（幽灵 Esc 形状钉）', () => {
+  const JS_ROOT = R('js');
+  const files = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p); else if (e.name.endsWith('.js')) files.push(p);
+    }
+  };
+  walk(JS_ROOT);
+  const problems = [];
+  for (const f of files) {
+    const lines = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n');
+    const modalVars = new Set();
+    for (const ln of lines) {
+      const m = ln.match(/(\w+)\.setAttribute\(\s*['"]data-modal['"]/);
+      if (m) modalVars.add(m[1]);
+    }
+    lines.forEach((ln, i) => {
+      const m = ln.match(/(\w+)\.style\.display\s*=\s*['"]none['"]/);
+      if (!m || !modalVars.has(m[1])) return;
+      const v = m[1];
+      const win = lines.slice(i, i + 7).join('\n');
+      const stripped = win.includes(v + ".removeAttribute('data-modal')")
+        && win.includes(v + ".removeAttribute('data-modal-close')");
+      if (!stripped) {
+        problems.push(path.relative(JS_ROOT, f).replace(/\\/g, '/') + ':' + (i + 1)
+          + ' ' + v + ' 以 display 收起却未成对摘除 data-modal/data-modal-close（幽灵浮层永吞 Esc）');
+      }
+    });
+  }
+  assert.deepEqual(problems, []);
 });
 

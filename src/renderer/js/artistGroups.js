@@ -92,6 +92,7 @@ function _renderPanel({ id, heading, groups, field, unknownLabel, songsOf }) {
   overlay.id = id;
   overlay.className = 'edit-overlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
   overlay.addEventListener('click', (e) => { if (e.target === overlay) _closePanel(id); });
 
   const panel = document.createElement('div');

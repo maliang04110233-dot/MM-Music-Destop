@@ -128,6 +128,7 @@ function _ensureOverlay() {
   el.id = 'scheduledOverlay';
   el.className = 'edit-overlay hidden';
   el.setAttribute('data-modal', '');
+  el.setAttribute('data-modal-close', 'closeScheduledPanel');
   el.innerHTML = `
     <div class="edit-panel" style="width:560px;">
       <div class="edit-header">

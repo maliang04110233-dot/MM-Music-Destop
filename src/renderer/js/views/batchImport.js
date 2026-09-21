@@ -24,6 +24,7 @@ function _ensureOverlay() {
   el.id = 'batchImportOverlay';
   el.className = 'edit-overlay hidden';
   el.setAttribute('data-modal', '');
+  el.setAttribute('data-modal-close', 'closeBatchImport');
   el.innerHTML = `
     <div class="edit-panel" style="width:520px;">
       <div class="edit-header">

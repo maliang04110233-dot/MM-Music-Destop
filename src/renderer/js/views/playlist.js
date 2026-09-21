@@ -971,6 +971,7 @@ function _ensurePlAddModal() {
   div.id = 'plAddModal';
   div.className = 'playlist-modal-overlay hidden';
   div.setAttribute('data-modal', '');
+  div.setAttribute('data-modal-close', 'closePlaylistAddSongs');
   // 静态模板 innerHTML：不含任何用户数据，数据行走 _renderPlAddList 逐条 esc
   div.innerHTML = `
     <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;">
@@ -1117,6 +1118,7 @@ function _ensurePlMergeModal() {
   div.id = 'plMergeModal';
   div.className = 'playlist-modal-overlay hidden';
   div.setAttribute('data-modal', '');
+  div.setAttribute('data-modal-close', 'closePlaylistMergePicker');
   // 静态模板不含用户数据；歌单行经 esc/escQ 逐条渲染
   div.innerHTML = `
     <div class="playlist-modal" style="min-width:420px;max-width:560px;max-height:70vh;display:flex;flex-direction:column;">
@@ -1261,6 +1263,7 @@ function showDedupeModal(groups) {
   overlay.id = 'dedupeScanModal';
   overlay.className = 'playlist-modal-overlay';
   overlay.setAttribute('data-modal', '');
+  overlay.setAttribute('data-modal-close', '-');
   overlay.innerHTML = `
     <div class="playlist-modal" style="max-width:540px;">
       <div class="playlist-modal-header">
