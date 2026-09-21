@@ -399,16 +399,21 @@ async function qqGetUrl(id, quality, cookie = '') {
       authst: qqmusicKey,    // 新版 QQ 鉴权签名（VIP/FLAC 必备）
     },
   };
-  // M6: 登录态 authst 不再进 GET 查询串（会落进平台/代理访问日志），
-  // musicu.fcg 同样接受 POST 表单，data 放 body
-  const bodyStr = 'data=' + encodeURIComponent(JSON.stringify(dataObj));
+  // vkey 的 data 必须走 **JSON body**（Content-Type: application/json）。
+  // 实测（2026-09-21，本机真实 Cookie + 生产 request 通路）：同一条 payload 以
+  // x-www-form-urlencoded 的 `data=<编码串>` 送出时 musicu.fcg 压根不解析——恒回
+  // {"code":500001}、连 req_0 都没有，于是 purl 取不到，上层把「purl 为空」一律
+  // 读成「需要 VIP」，用户看到的就是"明明登录了却还是换源到别家"。
+  // 带不带 Content-Length 都不影响结果，编码形态才是决定项。
+  // authst（qm_keyst/qqmusic_key）留在 body 里，绝不进查询串（URL 会落进访问日志）—— M6 的原意不变。
+  const bodyStr = JSON.stringify(dataObj);
   const url = `https://u.y.qq.com/cgi-bin/musicu.fcg?-=getplaysongvkey${Date.now()}&g_tk=5381&loginUin=${encodeURIComponent(uin)}&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0`;
 
   try {
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Referer': 'https://y.qq.com/',
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
     };
     if (cookie) headers['Cookie'] = cookie;
 
