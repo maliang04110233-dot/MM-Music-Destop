@@ -72,7 +72,7 @@ function register() {
   handle('export-all-data', async () => {
     try {
       const result = await dialog.showSaveDialog({
-        title: '导出揽乐数据',
+        title: '导出音乐下载器数据',
         defaultPath: `music-downloader-backup-${Date.now()}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
@@ -116,7 +116,7 @@ function register() {
   handle('import-all-data', async () => {
     try {
       const result = await dialog.showOpenDialog({
-        title: '导入揽乐数据',
+        title: '导入音乐下载器数据',
         filters: [{ name: 'JSON', extensions: ['json'] }],
         properties: ['openFile'],
       });

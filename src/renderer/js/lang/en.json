@@ -1,5 +1,5 @@
 {
-  "app.title": "Lanyue",
+  "app.title": "MusicDL",
   "app.subtitle": "Netease · QQ Music · Bilibili",
   "nav.home": "Home",
   "nav.search": "Search",
@@ -196,7 +196,7 @@
   "settings.general.resetTitle": "Reset Settings",
   "settings.general.resetAll": " Restore All Default Settings",
   "settings.general.resetHint": "Restores all settings to defaults (downloaded music and cookies are kept)",
-  "settings.about.title": "About Lanyue",
+  "settings.about.title": "About MusicDL",
   "settings.about.desc": "Multi-platform music download desktop app · Electron",
   "settings.about.support": "Supports: NetEase Music · QQ Music · Bilibili · KuGou · Kuwo",
   "settings.about.checkUpdate": "Check for Updates",

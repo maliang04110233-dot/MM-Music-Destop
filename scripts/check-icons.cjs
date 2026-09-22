@@ -3,18 +3,24 @@
  *
  * 为什么需要这个脚本：
  *   `assets/icon.png` 曾经是一张 1024×1024 的 **AI 生成图**，右下角烧录了
- *   「图片由AI生成」水印，会随安装包一起发给最终用户；且整张图**全不透明**，
- *   圆外没有 alpha，Windows 任务栏 / macOS Dock / 桌面会显示成一块方角色板。
- *   这两个缺陷**都能通过 build 与全部测试**，没有任何自动检查会发现 ——
- *   所以必须专门守住。
+ *   「图片由AI生成」水印，会随安装包一起发给最终用户；这类缺陷**都能通过
+ *   build 与全部测试**，没有任何自动检查会发现 —— 所以必须专门守住。
+ *   同一个脚本还守住另一件事：图标是代码画出来的，一旦合成公式写反，
+ *   前景会被数学上完全抹除，画出来只有一个空底板，且**不报任何错**
+ *   （gen-icon.js 踩过这个坑）。所以这里必须验「图形真的画上去了」。
+ *
+ * 现行规范（增量208 起）：**圆角方牌 + 白色底 + 深色音符**。
+ *   旧规范是「圆形徽标 + 圆外透明」，当时的判据是四角必须透明；
+ *   改成方牌后判据随之反转 —— 形状与配色都按新规范守，不保留旧口径。
  *
  * 本脚本只做静态检查，不启动 Electron、不依赖网络。
  *
  * 检查项：
- *   A. icon.png   —— 圆外必须透明；不得为「整张不透明」（方角）
- *   B. icon.png   —— 尺寸受控（避免又塞回 1MB 级大图）
+ *   A. icon.png   —— 方形主体（不透明区几乎铺满画布）+ 四角内侧有着色
+ *   A2.icon.png   —— 底色为白；且深色图形像素存在、明度跨度足够（不得白压白）
+ *   B. icon.png   —— 尺寸与体积受控（避免又塞回 1MB 级大图）
  *   C. icon.ico   —— 结构合法（type=1）；含足够多的尺寸档位；含 16/32/48/256
- *   D. icon.ico   —— 各档位圆外透明（不能在缩放后变方角）
+ *   D. icon.ico   —— 各档位都是方形主体（缩放后不得退回圆盘/丢角）
  *   E. 安装器 BMP —— 24bpp、BI_RGB、尺寸符合 NSIS 规范
  *   F. 全仓无「AI 生成」水印文案混入图片元数据（PNG tEXt 等文本块）
  */
@@ -131,6 +137,59 @@ function alphaAt(img, x, y) {
   return 255;
 }
 
+/** 取某像素的 Rec.601 亮度（透明处视为 0，让「什么都没有」判得出来） */
+function lumaAt(img, x, y) {
+  if (alphaAt(img, x, y) <= 128) return 0;
+  const o = (y * img.width + x) * img.channels;
+  return 0.299 * img.data[o] + 0.587 * img.data[o + 1] + 0.114 * img.data[o + 2];
+}
+
+/**
+ * 不透明像素占比。方牌 ≈0.98，圆底徽标 ≈0.66（π·0.46²），
+ * 两者差一个量级，用一条阈值就能分辨形状，不必去拟合轮廓。
+ */
+function opaqueRatio(img) {
+  let solid = 0;
+  const step = img.channels;
+  for (let i = step - 1; i < img.data.length; i += step) {
+    if (img.data[i] > 128) solid++;
+  }
+  return solid / (img.width * img.height);
+}
+
+/**
+ * 「方形主体」的最低不透明占比 —— 随尺寸放宽，不能卡一个死数。
+ *
+ * 铺满画布的方牌，最外一圈像素只有约半个像素的覆盖度（边缘抗锯齿），
+ * 一圈掉的面积是 4/size 量级：512 档实测 98.4%，16 档只剩 77%。
+ * 卡固定 90% 会让小档位因为「画得对」而报错。
+ * 对照：圆底徽标实测 16→55%、24→58%、32→60%、256→66%、512→66%，
+ * 全部落在这条线以下，判别力没有因为放宽而丢失。
+ */
+function squareFloor(size) {
+  return 0.9 - 3 / size;
+}
+
+/**
+ * 图形（前景）统计：白底上必须有足量深色像素，且深色与最亮处拉开差距。
+ * 这是「前景被抹除」的唯一自动侦测手段 —— 那种情况下画布只剩一块白底板，
+ * 尺寸/体积/结构类检查全都发现不了。
+ */
+function glyphStats(img) {
+  const step = img.channels;
+  let dark = 0;
+  let darkest = 255;
+  let lightest = 0;
+  for (let i = 0; i < img.data.length; i += step) {
+    if (img.data[i + step - 1] <= 128) continue;
+    const l = 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+    if (l < darkest) darkest = l;
+    if (l > lightest) lightest = l;
+    if (l < 140) dark++;
+  }
+  return { darkRatio: dark / (img.width * img.height), darkest, lightest };
+}
+
 // ─────────────────────────────────────────────────────────────
 // A/B. icon.png
 // ─────────────────────────────────────────────────────────────
@@ -161,23 +220,52 @@ function checkIconPng() {
     ok(`icon.png 体积 ${sizeKB.toFixed(0)} KB 在预算内`);
   }
 
-  // 圆外透明：四角与四边中点必须全透明，否则是方角图标
-  const probes = [
-    ['左上角', 1, 1],
-    ['右上角', img.width - 2, 1],
-    ['左下角', 1, img.height - 2],
-    ['右下角', img.width - 2, img.height - 2],
-    ['上边中', Math.floor(img.width / 2), 1],
-    ['下边中', Math.floor(img.width / 2), img.height - 2],
-  ];
-  const opaqueCorners = probes.filter(([, x, y]) => alphaAt(img, x, y) > 8);
-  if (opaqueCorners.length > 0) {
-    fail(
-      `icon.png 四角/边缘不透明（方角图标会让系统显示成色板）：` +
-        opaqueCorners.map(([n]) => n).join('、')
-    );
+  // ── A. 方形主体 ────────────────────────────────────────
+  // 规范：圆角方牌铺满画布。旧的圆底徽标只有约 66% 不透明，会被这条拦下。
+  const pct = (r) => `${(r * 100).toFixed(1)}%`;
+  const ratio = opaqueRatio(img);
+  const floor = squareFloor(img.width);
+  if (ratio < floor) {
+    fail(`icon.png 不透明区域仅 ${pct(ratio)}（应 ≥${pct(floor)}）—— 主体不是方形（圆底徽标？圆角半径过大？）`);
   } else {
-    ok('icon.png 圆外透明（无方角底板）');
+    ok(`icon.png 不透明区域 ${pct(ratio)} ≥ ${pct(floor)} —— 方形主体`);
+  }
+
+  // 四角内侧必须有着色：方牌的四个角是内容区，透明说明被切掉了。
+  // 探针从边缘内缩 14%，落在圆角半径之内（贴着边探就成在验圆角本身）。
+  const inset = Math.max(2, Math.round(img.width * 0.14));
+  const corners = [
+    ['左上', inset, inset],
+    ['右上', img.width - 1 - inset, inset],
+    ['左下', inset, img.height - 1 - inset],
+    ['右下', img.width - 1 - inset, img.height - 1 - inset],
+  ];
+  const holes = corners.filter(([, x, y]) => alphaAt(img, x, y) < 200).map(([n]) => n);
+  if (holes.length) {
+    fail(`icon.png 四角内侧无内容（方牌缺角 / 其实是圆形）：${holes.join('、')}`);
+  } else {
+    ok('icon.png 四角内侧有着色（方牌完整）');
+  }
+
+  // ── A2. 白底 + 深色图形 ────────────────────────────────
+  const cornerLuma = Math.min(...corners.map(([, x, y]) => lumaAt(img, x, y)));
+  if (cornerLuma < 200) {
+    fail(`icon.png 四角底色亮度仅 ${cornerLuma.toFixed(0)} —— 规范是白色底`);
+  } else {
+    ok(`icon.png 白底（四角亮度 ${cornerLuma.toFixed(0)}）`);
+  }
+
+  const { darkRatio, darkest, lightest } = glyphStats(img);
+  if (darkRatio < 0.02) {
+    fail(`icon.png 深色图形像素仅 ${pct(darkRatio)} —— 白底上没有前景（音符被合成抹除？）`);
+  } else {
+    ok(`icon.png 深色图形像素 ${pct(darkRatio)}`);
+  }
+  const spread = lightest - darkest;
+  if (spread < 90) {
+    fail(`icon.png 明度跨度仅 ${spread.toFixed(0)}（应 ≥90）—— 白压白，浅色任务栏上看不出内容`);
+  } else {
+    ok(`icon.png 明度跨度 ${spread.toFixed(0)}（前景与底板可分）`);
   }
 
   // 中心必须不透明，否则图标是空的
@@ -194,9 +282,9 @@ function checkIconPng() {
     if (a > 8 && a < 247) semi++;
   }
   if (semi < 100) {
-    fail(`icon.png 半透明像素仅 ${semi} 个 —— 圆缘缺抗锯齿，会有明显锯齿`);
+    fail(`icon.png 半透明像素仅 ${semi} 个 —— 方牌圆角缺抗锯齿，会有明显锯齿`);
   } else {
-    ok(`icon.png 有 ${semi} 个半透明像素（圆缘抗锯齿正常）`);
+    ok(`icon.png 有 ${semi} 个半透明像素（圆角抗锯齿正常）`);
   }
 
   // 元数据不得夹带「AI 生成」类水印文案
@@ -249,8 +337,9 @@ function checkIconIco() {
     ok(`icon.ico 关键尺寸齐备（16/32/48/256），共 ${count} 档：${sizes.join('/')}`);
   }
 
-  // 每档的 PNG 数据都要圆外透明
-  const square = [];
+  // 每一档都必须是方形主体：缩放到 16/32 时若退回圆盘或丢了四角，
+  // 任务栏与资源管理器小视图会立刻显示成圆徽标。
+  const notSquare = [];
   for (const e of entries) {
     let img;
     try {
@@ -259,17 +348,12 @@ function checkIconIco() {
       fail(`icon.ico 的 ${e.size}x${e.size} 档解析失败：${err.message}`);
       continue;
     }
-    const corner =
-      alphaAt(img, 1, 1) > 8 ||
-      alphaAt(img, img.width - 2, 1) > 8 ||
-      alphaAt(img, 1, img.height - 2) > 8 ||
-      alphaAt(img, img.width - 2, img.height - 2) > 8;
-    if (corner) square.push(e.size);
+    if (opaqueRatio(img) < squareFloor(e.size)) notSquare.push(`${e.size}(${(opaqueRatio(img) * 100).toFixed(0)}%)`);
   }
-  if (square.length) {
-    fail(`icon.ico 以下档位圆外不透明（方角）：${square.join('/')}`);
+  if (notSquare.length) {
+    fail(`icon.ico 以下档位不是方形主体：${notSquare.join(' ')}`);
   } else {
-    ok('icon.ico 全部档位圆外透明');
+    ok('icon.ico 全部档位为方形主体（不透明区达到该尺寸的方形下限）');
   }
 }
 

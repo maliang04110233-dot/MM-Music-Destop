@@ -10,8 +10,8 @@
  */
 module.exports = {
   appId: 'com.musicdl.app',
-  productName: 'Lanyue',
-  copyright: 'Copyright © 2026 Lanyue',
+  productName: 'MusicDL',
+  copyright: 'Copyright © 2026 MusicDL',
   directories: {
     output: 'release',
   },
@@ -114,14 +114,12 @@ module.exports = {
 
   // ── NSIS 安装程序 ──────────────────────────────────
   nsis: {
-    // 产物名钉死在旧 ASCII 命名上：已发布的 latest.yml / GitHub Release 资产名直接引用它们
-    artifactName: 'MusicDL-Setup-${version}.${ext}',
     oneClick: false,
     perMachine: true,
     allowToChangeInstallationDirectory: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
-    shortcutName: '揽乐',
+    shortcutName: 'MusicDL',
     allowElevation: true,
     runAfterFinish: true,
     deleteAppDataOnUninstall: true,
@@ -133,11 +131,6 @@ module.exports = {
     // 品牌图片（NSIS 2.0 风格：顶部横幅 + 左侧边栏）
     installerHeader: 'build/installerHeader.bmp',
     installerSidebar: 'build/installerSidebar.bmp',
-  },
-
-  // ── 便携版 ─────────────────────────────────────────
-  portable: {
-    artifactName: 'MusicDL-Portable-${version}.${ext}',
   },
 
   // ── Linux ──────────────────────────────────────────

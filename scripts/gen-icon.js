@@ -7,21 +7,23 @@
  *   build/installerHeader.bmp    150×57  24bpp，NSIS 顶部横幅
  *   build/installerSidebar.bmp   164×314 24bpp，NSIS 左侧边栏
  *
- * 设计：深蓝紫渐变圆底 + 金色八分音符（符头 + 符干 + 符尾）。
+ * 设计：白色圆角方牌 + 深靛紫八分音符（符头 + 符干 + 符尾）。
  * 全部用代码绘制，可在任意尺寸下重新生成，不依赖外部素材。
  *
  * ⚠️ 三个必须守住的性质（有 check:icons 守卫）：
  *   1. **无水印**。历史版本 icon.png 是一张 AI 生成图，右下角烧录了
  *      「图片由AI生成」水印，会随安装包发给用户。程序化绘制从根上避免。
- *   2. **圆外透明**。图标是圆形徽标，圆外必须 alpha=0；否则 Windows 任务栏
- *      与 macOS Dock 会显示成一块方角色板。
+ *   2. **方形铺满 + 白底要有对比**。图标是铺满画布的圆角方牌（增量208 起，
+ *      旧规范是圆底 + 圆外透明）。白色底最大的风险是「白压白」——前景画错
+ *      颜色或干脆没画上，肉眼在浅色背景下看不出来。所以底板与音符之间必须
+ *      拉开明度跨度，这条由 check-icons 的明度/深色像素判据守着。
  *   3. **ICO 多尺寸齐备**。只放单一尺寸会让系统缩放时糊掉。
  *
  * ⚠️ alpha 合成的坑（本文件曾在此处出错，务必先读）：
  *   合成必须按 **source-over**：结果 = 源 × 源α + 目标 × 目标α × (1 − 源α)。
  *   早期版本把公式写反（目标在前、源被乘了 (1−目标α)），在**已经不透明**的
- *   圆底上再画音符时，源贡献恒为 0 —— 音符被数学上完全抹除，
- *   画出来只有一个空蓝圆，且**不报任何错**。
+ *   底板上再画音符时，源贡献恒为 0 —— 音符被数学上完全抹除，
+ *   画出来只有一个空方块，且**不报任何错**。
  *   绘制顺序是「先铺不透明底、再画前景」，所以这个错误 100% 会触发。
  */
 
@@ -107,6 +109,35 @@ class Canvas {
     }
   }
 
+  /**
+   * 圆角矩形填充（含抗锯齿）。
+   *
+   * 覆盖度用「到圆角圆心矩形的最近点距离」算：把像素夹进内缩 r 的中心矩形，
+   * 夹不到的方向就给出该方向的越界量，两者合成后到边界距离 = r − d。
+   * 直边处该式会退化成「离边几个像素」（r 自动抵消），所以整条边都能正确淡出，
+   * 而不是只在四个角淡出 —— 铺满画布时最外一圈像素因此是半透明，属正常抗锯齿。
+   * 用 fillRect 逐段拼圆角会切出阶梯，必须走像素判定。
+   *
+   * @param {(px:number,py:number)=>{r:number,g:number,b:number,a?:number}} colorAt
+   */
+  fillRoundRect(x0, y0, x1, y1, r, colorAt) {
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
+      for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+        const px = x + 0.5;
+        const py = y + 0.5;
+        if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+        const nx = Math.min(Math.max(px, x0 + r), x1 - r);
+        const ny = Math.min(Math.max(py, y0 + r), y1 - r);
+        const d = Math.hypot(px - nx, py - ny);
+        if (d > r) continue;
+        const edge = r - d;
+        const cov = edge > 1.5 ? 1 : edge / 1.5;
+        const c = colorAt(px, py);
+        this.blend(x, y, c.r, c.g, c.b, c.a === undefined ? 255 : c.a, Math.min(1, cov));
+      }
+    }
+  }
+
   toRGBA() {
     const out = Buffer.alloc(this.size * this.size * 4);
     for (let i = 0; i < this.data.length; i += 4) {
@@ -123,11 +154,11 @@ class Canvas {
 // 调色板
 // ─────────────────────────────────────────────────────────────
 
-const BG_INNER = { r: 38, g: 18, b: 104 }; // 圆心（稍亮，形成球面感）
-const BG_OUTER = { r: 22, g: 8, b: 74 };   // 圆缘（压暗，让外圈有收边）
-const NOTE_MAIN = { r: 255, g: 202, b: 62 };
-const NOTE_HI = { r: 255, g: 242, b: 165 };
-const NOTE_LO = { r: 214, g: 148, b: 18 };
+const BG_TOP = { r: 255, g: 255, b: 255 }; // 方牌亮端：纯白
+const BG_BOTTOM = { r: 226, g: 231, b: 243 }; // 方牌暗端：极浅蓝灰，让白方块在浅色桌面上仍能看出边界
+const NOTE_MAIN = { r: 44, g: 20, b: 122 }; // 音符主色（品牌靛紫）
+const NOTE_HI = { r: 96, g: 62, b: 186 };   // 音符受光侧
+const NOTE_LO = { r: 18, g: 6, b: 56 };     // 音符背光侧 / 描边投影
 
 const mix = (c1, c2, t) => ({
   r: c1.r + (c2.r - c1.r) * t,
@@ -157,26 +188,18 @@ function distToSegment(px, py, x1, y1, x2, y2) {
 function drawIcon(canvas, size) {
   const cx = size / 2;
   const cy = size / 2;
-  const R = size * 0.46; // 圆底半径（留出边距，避免贴边被裁）
+  const R = size * 0.46; // 音符构图的基准半径（沿用旧版比例，方牌下留白更足）
 
-  // ── 圆底：径向渐变 ──
-  // 逐像素按到圆心的距离取色，圆外保持透明。
-  const x0 = Math.floor(cx - R - 2);
-  const x1 = Math.ceil(cx + R + 2);
-  for (let y = Math.floor(cy - R - 2); y <= Math.ceil(cy + R + 2); y++) {
-    for (let x = x0; x <= x1; x++) {
-      const dx = x + 0.5 - cx;
-      const dy = y + 0.5 - cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d > R) continue;
-      const t = d / R;
-      const col = mix(BG_INNER, BG_OUTER, t * t); // 平方让中心亮区更集中
-      // 边缘 1.5px 内线性淡出，得到干净的抗锯齿圆缘
-      const edge = R - d;
-      const cov = edge > 1.5 ? 1 : edge / 1.5;
-      canvas.blend(x, y, col.r, col.g, col.b, 255, Math.max(0, cov));
-    }
-  }
+  // ── 底板：铺满画布的圆角方牌，纯白 → 极浅蓝灰的对角渐变 ──
+  // 圆角取 10% 边长：肉眼读作「方形」，但避开直角被系统蒙版硬切。
+  // 不敢用纯白一片 —— 白图标贴在浅色任务栏/桌面上会直接消失，
+  // 所以靠这条很浅的对角渐变收出边界（check-icons 的明度跨度也靠它兜底）。
+  const rad = size * 0.10;
+  canvas.fillRoundRect(0, 0, size, size, rad, (px, py) => {
+    const t = (px + py) / (2 * size);
+    const col = mix(BG_TOP, BG_BOTTOM, t);
+    return { r: col.r, g: col.g, b: col.b, a: 255 };
+  });
 
   // ── 音符几何（八分音符：符头 + 符干 + 符尾）──
   // 用相对尺寸定义，小尺寸下这些比例依然成立。
@@ -253,9 +276,9 @@ function drawIcon(canvas, size) {
     }
   }
 
-  // 符头：先描一圈暗色投影增加与背景的分离度，再填主色，最后点高光
+  // 符头：先描一圈暗色投影增加与白底的分离度，再填主色，最后点高光
   canvas.fillEllipse(headCx + size * 0.008, headCy + size * 0.012, headRx, headRy, -0.32,
-    NOTE_LO.r, NOTE_LO.g, NOTE_LO.b, 150);
+    NOTE_LO.r, NOTE_LO.g, NOTE_LO.b, 110);
   canvas.fillEllipse(headCx, headCy, headRx, headRy, -0.32,
     NOTE_MAIN.r, NOTE_MAIN.g, NOTE_MAIN.b, 255);
   canvas.fillEllipse(headCx - headRx * 0.28, headCy - headRy * 0.30, headRx * 0.38, headRy * 0.34, -0.32,
@@ -451,8 +474,8 @@ function renderInstallerHeader() {
   const icon = render(iconSize);
   blitIcon(canvas, W, H, icon.rgba, iconSize, 7, Math.round((H - iconSize) / 2));
 
-  // 品牌色条：与图标金色呼应。NSIS 顶部横幅只有 57px 高，
-  // 在这个尺寸下塞中文/英文产品名经 24bpp 转换后极易糊，
+  // 品牌色条：与图标音符的靛紫呼应（旧版是金色，随增量208 换白底深靛紫一并收口）。
+  // NSIS 顶部横幅只有 57px 高，在这个尺寸下塞中文/英文产品名经 24bpp 转换后极易糊，
   // 故用一条克制的色条表达品牌，产品名由安装器标题文字承担。
   const barX0 = 64;
   const barX1 = 126;
@@ -461,7 +484,7 @@ function renderInstallerHeader() {
   for (let y = barY0; y < barY1; y++) {
     for (let x = barX0; x < barX1; x++) {
       const t = (x - barX0) / (barX1 - barX0);
-      const c = mix({ r: 255, g: 214, b: 96 }, { r: 255, g: 168, b: 48 }, t);
+      const c = mix({ r: 156, g: 130, b: 232 }, { r: 78, g: 48, b: 164 }, t);
       const i = (y * W + x) * 4;
       canvas[i] = c.r;
       canvas[i + 1] = c.g;
@@ -479,11 +502,11 @@ function renderInstallerSidebar() {
   const icon = render(120);
   blitIcon(canvas, W, H, icon.rgba, 120, Math.round((W - 120) / 2), 84);
 
-  // 底部装饰带：与品牌金色呼应
+  // 底部装饰带：与图标音符同色（靛紫）
   for (let y = H - 12; y < H - 8; y++) {
     for (let x = 30; x < W - 30; x++) {
       const i = (y * W + x) * 4;
-      canvas[i] = 255; canvas[i + 1] = 196; canvas[i + 2] = 64;
+      canvas[i] = 156; canvas[i + 1] = 130; canvas[i + 2] = 232;
     }
   }
   return encodeBMP(canvas, W, H);
