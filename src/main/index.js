@@ -241,7 +241,7 @@ function createWindow() {
       event.preventDefault();
       mainWindow.hide();
       if (tray) {
-        tray.displayBalloon({ title: '音乐下载器', content: '已最小化到托盘，点击恢复' });
+        tray.displayBalloon({ title: '揽乐', content: '已最小化到托盘，点击恢复' });
       }
     }
   });
@@ -265,7 +265,7 @@ function createTray() {
   }
 
   tray = new Tray(trayIcon);
-  tray.setToolTip('音乐下载器');
+  tray.setToolTip('揽乐');
 
   updateTrayMenu();
 
@@ -293,7 +293,7 @@ function updateTrayMenu(playState = { isPlaying: false, title: '', artist: '' })
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: playState.title ? `🎵 ${playState.title}` : '🎵 音乐下载器',
+      label: playState.title ? `🎵 ${playState.title}` : '🎵 揽乐',
       enabled: false,
     },
     {
