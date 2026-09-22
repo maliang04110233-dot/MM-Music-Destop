@@ -63,6 +63,7 @@ function build(map, opts = {}) {
     findCandidates: opts.findCandidates || (async () => []),
     sourceHealth: health,
     ...(opts.probeUrl ? { probeUrl: opts.probeUrl } : {}),
+    ...(opts.fallbackEnabled ? { fallbackEnabled: opts.fallbackEnabled } : {}),
   });
   return { svc, health, getUrl };
 }
@@ -828,4 +829,86 @@ test('resolve：全池只有片段 ⇒ 收敛为无音频流错误并说清是�
   assert.ok(!r.url, '全片段时绝不能返回任何一条片段链');
   assert.strictEqual(r.code, 'NO_AUDIO_STREAM');
   assert.match(String(r.error), /试听/);
+});
+
+// ══════════════════════════════════════════════════════════
+// 增量207：跨源换源总开关（产品决策：播放即本源，无源即诚实失败）
+// ══════════════════════════════════════════════════════════
+
+test('总开关关闭：本源失败不再搜候选，原样返回本源错误', async () => {
+  let candidateCalls = 0;
+  const { svc, getUrl } = build(
+    { 'netease:1': KUWO_CLIP, 'kuwo:w1': KUWO_FULL },
+    {
+      fallbackEnabled: () => false,
+      findCandidates: async () => {
+        candidateCalls++;
+        return [{ id: 'w1', source: 'kuwo', title: 't' }];
+      },
+    },
+  );
+  const r = await svc.resolve(
+    { id: '1', source: 'netease', title: '晴天', artist: 'a', duration: 269000 }, 'standard');
+  assert.strictEqual(candidateCalls, 0, '关闭换源后一次跨源匹配都不该发起');
+  assert.deepStrictEqual(getUrl.calls, [['netease', '1']], '只允许请求本源');
+  assert.ok(!r.url, '绝不能把别家源的整曲当这首歌的结果');
+  assert.strictEqual(r.code, 'NO_AUDIO_STREAM');
+});
+
+test('总开关关闭：_altSource 记忆同样失效（旧记忆不能绕过开关）', async () => {
+  const { svc, getUrl } = build(
+    { 'netease:1': { error: '需要 VIP', code: ERROR_CODES.VIP_REQUIRED }, 'qq:9': okResult() },
+    { fallbackEnabled: () => false },
+  );
+  const r = await svc.resolve(
+    { ...SONG, _altSource: { id: '9', source: 'qq' } }, 'standard');
+  assert.deepStrictEqual(getUrl.calls, [['netease', '1']], '记忆路径也必须走总开关');
+  assert.ok(!r.url);
+});
+
+test('总开关关闭：本源成功不受影响（开关只管跨源）', async () => {
+  const { svc, getUrl } = build(
+    { 'netease:1': KUWO_FULL },
+    { fallbackEnabled: () => false },
+  );
+  const r = await svc.resolve(
+    { id: '1', source: 'netease', title: 't', artist: 'a', duration: 312000 }, 'standard');
+  assert.strictEqual(r.url, KUWO_FULL.url, '关了换源不能连自家能播的歌也播不了');
+  assert.strictEqual(r.source, undefined, '本源成功不得带上 matchedFrom 之类的换源标记');
+  assert.deepStrictEqual(getUrl.calls, [['netease', '1']]);
+});
+
+test('总开关开启：换源行为与改造前一致（本源失败→候选命中并标记来源）', async () => {
+  const { svc, getUrl } = build(
+    { 'netease:1': { error: '需要 VIP', code: ERROR_CODES.VIP_REQUIRED }, 'qq:9': okResult() },
+    {
+      fallbackEnabled: () => true,
+      findCandidates: async () => [{ id: '9', source: 'qq', title: 't' }],
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.url, okResult().url);
+  assert.strictEqual(r.matchedFrom, 'netease');
+  assert.deepStrictEqual(getUrl.calls, [['netease', '1'], ['qq', '9']]);
+});
+
+test('总开关未注入：机制本身默认开启（策略归注入方，服务不藏决策）', async () => {
+  const { svc } = build(
+    { 'netease:1': { error: '需要 VIP', code: ERROR_CODES.VIP_REQUIRED }, 'qq:9': okResult() },
+    { findCandidates: async () => [{ id: '9', source: 'qq', title: 't' }] },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.matchedFrom, 'netease', '缺省即换源，产品口径由 api/index.js 注入');
+});
+
+test('总开关 getter 抛错：按开启处理，取流不被偏好读盘故障打断', async () => {
+  const { svc } = build(
+    { 'netease:1': { error: '需要 VIP', code: ERROR_CODES.VIP_REQUIRED }, 'qq:9': okResult() },
+    {
+      fallbackEnabled: () => { throw new Error('prefs 读盘炸了'); },
+      findCandidates: async () => [{ id: '9', source: 'qq', title: 't' }],
+    },
+  );
+  const r = await svc.resolve(SONG, 'standard');
+  assert.strictEqual(r.url, okResult().url);
 });

@@ -14,6 +14,7 @@ const assert = require('node:assert');
 const {
   normalizeDisabledPlatforms,
   filterDisabledCandidates,
+  crossSourceEnabled,
 } = require('../src/api/services/fallbackPolicy');
 const { createResolveTrackService } = require('../src/api/services/resolveTrackService');
 
@@ -147,4 +148,20 @@ test('两次 resolve 之间改清单：第二次即刻生效（缓存不跨调�
   assert.equal((await svc.resolve(SONG)).source, 'kuwo');
   current = ['kuwo'];
   assert.notEqual((await svc.resolve(SONG)).url, okResult.url, '勾选后应不再出 kuwo 流');
+});
+
+// ── 增量207：跨源换源总开关（产品决策）──────────────────────
+// 用户诉求：「根据搜索结果播放就是正常播放，没有音乐源就无法正常展示内容，也不用换音乐源」。
+// 决策落在 fallbackPolicy 一处，机制保留在 resolveTrackService —— 想恢复换源改这里即可。
+
+test('crossSourceEnabled：产品口径 = 关闭跨源换源', () => {
+  assert.equal(crossSourceEnabled(), false,
+    '默认不得跨源取流：别家平台的整曲不是这首歌');
+});
+
+test('生产接线：api/index.js 把总开关注入取流服务（漏注入等于决策失效）', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '../src/api/index.js'), 'utf8');
+  assert.match(src, /fallbackEnabled: crossSourceEnabled/,
+    'resolveTrack 必须注入总开关，否则服务默认「开」，设置形同虚设');
 });

@@ -132,6 +132,7 @@ function isPreviewClip(result, durationMs) {
  * @param {{recordResult:(s:string,ok:boolean)=>void, rankByHealth:(a:Array)=>Array}} deps.sourceHealth
  * @param {(url:string, result:Object) => Promise<Object>} [deps.probeUrl] 候选直链预检（缺省不探测）
  * @param {() => unknown} [deps.getDisabledPlatforms] 换源禁用平台清单（prefs 原始值，每次解析至多读一次）
+ * @param {() => boolean} [deps.fallbackEnabled] 跨源换源总开关（每次解析至多读一次；缺省=开）
  * @returns {Object} 冻结的服务实例
  */
 function createResolveTrackService({
@@ -142,6 +143,7 @@ function createResolveTrackService({
   sourceHealth,
   probeUrl,
   getDisabledPlatforms,
+  fallbackEnabled,
 } = {}) {
   if (typeof getUrl !== 'function') throw new Error('[ResolveTrack] 必须注入 getUrl');
   if (typeof findCandidates !== 'function') throw new Error('[ResolveTrack] 必须注入 findCandidates');
@@ -167,6 +169,20 @@ function createResolveTrackService({
     } catch (_e) { /* 偏好不可读按未配置处理 */ }
     _disabledCache = normalizeDisabledPlatforms(raw);
     return _disabledCache;
+  }
+
+  // 跨源换源总开关（增量207）：**服务本身不藏产品决策**，缺省按「开」，
+  // 关掉与否由注入方（api/index.js 读 fallbackPolicy.crossSourceEnabled）决定。
+  // getter 抛错同样按「开」处理 —— 读盘故障不该让本来能换源听到的歌彻底播不了。
+  let _fallbackCache = null;
+  function crossSourceOn() {
+    if (_fallbackCache !== null) return _fallbackCache;
+    let on = true;
+    try {
+      if (typeof fallbackEnabled === 'function') on = !!fallbackEnabled();
+    } catch (_e) { /* 偏好不可读按开启处理 */ }
+    _fallbackCache = on;
+    return on;
   }
 
   /**
@@ -204,6 +220,7 @@ function createResolveTrackService({
    * 解析一首歌的取流地址（换源机制）。
    *
    * 流程（顺序即优先级）：
+   *   0. 跨源换源总开关（注入的 fallbackEnabled）关闭 ⇒ 只走步骤 2，1 与 3 一并跳过；
    *   1. `_altSource` 记忆命中 —— 上次换源成功的源先试（lx toggleMusicInfo 模式），
    *      避免每次都在已知失败的源上浪费一次请求；
    *   2. 本源取流；
@@ -220,6 +237,7 @@ function createResolveTrackService({
       return normalizeTrackResult({ error: '参数无效：缺少歌曲 id/source', code: 'INVALID_ARGS' });
     }
     _disabledCache = null; // 每次解析重读偏好：设置页改完即刻生效，无需重启队列
+    _fallbackCache = null; // 同上：换源总开关改动即刻生效
 
     /**
      * 试听片段校验（纯元数据，零网络）：三条取流路径共用。
@@ -239,7 +257,7 @@ function createResolveTrackService({
     // 元数据，零新增请求；记忆路径尤其不能免检 —— 一旦某次换源落在了酷我占位片上，
     // 记忆会让后续每次播放都直接回吐那段 11 秒。
     const alt = rawSong && rawSong._altSource;
-    if (alt && alt.source && alt.id && alt.source !== song.source && !hasCookie(song.source)
+    if (crossSourceOn() && alt && alt.source && alt.id && alt.source !== song.source && !hasCookie(song.source)
         && !disabledPlatforms().has(alt.source)) {
       const r = await trySource(String(alt.id), alt.source, quality, verifyPreviewClip);
       if (isTrackSuccess(r)) {
@@ -257,7 +275,9 @@ function createResolveTrackService({
     }
 
     // 3. 失败且可换源 ⇒ 跨源候选逐个尝试
-    if (!shouldFallbackToOtherSource(result)) {
+    //    总开关关闭时这一步整体跳过：用户诉求是「播放即本源，本源没有音源就诚实失败」，
+    //    宁可少播一首，也不要拿别家平台的版本冒充这首歌。
+    if (!crossSourceOn() || !shouldFallbackToOtherSource(result)) {
       return normalizeTrackResult(result);
     }
 

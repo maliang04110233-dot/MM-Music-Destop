@@ -570,3 +570,15 @@ test('gateway.getLyrics: 平台返回 {lrc,karaoke} 对象时透传不丢逐字�
   assert.ok(out.lrc.includes('[00:02.250]'), 'gateway 丢了 lrc');
   assert.strictEqual(out.karaoke?.meta?.ti, '晴天', 'gateway 把 karaoke 字段折丢了');
 });
+
+// ── 增量207：取流受限文案（换源总开关关闭，不得再承诺换源）────
+test('getUrl：playInfo 判付费 ⇒ 只说清要付费，不谎称"已自动尝试其他源"', async () => {
+  resetStub((url) => (String(url).includes('getSongInfo.php') ? { error: '该曲需付费' } : {}));
+  const r = await kugou.getUrl(
+    encodeKugouId('A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4', '', ''), 'standard');
+  assert.ok(!r.url, '受限曲绝不能给出直链');
+  assert.strictEqual(r.code, 'COPYRIGHT_RESTRICTED');
+  assert.match(String(r.error), /该曲需付费/, '保留平台原话，用户才知道要开会员');
+  assert.doesNotMatch(String(r.error), /其他源|已自动尝试/,
+    '跨源换源默认已关闭（fallbackPolicy.crossSourceEnabled），这句话是假的');
+});

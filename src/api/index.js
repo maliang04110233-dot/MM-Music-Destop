@@ -139,6 +139,7 @@ async function getDownloadUrl(id, source, quality) {
 
 const { findMatchedCandidates } = require('../utils/matchMusic');
 const { createResolveTrackService } = require('./services/resolveTrackService');
+const { crossSourceEnabled } = require('./services/fallbackPolicy');
 const request = require('./request');
 
 const resolveTrack = createResolveTrackService({
@@ -152,10 +153,13 @@ const resolveTrack = createResolveTrackService({
   // 换源禁用平台清单（增量126-B）：懒加载 prefs —— 本模块被大量测试 require，
   // 不在模块初始化期拖入 prefs 的磁盘路径依赖；未 init 时 get 自然落空按无禁用。
   getDisabledPlatforms: () => require('../utils/prefs').get('fallbackDisabledPlatforms'),
+  // 跨源换源总开关（增量207）：产品口径见 fallbackPolicy.crossSourceEnabled ——
+  // 搜索结果里的歌只播它自己平台的音源，拿不到就诚实失败，不拿别家整曲冒充。
+  fallbackEnabled: crossSourceEnabled,
 });
 
 /**
- * 智能取流：本源 → 失败且可换源 → 跨源匹配候选逐个试。
+ * 智能取流：本源 → （总开关开启且）失败可换源 → 跨源匹配候选逐个试。
  * 兼容 facade：签名与返回形状与重构前完全一致（零回归）。
  *
  * @param {object} song 完整歌曲对象：{ id, source, title, artist, duration, _altSource? }
