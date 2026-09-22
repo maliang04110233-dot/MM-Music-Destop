@@ -9,7 +9,7 @@ const item = (status, progress) => ({ taskId: Math.random().toString(36).slice(2
 test('computeQueueStats：空队列 / 只有已完成 → ratio -1（清除进度）', () => {
   assert.strictEqual(tb.computeQueueStats([]).ratio, -1);
   assert.strictEqual(tb.computeQueueStats([item('done'), item('error')]).ratio, -1);
-  assert.strictEqual(tb.computeQueueStats(null).tooltip, '音乐下载器');
+  assert.strictEqual(tb.computeQueueStats(null).tooltip, '揽乐');
 });
 
 test('computeQueueStats：ratio = (done + Σdownloading进度) / (pending+downloading+done)', () => {
@@ -87,7 +87,7 @@ test('apply：tooltip 文案仅在变化时更新', () => {
   assert.strictEqual(tr.tips.length, 1);
   tb.apply([]);
   assert.strictEqual(tr.tips.length, 2);
-  assert.strictEqual(tr.tips[1], '音乐下载器');
+  assert.strictEqual(tr.tips[1], '揽乐');
 });
 
 test('apply：已销毁窗口 / 抛错的 setter 不影响其他窗口', () => {

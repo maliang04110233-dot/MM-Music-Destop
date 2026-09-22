@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const exePath = path.resolve(process.cwd(), 'release/win-unpacked/MusicDL.exe');
+const exePath = path.resolve(process.cwd(), 'release/win-unpacked/Lanyue.exe');
 console.log('Launching:', exePath);
 console.log('Exists:', fs.existsSync(exePath));
 console.log('Size:', fs.statSync(exePath).size);

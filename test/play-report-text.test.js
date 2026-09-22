@@ -50,7 +50,7 @@ test('formatReportText：全段齐活逐行精确；空段整体省略不造假 
     lastPlayed: { title: '稻香', artist: '周杰伦' },
   });
   assert.deepEqual(text.split('\n'), [
-    '📊 MusicDL 听歌报告',
+    '📊 揽乐 听歌报告',
     '⏱️ 总播放时长：3小时20分钟',
     '🎵 播放歌曲数：42',
     '🎤 收听歌手数：9',
@@ -66,7 +66,7 @@ test('formatReportText：全段齐活逐行精确；空段整体省略不造假 
   ]);
   const bare = formatReportText({});
   assert.deepEqual(bare.split('\n'), [
-    '📊 MusicDL 听歌报告',
+    '📊 揽乐 听歌报告',
     '⏱️ 总播放时长：0分钟',
     '🎵 播放歌曲数：0',
     '🎤 收听歌手数：0',

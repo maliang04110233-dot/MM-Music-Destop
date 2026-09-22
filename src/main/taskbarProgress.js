@@ -29,9 +29,9 @@ function computeQueueStats(list) {
   let ratio;
   if (denom === 0 || active === 0) ratio = -1; // -1 = 清除任务栏进度
   else ratio = (done + sum) / denom;
-  let tooltip = '音乐下载器';
+  let tooltip = '揽乐';
   if (active > 0) {
-    tooltip = `音乐下载器 — 下载中 ${downloading} · 排队 ${pending} · 已完成 ${done}`;
+    tooltip = `揽乐 — 下载中 ${downloading} · 排队 ${pending} · 已完成 ${done}`;
     if (error > 0) tooltip += ` · 失败 ${error}`;
   }
   return { pending, downloading, done, error, ratio, tooltip };

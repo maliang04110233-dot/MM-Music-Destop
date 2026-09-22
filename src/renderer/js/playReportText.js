@@ -43,7 +43,7 @@ export function topArtistsFromPlayCount(playCount, limit) {
 export function formatReportText(d) {
   const s = d || {};
   const lines = [
-    '📊 MusicDL 听歌报告',
+    '📊 揽乐 听歌报告',
     `⏱️ 总播放时长：${s.totalPlayTimeText || '0分钟'}`,
     `🎵 播放歌曲数：${+s.totalSongs || 0}`,
     `🎤 收听歌手数：${+s.artistTotal || 0}`,
