@@ -34,6 +34,16 @@ const DIAG_TABLE = {
   NETWORK_TIMEOUT: { cause: '网络超时', advice: '检查网络/代理；不稳定时到设置把并发数调低再重试', heal: 'retry', tag: { label: '网络超时', color: 'var(--neon-yellow)' } },
   NO_AUDIO_STREAM: { cause: '找不到可播放的音频流（付费/加密/下架）', advice: '换一档音质或换源；本地库可用「音质扫描」核对已有文件', heal: null, tag: { label: '无音频流', color: 'var(--neon-red)' } },
   UNKNOWN_PLATFORM: { cause: '链接所属平台暂不支持', advice: '确认链接来自支持列表内的平台', heal: null, tag: { label: '未知平台', color: 'var(--text-dim)' } },
+  // 增量210：下面七行是补登「取流层早就在发、码表却一直没收」的码 —— 缺行不是小事，
+  // 缺一个码 = 队列/历史那一行不戴徽标 + 弹层只会说「未分类的失败，请复制错误信息反馈」。
+  // 覆盖度由 test/diagnose-coverage.test.js 机械扫回写层来钉，加码不登记会直接红。
+  PLATFORM_CHANGED: { cause: '该平台接口已变更或被反爬拦截', advice: '稍后再试；持续失败就到聚合搜索里换其他平台下载同一歌曲', heal: 'retry', tag: { label: '接口变更', color: 'var(--neon-red)' } },
+  BAD_PARAMS: { cause: '请求参数不完整（缺歌曲标识）', advice: '这条链接可能残缺，回到搜索结果重新点一次下载', heal: null, tag: { label: '参数缺失', color: 'var(--neon-yellow)' } },
+  INVALID_ARGS: { cause: '曲目定位信息不完整', advice: '回到搜索结果重选该曲目（跨平台分组里换一条同名结果）', heal: null, tag: { label: '定位缺参', color: 'var(--neon-yellow)' } },
+  FETCH_FAILED: { cause: '向平台请求音源时失败（网络或平台拒绝）', advice: '检查网络后点「立即重试」；反复失败就换一档音质或换源', heal: 'retry', tag: { label: '取流失败', color: 'var(--neon-red)' } },
+  BILI_URL_ERROR: { cause: 'B站音频流获取异常', advice: '点「立即重试」；B站分 P 影视原声常无独立音源，可换其他平台搜同名', heal: 'retry', tag: { label: 'B站取流失败', color: 'var(--neon-red)' } },
+  UNKNOWN_SOURCE: { cause: '数据源不在支持列表内', advice: '确认链接来自支持的平台，或改用聚合搜索找同名版本', heal: null, tag: { label: '未知来源', color: 'var(--text-dim)' } },
+  INTERNAL_ERROR: { cause: '应用内部错误', advice: '点「立即重试」看是否偶发；持续失败请携带任务详情反馈', heal: 'retry', tag: { label: '内部错误', color: 'var(--neon-red)' } },
 };
 
 const KEYWORD_RULES = [

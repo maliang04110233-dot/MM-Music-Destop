@@ -115,3 +115,38 @@ test('音质映射：hq→M800.mp3 / standard→M500.mp3 / lossless→F000.flac�
   assert.strictEqual(seen.lossless.filename, `F000${MID}${MID}.flac`);
   assert.strictEqual(seen.lossless.ext, 'flac');
 });
+
+/* ── 增量210：失败分类不得一刀切成「需要VIP」 ────────────────────────
+ * 「purl 为空」在旧代码里恒等于 VIP_REQUIRED，可这两种回包根本不是一回事：
+ *   连 req_0 都没有 = 服务端压根没处理这条请求（协议/接口问题 —— 2026-09-21 的
+ *   500001 事故就是这个形状，当时本机 Cookie 完全有效、账号对该 VIP 曲有权限）；
+ *   req_0 正常、midurlinfo 里 result 非 0 = 平台明确说"这首这档不给"（才是 VIP）。
+ * 混成一类的代价全落在用户身上：diagnose.js 对 VIP_REQUIRED 说"补 VIP Cookie"、
+ * 行内戴「需VIP」，用户照着折腾半天 Cookie，真相却是接口回包形态变了。
+ */
+
+test('回包连 req_0 都没有 → PLATFORM_CHANGED，不再冒充「需要VIP」', async () => {
+  calls.length = 0;
+  responder = () => ({ code: 500001, ts: 1789970679553 });
+  const r = await qq.qqGetUrl(MID, 'standard', COOKIE);
+  assert.ok(!r.url, '协议级失败不得带 url');
+  assert.strictEqual(r.code, 'PLATFORM_CHANGED',
+    '无 req_0 属协议/接口级失败（请求被顶回、平台没解析），说成 VIP_REQUIRED 会把用户支去瞎折腾 Cookie');
+});
+
+test('req_0 正常但 purl 为空、result 非 0 → 仍是 VIP_REQUIRED（改动不许做成一刀切）', async () => {
+  calls.length = 0;
+  responder = () => ({
+    code: 0,
+    req_0: {
+      code: 0,
+      data: {
+        sip: ['https://dl.stream.qqmusic.qq.com/'],
+        midurlinfo: [{ songmid: MID, filename: `F000${MID}${MID}.flac`, purl: '', result: 1 }],
+      },
+    },
+  });
+  const r = await qq.qqGetUrl(MID, 'lossless', COOKIE);
+  assert.ok(!r.url);
+  assert.strictEqual(r.code, 'VIP_REQUIRED', '平台明确回了曲目级别的失败，才归到 VIP/权限类');
+});
