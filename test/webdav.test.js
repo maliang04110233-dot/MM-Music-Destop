@@ -111,3 +111,91 @@ test('非 http(s) 协议的 URL 一律拒绝（凭证只走 http 层）', async 
   );
   assert.strictEqual(calls.length, 0, '拒绝时不应发出任何请求');
 });
+
+// ══════════════════════════════════════════════════════════
+// 2026-09 审计 P1 加固（两条：明文凭据门禁 + 响应体上限）
+// ══════════════════════════════════════════════════════════
+
+const { MAX_RESPONSE_BYTES, ERR_INSECURE_CREDENTIALS, ERR_RESPONSE_TOO_LARGE } = require('../src/utils/webdav');
+
+test('明文凭据门禁：非本机 http + 有用户名 ⇒ 拒绝发送，且零请求', async () => {
+  const { calls, transport } = stubTransport({ status: 200, headers: {}, body: '{}' });
+  await assert.rejects(
+    () => fetchSnapshot({ url: 'http://nas.example/dav/a.json', user: 'u', pass: 'p' }, { transport }),
+    (e) => e.code === ERR_INSECURE_CREDENTIALS,
+  );
+  await assert.rejects(
+    () => pushSnapshot({ url: 'http://nas.example/dav/a.json', user: 'u' }, {}, { transport }),
+    (e) => e.code === ERR_INSECURE_CREDENTIALS,
+  );
+  assert.strictEqual(calls.length, 0, '密码不能以可嗅探形式出网');
+});
+
+test('明文凭据门禁：显式授权后放行（设置页勾选「允许不安全连接」）', async () => {
+  const { calls, transport } = stubTransport({ status: 200, headers: {}, body: '{}' });
+  await fetchSnapshot(
+    { url: 'http://nas.example/dav/a.json', user: 'u', pass: 'p', allowInsecure: true },
+    { transport },
+  );
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].headers.Authorization, `Basic ${b64('u:p')}`);
+});
+
+test('明文凭据门禁：本机回环 http 不受限（凭据不出本机），https 更不受限', async () => {
+  for (const host of ['localhost', '127.0.0.1', '[::1]']) {
+    const { calls, transport } = stubTransport({ status: 200, headers: {}, body: '{}' });
+    await fetchSnapshot({ url: `http://${host}:8080/dav/a.json`, user: 'u', pass: 'p' }, { transport });
+    assert.strictEqual(calls.length, 1, `${host} 是回环地址，应放行`);
+  }
+  const https = stubTransport({ status: 200, headers: {}, body: '{}' });
+  await fetchSnapshot({ url: 'https://nas.example/a.json', user: 'u', pass: 'p' }, https);
+  assert.strictEqual(https.calls.length, 1);
+});
+
+test('明文凭据门禁：http 但无用户名 ⇒ 不拦截（没有凭据可泄漏）', async () => {
+  const { calls, transport } = stubTransport({ status: 200, headers: {}, body: '{}' });
+  await fetchSnapshot({ url: 'http://nas.example/dav/a.json' }, { transport });
+  assert.strictEqual(calls.length, 1);
+});
+
+test('响应体上限：注入 transport 返回超大体 ⇒ 拒绝解析（别让上限只活在默认实现里）', async () => {
+  const huge = 'x'.repeat(MAX_RESPONSE_BYTES + 1);
+  const { transport } = stubTransport({ status: 200, headers: {}, body: huge });
+  await assert.rejects(
+    () => fetchSnapshot({ url: 'https://x/a.json' }, { transport }),
+    (e) => e.code === ERR_RESPONSE_TOO_LARGE,
+  );
+});
+
+test('响应体上限：默认 transport 在声明长度超限时不收字节（含边收边数兜底）', async () => {
+  const http = require('node:http');
+  const server = http.createServer((req, res) => {
+    // 客户端超限会 destroy 连接，写侧必然报错 —— 吞掉，别让服务端异常掀翻测试
+    res.on('error', () => {});
+    if (req.url === '/declared') {
+      res.writeHead(200, { 'content-length': String(MAX_RESPONSE_BYTES + 1024) });
+      res.end('x'.repeat(1024));
+      return;
+    }
+    // 不声明 content-length，靠边收边数兜底
+    res.writeHead(200);
+    const chunk = Buffer.alloc(1024 * 1024, 120);
+    for (let i = 0; i < 20 && !res.destroyed; i++) res.write(chunk);
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    await assert.rejects(
+      () => fetchSnapshot({ url: `http://127.0.0.1:${port}/declared` }),
+      (e) => e.code === ERR_RESPONSE_TOO_LARGE,
+    );
+    await assert.rejects(
+      () => fetchSnapshot({ url: `http://127.0.0.1:${port}/stream` }),
+      (e) => e.code === ERR_RESPONSE_TOO_LARGE,
+    );
+  } finally {
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
+});

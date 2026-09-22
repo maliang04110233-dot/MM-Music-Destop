@@ -69,12 +69,29 @@ function get(key, defaultValue) {
   return v;
 }
 
+/**
+ * 写入偏好。
+ *
+ * @returns {boolean} 是否真的写入（凭证键在安全存储不可用时会被拒绝并返回 false，
+ *   调用方据此给用户可操作提示；普通键恒为 true）。
+ */
 function set(key, value) {
   _load();  // 确保 _cache 已初始化
   if (value === undefined || value === null) {
     delete _cache[key];
+  } else if (SECRET_KEYS.has(key) && typeof value === 'string') {
+    // 审计 P1：加密不可用/失败时**拒绝写入**，绝不把计费密钥明文落进 prefs.json。
+    // 旧实现在这里直接透传明文，用户既看不到告警、文件里也是明文。
+    let encrypted;
+    try {
+      encrypted = secret.encrypt(value);
+    } catch (e) {
+      logger.warn(`prefs: 拒绝保存凭证键 ${key}：`, e.message);
+      return false;
+    }
+    _cache[key] = encrypted;
   } else {
-    _cache[key] = SECRET_KEYS.has(key) && typeof value === 'string' ? secret.encrypt(value) : value;
+    _cache[key] = value;
   }
   // 防抖 300ms 写盘（避免短时间内多次改）
   if (_writeTimer) clearTimeout(_writeTimer);
@@ -88,6 +105,7 @@ function set(key, value) {
       logger.warn('prefs: 写入失败:', e.message);
     }
   }, 300);
+  return true;
 }
 
 function flush() {

@@ -61,3 +61,6 @@ npm-debug.log*
 
 .workbuddy-ai-test/
 release-out/
+
+# 一次性探针/诊断输出（不入仓库）
+spark-output/

@@ -41,27 +41,27 @@ function isValidPath(p) {
 
 /**
  * 路径是否在允许目录内。
- * 用 path.relative 而非 startsWith 判定：startsWith 会把
- * "C:\MusicX" 误判在 "C:\Music" 沙箱内（前缀碰撞），relative
- * 返回以 .. 开头或为绝对路径则一定在沙箱外。
+ *
+ * 词法包含判定已下沉到 approvedDirs.isInside / isInsideReal（含前缀碰撞与
+ * 符号链接两道防线），本函数只负责**汇总允许的基目录集合**：
+ * 批准目录注册表 + 各目录型偏好 + 系统音乐目录。
+ *
+ * 为什么必须走真实路径复核（2026-09 审计 P1）：只做词法判定时，
+ * `D:\Music\link` 指向 `C:\Windows` 后，`D:\Music\link\evil.dll`
+ * 字符串上"在沙箱内"，实际读写落在沙箱外。
  */
-function isInsideDir(base, target) {
-  try {
-    const rel = path.relative(path.resolve(base), path.resolve(target));
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-  } catch { return false; }
-}
-
 function isInAllowedDir(filePath) {
   try {
     const resolved = path.resolve(filePath);
     // C1: 任何用户经原生选器批准过的目录（含子目录）同样在沙箱内
     if (approvedDirs.isApprovedDir(resolved)) return true;
+    const bases = [];
     const localDir = prefs.get('localDirPath') || '';
-    if (localDir && isInsideDir(localDir, resolved)) return true;
+    if (localDir) bases.push(localDir);
     const saveDir = prefs.get('saveDir') || '';
-    if (saveDir && isInsideDir(saveDir, resolved)) return true;
-    return isInsideDir(app.getPath('music'), resolved);
+    if (saveDir) bases.push(saveDir);
+    bases.push(app.getPath('music'));
+    return approvedDirs.isInsideRealAny(bases, resolved);
   } catch { return false; }
 }
 

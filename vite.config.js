@@ -28,7 +28,11 @@ export default defineConfig({
           build: {
             outDir: path.resolve(projectRoot, 'dist/main'),
             rollupOptions: {
-              external: ['electron', 'NeteaseCloudMusicApi', 'qq-music-api'],
+              // music-metadata 自 11.x 起为 ESM-only：保持 external、运行时由
+              // Electron 的 Node（≥22.12 的 require(esm)）按 module-sync 条件加载，
+              // 而不是让 rollup 把整棵 ESM 依赖树（file-type/strtok3/token-types）
+              // 塞进 CJS 主进程 bundle —— 后者既膨胀产物又容易在 import.meta 上翻车。
+              external: ['electron', 'NeteaseCloudMusicApi', 'qq-music-api', 'music-metadata'],
             },
           },
         },

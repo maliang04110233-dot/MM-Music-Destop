@@ -60,8 +60,14 @@ function _ensureLoaded() {
       for (const k of Object.keys(_cache)) {
         const v = _cache[k];
         if (typeof v === 'string' && v && !v.startsWith(secret.PREFIX)) {
-          _cache[k] = secret.encrypt(v);
-          upgraded = true;
+          // 单键失败只跳过该键的迁移：整段抛出去会被外层 catch 把 _cache
+          // 清成空对象，等于一次加密抖动丢掉全部登录态
+          try {
+            _cache[k] = secret.encrypt(v);
+            upgraded = true;
+          } catch (e) {
+            logger.warn(`[cookieStore] ${k} 迁移加密失败（保留原值）:`, e.message);
+          }
         }
       }
       if (upgraded) _persist();
@@ -109,11 +115,22 @@ function get(platform) {
 /**
  * 保存单个平台的 Cookie
  * 空字符串视为删除（避免保存空 Cookie 占位）
+ *
+ * @returns {boolean} 是否真的落盘成功。**false 表示拒绝保存** ——
+ *   安全存储不可用时（secretStore 抛 SecretStorageError）宁可不存，
+ *   也不把登录态明文写进 cookies.json。调用方必须检查返回值并告知用户。
  */
 function set(platform, cookie) {
   _ensureLoaded();
   if (cookie) {
-    _cache[platform] = secret.encrypt(cookie);
+    let encrypted;
+    try {
+      encrypted = secret.encrypt(cookie);
+    } catch (e) {
+      logger.warn('[cookieStore] 拒绝保存 Cookie：', e.message);
+      return false;
+    }
+    _cache[platform] = encrypted;
   } else {
     delete _cache[platform];
   }

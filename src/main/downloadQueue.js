@@ -50,6 +50,13 @@ const MAX_RETRY = 2;
 const RETRY_BACKOFF_MS = 500;
 /** 持久化防抖窗口（毫秒） */
 const PERSIST_DEBOUNCE_MS = 500;
+/** 队列条目合法状态（与调度器/UI 共用同一词汇表） */
+const QUEUE_STATUSES = new Set(['pending', 'downloading', 'done', 'error']);
+/**
+ * 恢复时的条目数上限。纯粹防「被写坏/被伪造的 queue.json 撑爆内存」——
+ * 正常用户量级远低于此值，触顶只会在日志里留一条 warn。
+ */
+const MAX_RESTORED_TASKS = 20000;
 
 /**
  * 清洗文件名（去掉路径分隔符与非法字符，限长 200）
@@ -58,6 +65,30 @@ const PERSIST_DEBOUNCE_MS = 500;
  */
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 200);
+}
+
+/**
+ * 校验并归一化一条从磁盘恢复的任务。
+ *
+ * 2026-09 审计 P1：旧实现只判了「顶层是数组」就逐条 `delete item._processing`，
+ * 一旦数组里混进 null / 字符串 / 缺 status 的脏对象，delete 就会抛
+ * TypeError，整批恢复随之中止 —— 一条坏记录等于整个队列丢失。
+ *
+ * 判据刻意只认「下游真的会用到」的三件事：普通对象、有 id、status 在词汇表内。
+ * 其余字段（saveDir/quality/url/…）原样保留：它们各自有消费侧的兜底，
+ * 这里收紧反而会把老队列里合法的历史字段清掉。
+ *
+ * @returns {Object|null} 合法返回原条目（已剔除瞬态标记），非法返回 null
+ */
+function sanitizeRestoredTask(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { id, status } = raw;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  if (typeof status !== 'string' || !QUEUE_STATUSES.has(status)) return null;
+  // 瞬态调度标记不应跨重启存活（持久化文件可能携带）
+  delete raw._processing;
+  delete raw._cancelRequested;
+  return raw;
 }
 
 /**
@@ -240,10 +271,12 @@ function createDownloadQueueEngine({
       //         pending 超过 1 天没动 -> error（避免阻塞"加入新歌单"）
       //         pending 不到 1 天 / error / done -> 保留
       const now = Date.now();
-      for (const item of list) {
-        // 瞬态调度标记不应跨重启存活（持久化文件可能携带）
-        delete item._processing;
-        delete item._cancelRequested;
+      let dropped = 0;
+      for (const raw of list) {
+        if (downloadQueue.length >= MAX_RESTORED_TASKS) { dropped++; continue; }
+        // 逐条校验：一条脏记录只丢它自己，绝不中止整批恢复
+        const item = sanitizeRestoredTask(raw);
+        if (!item) { dropped++; continue; }
         if (item.status === 'downloading') {
           item.status = 'error';
           item.error = '应用异常关闭，请重试';
@@ -252,6 +285,9 @@ function createDownloadQueueEngine({
           item.error = '排队超过 24 小时未启动，已标记失败（可重试）';
         }
         downloadQueue.push(item);
+      }
+      if (dropped) {
+        logger.warn(`[Queue] 丢弃 ${dropped} 条非法/超限队列条目（其余 ${downloadQueue.length} 条照常恢复）`);
       }
       if (downloadQueue.length) {
         logger.log(`[Queue] 从磁盘恢复 ${downloadQueue.length} 个任务`);
@@ -607,6 +643,7 @@ function createDownloadQueueEngine({
     isPaused: () => _paused,
     // 工具（队列 IPC 需要）
     sanitizeFilename,
+    sanitizeRestoredTask,
     /**
      * 退出清理：把待写的队列**立即**落盘，并停掉所有定时器。
      *
@@ -633,8 +670,15 @@ function createDownloadQueueEngine({
     // 常量（测试与文档引用）
     MAX_DONE_RETAINED,
     MAX_RETRY,
+    MAX_RESTORED_TASKS,
     getMaxAttempts,
   };
 }
 
-module.exports = { createDownloadQueueEngine, sanitizeFilename };
+module.exports = {
+  createDownloadQueueEngine,
+  sanitizeFilename,
+  sanitizeRestoredTask,
+  MAX_RESTORED_TASKS,
+  QUEUE_STATUSES,
+};

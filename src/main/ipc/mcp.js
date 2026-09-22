@@ -33,7 +33,12 @@ function _ensureToken(rotate) {
   const current = secretStore.decrypt(prefs.get('mcpToken') || '');
   if (current) return current;
   const fresh = crypto.randomBytes(24).toString('hex');
-  prefs.set('mcpToken', secretStore.encrypt(fresh));
+  // 审计 P1：安全存储不可用时绝不把令牌明文写进 prefs.json ——
+  // 宁可不启动 MCP 服务（_start 据此回「无法生成访问令牌」），
+  // 也不让一个明文令牌躺在磁盘上。
+  const stored = secretStore.tryEncrypt(fresh);
+  if (!stored) return '';
+  prefs.set('mcpToken', stored);
   return fresh;
 }
 

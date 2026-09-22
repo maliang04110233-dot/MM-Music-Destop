@@ -404,6 +404,65 @@ test('loadPersistedQueue: 文件不存在不抛错', async () => {
   } finally { restore(); }
 });
 
+// ══════════════════════════════════════════════════════════
+// 2026-09 审计 P1：恢复时的逐条结构校验
+//
+// 旧实现只判「顶层是数组」，随后对每条直接 delete item._processing ——
+// 数组里混进 null / 字符串 / 缺 status 的脏对象就抛 TypeError，
+// **整批恢复中止**：一条坏记录等于整个队列丢失（用户体感"重启后下载全没了"）。
+// ══════════════════════════════════════════════════════════
+
+test('loadPersistedQueue: 脏条目只丢自己，合法条目照常恢复（不整批中止）', async () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify([
+    null,
+    'this-is-not-a-task',
+    42,
+    [],
+    { title: '缺 id 与 status' },
+    { id: 'no-status', title: '缺 status' },
+    { id: 'bad-status', status: 'wat', title: '状态不在词汇表' },
+    { id: 'ok1', status: 'pending', title: '合法' },
+    { id: 'ok2', status: 'done', title: '合法' },
+  ]));
+  const { engine, restore } = buildEngine({ dir });
+  try {
+    await engine.loadPersistedQueue();
+    const q = engine.getQueue();
+    assert.deepStrictEqual(q.map((s) => s.id), ['ok1', 'ok2'],
+      '7 条脏记录必须只丢自己，不能把后面两条合法的一起带走');
+  } finally { restore(); }
+});
+
+test('sanitizeRestoredTask: 判据只认「普通对象 + id + 合法 status」', () => {
+  const { sanitizeRestoredTask } = require('../src/main/downloadQueue');
+  for (const bad of [null, undefined, 'x', 1, [], {}, { id: 'a' }, { status: 'done' },
+    { id: {}, status: 'done' }, { id: 'a', status: 'wat' }, { id: 'a', status: 3 }]) {
+    assert.strictEqual(sanitizeRestoredTask(bad), null, `${JSON.stringify(bad)} 应被拒`);
+  }
+  const ok = { id: 'a', status: 'pending', title: 't', _processing: true, _cancelRequested: true };
+  const out = sanitizeRestoredTask(ok);
+  assert.strictEqual(out.id, 'a');
+  assert.ok(!('_processing' in out) && !('_cancelRequested' in out),
+    '瞬态调度标记不得跨重启存活');
+  assert.strictEqual(sanitizeRestoredTask({ id: 7, status: 'done' }).id, 7, '数字 id 也合法');
+});
+
+test('loadPersistedQueue: 超量条目被截断且不抛错（防被写坏的文件撑爆内存）', async () => {
+  const dir = tmpDir();
+  const { MAX_RESTORED_TASKS } = require('../src/main/downloadQueue');
+  const list = [];
+  for (let i = 0; i < MAX_RESTORED_TASKS + 5; i++) {
+    list.push({ id: String(i), status: 'done', title: `t${i}` });
+  }
+  fs.writeFileSync(path.join(dir, 'queue.json'), JSON.stringify(list));
+  const { engine, restore } = buildEngine({ dir });
+  try {
+    await engine.loadPersistedQueue();
+    assert.strictEqual(engine.getQueue().length, MAX_RESTORED_TASKS);
+  } finally { restore(); }
+});
+
 test('淘汰：done 超过 200 时保留最新 200（最旧的被删）', async () => {
   const { engine, dir, restore } = buildEngine();
   try {

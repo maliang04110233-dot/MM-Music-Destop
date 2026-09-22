@@ -78,8 +78,9 @@ function register() {
       logger.warn('[prefs] 拒绝未批准的目录:', key);
       return false;
     }
-    prefs.set(key, value);
-    return true;
+    // 凭证键在安全存储不可用时会返回 false（拒绝明文落盘）——
+    // 如实回 false，别对调用方谎报「已保存」（渲染层据此提示用户）
+    return prefs.set(key, value) !== false;
   });
   // 修复 B8：搜索历史通过 IPC 持久化到主进程 prefs.json（而非渲染端 localStorage）
   handle('get-search-history', () => prefs.get('searchHistory') || []);

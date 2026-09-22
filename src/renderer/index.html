@@ -1057,6 +1057,12 @@
               <label class="setting-label" data-i18n="settings.general.webdavPassLabel">密码</label>
               <input class="setting-input" id="webdavPass" type="password" autocomplete="new-password">
             </div>
+            <div class="setting-row">
+              <label class="setting-check"><input type="checkbox" id="webdavAllowInsecure"><span data-i18n="settings.general.webdavAllowInsecure">允许在明文 http 上发送用户名密码</span></label>
+            </div>
+            <div class="setting-row">
+              <span class="setting-hint" data-i18n="settings.general.webdavAllowInsecureHint">仅用于局域网 NAS 的 http 地址：勾选后密码会以可被同网段嗅探的形式传输；https 地址与本机地址无需勾选</span>
+            </div>
             <div class="setting-row setting-row--action">
               <button class="setting-btn" onclick="saveWebdavConfig()" data-i18n="settings.general.webdavSave">保存配置</button>
               <button class="setting-btn" onclick="runWebdavSync()" data-i18n="settings.general.webdavSync">立即同步</button>

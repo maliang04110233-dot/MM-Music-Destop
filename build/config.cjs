@@ -109,7 +109,12 @@ module.exports = {
       { target: 'nsis', arch: ['x64'] },
       { target: 'portable', arch: ['x64'] },
     ],
-    verifyUpdateCodeSignature: false,
+    // ⚠️ 不得关闭（2026-09 审计 P0）。
+    // 这一项是 electron-updater 在 Windows 上校验安装包签名的开关，默认即 true。
+    // 曾经被显式置为 false：配合 src/main/updateMirror.js 的第三方镜像兜底
+    // （ghproxy / gh.ddlc），等于把「更新包由谁提供」的信任根交给网络中间人 ——
+    // 镜像或链路被劫持即可静默安装未签名程序。签名校验是镜像兜底能存在的前提。
+    verifyUpdateCodeSignature: true,
   },
 
   // ── NSIS 安装程序 ──────────────────────────────────
@@ -133,11 +138,6 @@ module.exports = {
     // 品牌图片（NSIS 2.0 风格：顶部横幅 + 左侧边栏）
     installerHeader: 'build/installerHeader.bmp',
     installerSidebar: 'build/installerSidebar.bmp',
-  },
-
-  // ── 便携版 ─────────────────────────────────────────
-  portable: {
-    artifactName: 'MusicDL-Portable-${version}.${ext}',
   },
 
   // ── Linux ──────────────────────────────────────────

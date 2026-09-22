@@ -61,3 +61,19 @@ test('守卫：updater.js 的检查与下载都接了镜像兜底', () => {
   assert.ok(hits.length >= 2, `镜像兜底须在检查+下载两处接线，实际 ${hits.length}`);
   assert.match(src, /require\('\.\/updateMirror'\)/, 'updater.js 必须接 updateMirror 模块');
 });
+
+/**
+ * P0 守卫（2026-09 审计）：镜像兜底能成立的前提是安装包签名仍被校验。
+ *
+ * 历史事故：win 段曾显式写 verifyUpdateCodeSignature: false。第三方镜像
+ * （ghproxy / gh.ddlc）本身就是「别人代为转发更新包」的中间人形态 ——
+ * 再关掉签名校验，等于把「谁提供更新」的信任根交给链路，镜像被劫持即可
+ * 静默安装未签名程序。本钉禁止这一项再被关掉。
+ */
+test('守卫：Windows 更新包签名校验必须开启（关掉 = 镜像兜底变成任意代码投递通道）', () => {
+  const cfg = fs.readFileSync(path.join(ROOT, 'build', 'config.cjs'), 'utf8');
+  assert.doesNotMatch(cfg, /verifyUpdateCodeSignature\s*:\s*false/,
+    'win.verifyUpdateCodeSignature 被关掉了：第三方镜像 + 不校验签名 = 可静默安装任意程序');
+  assert.match(cfg, /verifyUpdateCodeSignature\s*:\s*true/,
+    '签名校验应显式置 true（显式优于依赖默认值，也防未来默认值变更）');
+});

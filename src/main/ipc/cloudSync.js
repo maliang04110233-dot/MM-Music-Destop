@@ -27,7 +27,7 @@ const fsa = require('../../utils/fsAsync');
 // aiMusicApiKey，结果每次导出都把计费密钥密文写进备份，148 之后导入侧还会把
 // 别机器的解不开的密文当本地配置装上。derive 之后新增凭证键自动两侧跟上。
 const NONPORTABLE_PREF_KEYS = new Set([...prefs.SECRET_KEYS,
-  'webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'mcpToken']);
+  'webdavUrl', 'webdavUser', 'webdavPass', 'webdavLastSyncAt', 'webdavAllowInsecure', 'mcpToken']);
 
 // 导入允许写入的 prefs 键：以 ipc/prefs.js 的 ALLOWED_PREF_KEYS 为唯一来源。
 // 曾经这里也手抄过一份字面量清单，结果每加一个设置键就漂移一次——备份里明明
@@ -210,6 +210,7 @@ function register() {
     user: prefs.get('webdavUser') || '',
     hasPass: Boolean(prefs.get('webdavPass')),
     lastSyncAt: prefs.get('webdavLastSyncAt') || null,
+    allowInsecure: prefs.get('webdavAllowInsecure') === true,
   }));
 
   handle('cloud-sync-config-set', (_e, cfg) => {
@@ -224,9 +225,23 @@ function register() {
     }
     prefs.set('webdavUrl', url);
     prefs.set('webdavUser', typeof cfg.user === 'string' ? cfg.user.trim() : '');
+    // 明文 http 传凭据的显式授权（默认关闭，见 utils/webdav.js 的判据）
+    if (typeof cfg.allowInsecure === 'boolean') {
+      prefs.set('webdavAllowInsecure', cfg.allowInsecure);
+    }
     // pass 为 undefined 时保持原密码不变；空串表示清除
     if (typeof cfg.pass === 'string') {
-      prefs.set('webdavPass', cfg.pass ? secretStore.encrypt(cfg.pass) : '');
+      if (!cfg.pass) {
+        prefs.set('webdavPass', '');
+      } else {
+        // 审计 P1：安全存储不可用时拒绝保存 —— 别把 WebDAV 密码明文写进 prefs.json
+        const stored = secretStore.tryEncrypt(cfg.pass);
+        if (!stored) {
+          logger.warn('[cloudSync] 拒绝保存 WebDAV 密码：本机安全存储不可用');
+          return { success: false, error: 'SECRET_STORAGE_UNAVAILABLE' };
+        }
+        prefs.set('webdavPass', stored);
+      }
     }
     return { success: true };
   });
@@ -236,6 +251,7 @@ function register() {
       url: prefs.get('webdavUrl') || '',
       user: prefs.get('webdavUser') || '',
       pass: secretStore.decrypt(prefs.get('webdavPass') || ''),
+      allowInsecure: prefs.get('webdavAllowInsecure') === true,
     };
     const result = await syncOnce({
       config,

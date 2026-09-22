@@ -49,6 +49,18 @@ function handle(channel, fn) {
   _invokeFns.set(channel, fn);
 }
 
+/**
+ * 注册 send 型通道（渲染层单向推送，无回执）。
+ *
+ * 统一错误边界（2026-09 审计 P1）：send 通道没有回执通道，handler 抛错
+ * 无处可去 —— 旧实现直接 `fn(event, ...)`，一次抛错就是主进程
+ * uncaughtException（同步）或 unhandledRejection（异步）。主进程即 UI 线程，
+ * 代价是窗口失联甚至整个应用被拖死。这里就地归口：同步 try/catch +
+ * 异步 then(undefined, …) 两条都接住，带上通道名便于定位。
+ *
+ * 注意：不做「失败静默」—— 一律走 logger.error（生产环境也输出）。
+ * 被吞掉的异常等于把 bug 藏起来，那比崩溃更难查。
+ */
 function on(channel, fn) {
   _entry(channel, 'send');
   ipcMain.on(channel, (event, ...raw) => {
@@ -57,7 +69,16 @@ function on(channel, fn) {
       logger.warn(`[ipc] ${r.error}（已丢弃）`);
       return;
     }
-    fn(event, ...r.args);
+    try {
+      const ret = fn(event, ...r.args);
+      if (ret && typeof ret.then === 'function') {
+        ret.then(undefined, (e) => {
+          logger.error(`[ipc] send 通道 handler 异步失败 (${channel}):`, (e && e.message) || e);
+        });
+      }
+    } catch (e) {
+      logger.error(`[ipc] send 通道 handler 同步失败 (${channel}):`, (e && e.message) || e);
+    }
   });
   _registered.add(channel);
 }

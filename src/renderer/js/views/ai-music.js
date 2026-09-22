@@ -10,6 +10,7 @@
 
 import { errBrief } from '../errBrief.js';
 import { askConfirm } from '../confirmDialog.js';
+import { t } from '../i18n.js';
 
 // ══════════════════════════════════════════════════════════
 // 状态
@@ -472,8 +473,14 @@ async function saveAiApiKey() {
   if (!input) return;
   const key = input.value.trim();
   if (!key || key.startsWith('•••')) { showToast('请输入有效的 API Key', 'warn'); return; }
+  // 审计 P1：安全存储不可用时主进程会拒绝写入（set-pref 返回 false）——
+  // 旧代码无视返回值直接报「已保存」，用户以为存上了，实际盘上什么都没有。
+  const saved = await api.setPref('aiMusicApiKey', key);
+  if (saved === false) {
+    showToast(t('toast.secretStorageUnavailable'), 'error', 8000);
+    return;
+  }
   aiState.apiKey = key;
-  await api.setPref('aiMusicApiKey', key);
   showToast('API Key 已保存', 'success');
   input.value = '••••••••';
   renderAiMusicPage();

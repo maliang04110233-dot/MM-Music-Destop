@@ -8,6 +8,7 @@ const { handle } = require('./register');
 const api = require('../../api');
 const cookieStore = require('../../utils/cookieStore');
 const { refreshQQMusickey } = require('../../utils/cookie');
+const { ERR_SECRET_STORAGE_UNAVAILABLE: SECRET_STORAGE_UNAVAILABLE } = require('../../utils/secretStore');
 const { openLoginWindow } = require('../loginWindow');
 const { getMainWindow } = require('../context');
 
@@ -27,7 +28,11 @@ function register() {
 
   // 保存 Cookie（渲染层位置参数：api.saveCookie(platform, cookie)）
   handle('save-cookie', async (_, platform, cookie) => {
-    cookieStore.set(platform, cookie.trim());
+    // 审计 P1：安全存储不可用时 cookieStore.set 返回 false（拒绝明文落盘）。
+    // 必须如实回错，不能回 saved:true —— 那会让用户以为登录态已保存。
+    if (cookie.trim() && !cookieStore.set(platform, cookie.trim())) {
+      return { saved: false, error: SECRET_STORAGE_UNAVAILABLE };
+    }
     api.updateCookie(platform, cookie.trim());
     if (cookie.trim()) {
       const result = await api.verifyCookie(platform, cookie.trim());
@@ -65,7 +70,9 @@ function register() {
     try {
       const result = await openLoginWindow(platform, getMainWindow());
       if (result.success && result.cookie) {
-        cookieStore.set(platform, result.cookie);
+        if (!cookieStore.set(platform, result.cookie)) {
+          return { ...result, saved: false, error: SECRET_STORAGE_UNAVAILABLE };
+        }
         api.updateCookie(platform, result.cookie);
         const verify = await api.verifyCookie(platform, result.cookie);
         // 登录后若有新 musickey，写回 store

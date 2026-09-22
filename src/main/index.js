@@ -566,7 +566,7 @@ app.whenReady().then(async () => {
     logger.warn('[PlayQueue] 恢复播放队列失败:', e.message);
   }
 
-  // 注册所有 IPC handler（按职责拆分到 src/main/ipc/*.js）
+  // 注册所有 IPC handler（按职责拆分到 src/main/ipc 下各模块）
   registerAllIpcHandlers();
 
   // 初始化自动更新（GitHub Releases）
@@ -661,7 +661,7 @@ app.on('window-all-closed', () => {
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
-// ─── IPC 处理（按职责拆到 ipc/*.js）──────────────────────────────────────────
+// ─── IPC 处理（按职责拆到 ipc 下的各模块）────────────────────────────────────
 function registerAllIpcHandlers() {
   // 必须先 init context，再 register（各 handler 通过 getCtx() 拿共享状态）
   // 关键：传 getter 而不是值，否则 mainWindow / downloadQueue 在 createWindow 之后
@@ -733,7 +733,7 @@ function registerAllIpcHandlers() {
   });
 }
 
-// ⚠️ 新增 IPC 请写进 src/main/ipc/*.js 并通过 register.js 的 handle/on 注册：
+// ⚠️ 新增 IPC 请写进 src/main/ipc 下的模块，并通过 register.js 的 handle/on 注册：
 // 通道与参数规格统一声明在 src/shared/ipcContract.js（契约未声明会启动即抛，
 // test/ipc-contract.test.js 常驻对账，勿再裸用 ipcMain）
 

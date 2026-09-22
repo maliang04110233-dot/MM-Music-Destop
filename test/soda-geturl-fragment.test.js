@@ -24,7 +24,6 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const reqPath = require.resolve('../src/api/request');
-const realRequest = require(reqPath);
 
 let share = null;      // 当前用例喂给分享页解析器的 audioWithLyricsOption
 let probeResult = null; // 当前用例 testAudioLink 的返回

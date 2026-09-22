@@ -339,6 +339,10 @@ async function saveCookie(platform) {
       await loadCookieStatus();
       if (result.verify) showVerifyResult(platform, result.verify);
       dom.textarea.value = '';
+    } else {
+      // 主进程拒绝保存（安全存储不可用 ⇒ 绝不把登录态明文落盘）。
+      // 旧代码在这里静默什么都不做，用户看到的是「点了保存没反应」。
+      showToast(t('toast.saveFailedDetail', { msg: credentialErrorText(result.error) }), 'error', 8000);
     }
   } catch (e) {
     showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');
@@ -872,7 +876,7 @@ function updateTemplateVarHints() {
 // ── 路径模板实时预览 ─────────────────────────────────
 // 文件名模板早就有实时预览（filenameTmplPreview），路径模板是这条线上唯一的例外：
 // 用户写完 {artist}/{album} 只能存下、下载一首、再去目录里核对。本段补上落点预览。
-// 两条纪律：① 段渲染跑在主进程（renderer 是打包的 ESM，拿不到 src/utils/*），
+// 两条纪律：① 段渲染跑在主进程（renderer 是打包的 ESM，拿不到 src/utils 下的模块），
 // 复用既有 'preview-naming-template' 通道取数，不为预览再开一条通道；
 // ② 预览节点由这里自己造、不写进 index.html —— 模态框是编辑器专属外壳，
 // 少一处和并发改动抢同一份 HTML。文案一律 textContent（路径段可能含用户输入）。
@@ -1079,6 +1083,8 @@ async function loadWebdavConfig() {
     document.getElementById('webdavUser').value = cfg.user || '';
     document.getElementById('webdavPass').value = '';
     document.getElementById('webdavPass').placeholder = cfg.hasPass ? '已保存（留空则不修改）' : 'WebDAV 密码';
+    const insecureEl = document.getElementById('webdavAllowInsecure');
+    if (insecureEl) insecureEl.checked = cfg.allowInsecure === true;
     const last = document.getElementById('webdavLastSync');
     if (last) {
       last.textContent = cfg.lastSyncAt
@@ -1090,12 +1096,22 @@ async function loadWebdavConfig() {
   }
 }
 
+/**
+ * 主进程拒绝保存凭证时回的是错误码而非句子（见 utils/secretStore.js）。
+ * 渲染层负责把它翻成用户能行动的中文；未知码原样透出，不吞信息。
+ */
+function credentialErrorText(code) {
+  if (code === 'SECRET_STORAGE_UNAVAILABLE') return t('toast.secretStorageUnavailable');
+  return code;
+}
+
 async function saveWebdavConfig() {
   try {
     const pass = document.getElementById('webdavPass').value;
     const url = document.getElementById('webdavUrl').value.trim();
-    // 明文 http 且非本机 ⇒ 账号密码可被链路窃听。提示但不阻断：
-    // 局域网 NAS（http://192.168.x.x）是 WebDAV 主流部署形态
+    const allowInsecure = document.getElementById('webdavAllowInsecure')?.checked === true;
+    // 明文 http 且非本机 ⇒ 账号密码可被链路窃听。主进程默认拒绝发送凭据
+    // （utils/webdav.js），这里的勾选框是用户显式授权；未勾选时提醒一次。
     const isLocalHost = /^https?:\/\/(localhost|127\.|\[::1\])/i.test(url);
     if (url && url.startsWith('http://') && !isLocalHost) {
       showToast(t('toast.webdavInsecure'), 'warn', 6000);
@@ -1103,6 +1119,7 @@ async function saveWebdavConfig() {
     const r = await window.ipcRenderer.invoke('cloud-sync-config-set', {
       url,
       user: document.getElementById('webdavUser').value.trim(),
+      allowInsecure,
       // 留空 = 不修改已存密码（undefined 不上送该字段）
       ...(pass ? { pass } : {}),
     });
@@ -1110,7 +1127,8 @@ async function saveWebdavConfig() {
       showToast(t('toast.webdavSaved'), 'success');
       loadWebdavConfig();
     } else {
-      showToast(t('toast.saveFailedDetail', { msg: r.error }), 'error');
+      // 主进程拒绝保存时给更长停留：用户需要读完才知道该勾哪个框 / 换 https
+      showToast(t('toast.saveFailedDetail', { msg: credentialErrorText(r.error) }), 'error', 8000);
     }
   } catch (e) {
     showToast(t('toast.saveFailedDetail', { msg: errBrief(e) }), 'error');

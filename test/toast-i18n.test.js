@@ -177,6 +177,62 @@ function scanLedger() {
 
 // ── 扫描器自测（反向钉的第一道：先证明钉子本身不假绿、也不误伤）──
 
+/**
+ * 扫描器地基守卫（2026-09 审计发现）。
+ *
+ * stripComments 用的是非贪婪块注释正则 —— 它认不出「注释文字里的块注释起始符」。
+ * 于是一行说明文字里写了带斜杠星号的路径或 MIME 通配时，那个起始符会和
+ * **后面某个块注释结束符**（往往是几百行外新增的 JSDoc 结尾）配成一对，
+ * 中间整段代码被当注释删掉：台账计数静默变小、孤儿表凭空变长，
+ * 而报错信息只指向"某词条没人用"，根因在几千字符之外。
+ *
+ * 实测：settings.js 的一行路径说明就是这样把 14 个词条判成孤儿
+ * （新增一个 JSDoc 才引爆）。判据取"行注释里不许出现块注释标记"——
+ * 整行是注释时，该标记只可能是装饰文字，不可能有代码语义，误报率为 0。
+ */
+function lineCommentBlockMarkers(rel) {
+  const hits = [];
+  read(rel).split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (t.startsWith('//') && /\/\*|\*\//.test(t)) hits.push(`${rel}:${i + 1}`);
+  });
+  return hits;
+}
+
+test('扫描器地基：任何 .js 的行注释里不得出现块注释标记（会把后面整段代码吞成注释）', () => {
+  const offenders = [];
+  (function walk(dir) {
+    for (const f of fs.readdirSync(path.join(REPO, dir), { withFileTypes: true })) {
+      const rel = dir + '/' + f.name;
+      if (f.isDirectory()) { walk(rel); continue; }
+      if (f.name.endsWith('.js')) offenders.push(...lineCommentBlockMarkers(rel));
+    }
+  })('src');
+  assert.deepStrictEqual(offenders, [],
+    '这些行注释里带了块注释标记，会让 stripComments 从该行起吞掉后续代码：\n' + offenders.join('\n'));
+});
+
+test('扫描器地基自测：判据真能抓到，且不误伤块注释与字符串里的标记', () => {
+  // 用合成文本直接验判据（不落盘）
+  const synthetic = [
+    '// 说明文字里写了 src/utils/* 这种路径',
+    'const a = 1;',
+  ].join('\n');
+  const hits = [];
+  synthetic.split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (t.startsWith('//') && /\/\*|\*\//.test(t)) hits.push(i + 1);
+  });
+  assert.deepStrictEqual(hits, [1], '行注释里的 /* 必须被逮住');
+  const fine = ['/* 正常块注释 */', "const p = 'src/**/*.js';", '// 普通说明'].join('\n');
+  const hits2 = [];
+  fine.split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (t.startsWith('//') && /\/\*|\*\//.test(t)) hits2.push(i + 1);
+  });
+  assert.deepStrictEqual(hits2, [], '块注释与字符串里的标记不该被误判');
+});
+
 test('自检：硬编码中文反馈能被抓住（含反引号与拼接两种写法）', () => {
   assert.strictEqual(feedbackSites(`showToast('已加入队列', 'info')`).length, 1);
   assert.strictEqual(feedbackSites('askConfirm(`确认删除 ${n} 项？`)').length, 1);

@@ -497,7 +497,7 @@ function openEdit(idx) {
 
   const preview = document.getElementById('editCoverPreview');
   if (s.cover) {
-    // s.cover 应为 data:image/*;base64 形态（来自内嵌标签或在线封面）。
+    // s.cover 应为 data:image 前缀的 base64 形态（来自内嵌标签或在线封面）。
     // 白名单校验后再插值：非 data:image 前缀的一律当无封面处理，
     // 防止把外部输入直接塞进 innerHTML 的 src 属性。
     const isDataImage = typeof s.cover === 'string' && /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/.test(s.cover);

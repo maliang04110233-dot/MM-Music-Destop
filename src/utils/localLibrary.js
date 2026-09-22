@@ -164,7 +164,7 @@ async function _decodeAudioMetadata(filePath, stat) {
     }
   }
 
-  // 3) 文件夹封面兜底（cover.jpg / folder.jpg / front.jpg / AlbumArt*/同名）
+  // 3) 文件夹封面兜底（cover.jpg / folder.jpg / front.jpg / AlbumArt 前缀 / 同名）
   if (!coverBase64) {
     const folderCover = await _findFolderCover(filePath, fileName);
     if (folderCover) {
