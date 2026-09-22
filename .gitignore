@@ -64,3 +64,14 @@ release-out/
 
 # 一次性探针/诊断输出（不入仓库）
 spark-output/
+
+# 根目录本机启动 bat 与一次性探针脚本（取消跟踪，保留本地副本）
+/MusicDownloader.bat
+/dev.bat
+/start.bat
+/test-lib-probe.js
+/test-local-cover-lrc.js
+/test-local-meta-fallback.js
+/test-m4a-real.js
+/test-online-lrc.js
+/test_console.py
