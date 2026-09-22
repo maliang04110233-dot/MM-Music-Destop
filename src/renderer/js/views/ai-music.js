@@ -208,19 +208,19 @@ function renderSidebar() {
             <div class="ai-voice-section">
               <!-- 基础声线 -->
               <div class="ai-voice-row">
-                ${TIMBRES.filter(t => t.group === 'basic').map(t => `
-                  <button class="ai-chip${aiState.voice === t.id ? ' active' : ''}"
-                    data-voice="${t.id}" onclick="selectAiVoice('${escQ(t.id)}',this)"
-                    title="${t.tip}">${t.emoji} ${t.name}</button>
+                ${TIMBRES.filter(timbre => timbre.group === 'basic').map(timbre => `
+                  <button class="ai-chip${aiState.voice === timbre.id ? ' active' : ''}"
+                    data-voice="${timbre.id}" onclick="selectAiVoice('${escQ(timbre.id)}',this)"
+                    title="${timbre.tip}">${timbre.emoji} ${timbre.name}</button>
                 `).join('')}
               </div>
               <!-- 热门歌手 -->
               <div class="ai-voice-divider">🎤 热门歌手</div>
               <div class="ai-voice-grid">
-                ${TIMBRES.filter(t => t.group !== 'basic').map(t => `
-                  <button class="ai-voice-chip${aiState.voice === t.id ? ' active' : ''}"
-                    data-voice="${t.id}" onclick="selectAiVoice('${escQ(t.id)}',this)"
-                    title="${t.tip}">${t.emoji} ${t.name}</button>
+                ${TIMBRES.filter(timbre => timbre.group !== 'basic').map(timbre => `
+                  <button class="ai-voice-chip${aiState.voice === timbre.id ? ' active' : ''}"
+                    data-voice="${timbre.id}" onclick="selectAiVoice('${escQ(timbre.id)}',this)"
+                    title="${timbre.tip}">${timbre.emoji} ${timbre.name}</button>
                 `).join('')}
               </div>
             </div>
@@ -448,11 +448,11 @@ function toggleAdvanced() {
 
 function clearAiLyrics() {
   const l = document.getElementById('aiLyricsPreviewInput');
-  const t = document.getElementById('aiTitle');
+  const titleEl = document.getElementById('aiTitle');
   const hint = document.getElementById('aiMusicPromptHint');
   const resultArea = document.getElementById('aiResultArea');
   if (l) l.value = '';
-  if (t) t.value = '';
+  if (titleEl) titleEl.value = '';
   if (hint) { hint.style.display = 'none'; }
   if (resultArea) resultArea.style.display = 'none';
   aiState.musicPrompt = '';
@@ -460,7 +460,7 @@ function clearAiLyrics() {
 
 function switchAiTab(tab) {
   aiState.tab = tab;
-  document.querySelectorAll('.ai-tabs .ai-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.ai-tabs .ai-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
   renderAiMusicPage();
 }
 
@@ -472,7 +472,7 @@ async function saveAiApiKey() {
   const input = document.getElementById('aiApiKeyInput');
   if (!input) return;
   const key = input.value.trim();
-  if (!key || key.startsWith('•••')) { showToast('请输入有效的 API Key', 'warn'); return; }
+  if (!key || key.startsWith('•••')) { showToast(t('toast.aiKeyInvalid'), 'warn'); return; }
   // 审计 P1：安全存储不可用时主进程会拒绝写入（set-pref 返回 false）——
   // 旧代码无视返回值直接报「已保存」，用户以为存上了，实际盘上什么都没有。
   const saved = await api.setPref('aiMusicApiKey', key);
@@ -481,7 +481,7 @@ async function saveAiApiKey() {
     return;
   }
   aiState.apiKey = key;
-  showToast('API Key 已保存', 'success');
+  showToast(t('toast.aiKeySaved'), 'success');
   input.value = '••••••••';
   renderAiMusicPage();
 }
@@ -492,9 +492,9 @@ async function selectAiSaveDir() {
 }
 
 async function generateAiLyrics() {
-  if (!aiState.apiKey) { showToast('请先配置 MiniMax API Key', 'warn'); return; }
+  if (!aiState.apiKey) { showToast(t('toast.aiApiKeyMissing'), 'warn'); return; }
   const topic = document.getElementById('aiTopic')?.value?.trim();
-  if (!topic) { showToast('请输入关键词/主题', 'warn'); document.getElementById('aiTopic')?.focus(); return; }
+  if (!topic) { showToast(t('toast.aiTopicRequired'), 'warn'); document.getElementById('aiTopic')?.focus(); return; }
 
   const btn = document.getElementById('btnGenLyrics');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 创作中...'; }
@@ -507,7 +507,7 @@ async function generateAiLyrics() {
       apiKey: aiState.apiKey,
     });
 
-    if (result.error) { showToast('歌词生成失败: ' + result.error, 'error'); return; }
+    if (result.error) { showToast(t('toast.aiLyricsFailed', { msg: result.error }), 'error'); return; }
 
     // 存储 AI 生成的音乐描述
     aiState.musicPrompt = result.musicPrompt || '';
@@ -544,14 +544,14 @@ async function generateAiLyrics() {
       hint.style.display = 'block';
     }
 
-    showToast('歌词已生成', 'success');
-  } catch (e) { showToast('生成失败: ' + errBrief(e), 'error'); }
+    showToast(t('toast.aiLyricsDone'), 'success');
+  } catch (e) { showToast(t('toast.aiGenFailed', { msg: errBrief(e) }), 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '🎼 生成歌词'; } }
 }
 
 async function generateAiMusic() {
-  if (!aiState.apiKey) { showToast('请先配置 MiniMax API Key', 'warn'); return; }
-  if (aiState.generating) { showToast('正在生成中...', 'warn'); return; }
+  if (!aiState.apiKey) { showToast(t('toast.aiApiKeyMissing'), 'warn'); return; }
+  if (aiState.generating) { showToast(t('toast.aiGenerating'), 'warn'); return; }
 
   // 确定要生成哪些版本
   let versionsToGenerate;
@@ -569,7 +569,7 @@ async function generateAiMusic() {
     if (!lyrics) {
       lyrics = document.getElementById('aiLyrics')?.value?.trim();
     }
-    if (!lyrics) { showToast('歌词不能为空', 'warn'); return; }
+    if (!lyrics) { showToast(t('toast.aiLyricsEmpty'), 'warn'); return; }
     const previewEl = document.getElementById('aiLyricsPreviewInput');
     if (previewEl && previewEl.value?.trim() !== lyrics) previewEl.value = lyrics;
     const cleanLyrics = lyrics
@@ -673,7 +673,7 @@ async function generateAiMusic() {
     if (succeeded.length === 0) {
       // 全部失败
       const errList = failed.map(f => `${f.label}: ${f.err}`).join('；');
-      showToast(`生成失败: ${errList}`, 'error');
+      showToast(t('toast.aiGenFailed', { msg: errList }), 'error');
       setProgressWidth('0%');
       setProgressText('❌ 全部失败');
       return;
@@ -683,10 +683,10 @@ async function generateAiMusic() {
     setProgressWidth('100%');
     if (succeeded.length === totalTasks) {
       setProgressText('✅ 全部完成！');
-      showToast(`🎵 ${totalTasks} 首生成成功！`, 'success');
+      showToast(t('toast.aiMusicDone', { n: totalTasks }), 'success');
     } else {
       setProgressText(`✅ ${succeeded.length}/${totalTasks} 完成`);
-      showToast(`🎵 ${succeeded.length} 首成功，${failed.length} 首失败`, 'warn');
+      showToast(t('toast.aiMusicPartial', { ok: succeeded.length, fail: failed.length }), 'warn');
     }
 
     if (resultSection) resultSection.style.display = 'block';
@@ -733,7 +733,7 @@ async function generateAiMusic() {
     invalidateAiHistory();
   } catch (e) {
     clearInterval(timer);
-    showToast('生成失败: ' + errBrief(e), 'error');
+    showToast(t('toast.aiGenFailed', { msg: errBrief(e) }), 'error');
     setProgressWidth('0%');
   }
   finally { aiState.generating = false; aiState.abortCtrl = null; setButtonsDisabled(false); showProgress(false); }
@@ -745,7 +745,7 @@ function cancelAiGeneration() {
     // 通知主进程中止底层计费请求（此前取消只改 UI，请求照跑）
     if (typeof api.aiCancelGeneration === 'function') api.aiCancelGeneration(aiState.genRequestId);
     aiState.generating = false;
-    showToast('已取消', 'info');
+    showToast(t('toast.aiCanceled'), 'info');
     renderAiMusicPage();
   }
 }
@@ -775,8 +775,8 @@ function renderVersionTabs() {
 function selectAiVersion(idx, _btn) {
   aiState.activeVersion = idx;
   // 更新标签高亮
-  document.querySelectorAll('#aiVersionTabs .ai-version-tab').forEach((t, i) => {
-    t.classList.toggle('active', i === idx);
+  document.querySelectorAll('#aiVersionTabs .ai-version-tab').forEach((el, n) => {
+    el.classList.toggle('active', n === idx);
   });
   // 切换预览区歌词
   const preview = document.getElementById('aiLyricsPreviewInput');
@@ -814,7 +814,7 @@ function showAiLyricsDetail(json) {
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     overlay.innerHTML = `<div class="ai-modal"><div class="ai-modal-header"><span>📝 歌词详情</span><button onclick="document.getElementById('aiLyricsDetailModal').remove()">✕</button></div><div class="ai-modal-body"><pre class="ai-lyrics-detail">${esc(lyrics)}</pre></div></div>`;
     document.body.appendChild(overlay);
-  } catch (_e) { showToast('歌词加载失败', 'error'); }
+  } catch (_e) { showToast(t('toast.aiLoadFailed'), 'error'); }
 }
 
 function regenerateFromHistory(json) {
@@ -832,7 +832,7 @@ function regenerateFromHistory(json) {
       if (item.style) { const btn = document.querySelector(`.ai-chip[data-style="${item.style}"]`); if (btn) selectAiStyle(item.style, btn); }
       if (item.mood) { const btn = document.querySelector(`.ai-chip[data-mood="${item.mood}"]`); if (btn) selectAiMood(item.mood, btn); }
     }, 100);
-  } catch (_e) { showToast('加载失败', 'error'); }
+  } catch (_e) { showToast(t('toast.aiLoadFailed'), 'error'); }
 }
 
 function regenerateAiLyrics() {
@@ -844,9 +844,9 @@ function regenerateAiLyrics() {
 // ══════════════════════════════════════════════════════════
 
 async function generateAiPlaylist() {
-  if (!aiState.apiKey) { showToast('请先配置 MiniMax API Key', 'warn'); return; }
+  if (!aiState.apiKey) { showToast(t('toast.aiApiKeyMissing'), 'warn'); return; }
   const desc = document.getElementById('aiPlaylistDesc')?.value?.trim();
-  if (!desc) { showToast('请描述你想要的歌单', 'warn'); document.getElementById('aiPlaylistDesc')?.focus(); return; }
+  if (!desc) { showToast(t('toast.aiPlaylistDescRequired'), 'warn'); document.getElementById('aiPlaylistDesc')?.focus(); return; }
 
   const count = document.getElementById('aiPlaylistCount')?.value || '10';
   const btn = document.getElementById('btnGenPlaylist');
@@ -860,7 +860,7 @@ async function generateAiPlaylist() {
       mode: 'playlist',
     });
 
-    if (result.error) { showToast('生成失败: ' + result.error, 'error'); return; }
+    if (result.error) { showToast(t('toast.aiGenFailed', { msg: result.error }), 'error'); return; }
 
     // 解析歌曲列表
     const lines = (result.lyrics || '').split('\n').filter(l => l.trim());
@@ -878,7 +878,7 @@ async function generateAiPlaylist() {
     }
 
     if (songs.length === 0) {
-      showToast('未解析到歌曲，尝试换种描述方式', 'warn');
+      showToast(t('toast.aiPlaylistParsedEmpty'), 'warn');
       return;
     }
 
@@ -895,9 +895,9 @@ async function generateAiPlaylist() {
       </div>
     `).join('');
 
-    showToast(`已生成 ${songs.length} 首推荐歌曲`, 'success');
+    showToast(t('toast.aiPlaylistDone', { n: songs.length }), 'success');
   } catch (e) {
-    showToast('生成失败: ' + errBrief(e), 'error');
+    showToast(t('toast.aiGenFailed', { msg: errBrief(e) }), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '📋 生成歌单'; }
   }
@@ -905,7 +905,7 @@ async function generateAiPlaylist() {
 
 async function addAllPlaylistToQueue() {
   if (!aiState.playlistSongs || !aiState.playlistSongs.length) {
-    showToast('没有可添加的歌曲', 'warn');
+    showToast(t('toast.aiNothingToAdd'), 'warn');
     return;
   }
 
@@ -920,7 +920,7 @@ async function addAllPlaylistToQueue() {
     } catch (_e) { /* skip */ }
   }
 
-  showToast(`已将 ${added} 首歌曲加入下载队列`, 'success');
+  showToast(t('toast.aiQueueAdded', { n: added }), 'success');
 }
 
 async function searchAndAddSong(title, artist) {
@@ -928,12 +928,12 @@ async function searchAndAddSong(title, artist) {
     const results = await api.searchMusic(`${title} ${artist}`, 'all');
     if (results.songs && results.songs.length > 0) {
       await api.addToQueue(results.songs[0]);
-      showToast(`已将「${title}」加入下载队列`, 'success');
+      showToast(t('toast.queueAdded', { title }), 'success');
     } else {
-      showToast(`未找到「${title}」`, 'warn');
+      showToast(t('toast.aiNotFound', { title }), 'warn');
     }
   } catch (e) {
-    showToast('添加失败: ' + errBrief(e), 'error');
+    showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -942,10 +942,10 @@ async function searchAndAddSong(title, artist) {
 // ══════════════════════════════════════════════════════════
 
 async function translateLyricsUI() {
-  if (!aiState.apiKey) { showToast('请先配置 MiniMax API Key', 'warn'); return; }
+  if (!aiState.apiKey) { showToast(t('toast.aiApiKeyMissing'), 'warn'); return; }
   const lyricsEl = document.getElementById('aiLyricsPreviewInput');
   const lyrics = lyricsEl?.value?.trim();
-  if (!lyrics) { showToast('歌词不能为空', 'warn'); return; }
+  if (!lyrics) { showToast(t('toast.aiLyricsEmpty'), 'warn'); return; }
 
   // 显示翻译选项弹窗
   let overlay = document.getElementById('aiTranslateModal');
@@ -981,12 +981,12 @@ async function executeTranslate() {
   const targetLang = document.getElementById('aiTranslateTarget')?.value || 'zh';
   const lyricsEl = document.getElementById('aiLyricsPreviewInput');
   const lyrics = lyricsEl?.value?.trim();
-  if (!lyrics) { showToast('歌词不能为空', 'warn'); return; }
+  if (!lyrics) { showToast(t('toast.aiLyricsEmpty'), 'warn'); return; }
 
   const overlay = document.getElementById('aiTranslateModal');
   if (overlay) overlay.remove();
 
-  showToast('正在翻译...', 'info');
+  showToast(t('toast.aiTranslating'), 'info');
 
   try {
     const result = await api.aiTranslateLyrics({
@@ -996,16 +996,16 @@ async function executeTranslate() {
     });
 
     if (result.error) {
-      showToast('翻译失败: ' + result.error, 'error');
+      showToast(t('toast.aiTranslateFailed', { msg: result.error }), 'error');
       return;
     }
 
     if (result.translated) {
       lyricsEl.value = result.translated;
-      showToast('翻译完成', 'success');
+      showToast(t('toast.aiTranslateDone'), 'success');
     }
   } catch (e) {
-    showToast('翻译失败: ' + errBrief(e), 'error');
+    showToast(t('toast.aiTranslateFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -1022,16 +1022,16 @@ async function loadAiHistory() {
 function invalidateAiHistory() { aiState.historyCache = null; }
 
 async function clearAiHistory() {
-  if (!await askConfirm('确认清空所有 AI 生成历史？')) return;
+  if (!await askConfirm(t('toast.aiHistoryClearConfirm'))) return;
   try {
     await api.aiClearHistory();
   } catch (e) {
-    showToast('清空失败：' + errBrief(e), 'error');
+    showToast(t('toast.clearFailed', { msg: errBrief(e) }), 'error');
     return;
   }
   aiState.historyCache = null;
   renderAiMusicPage();
-  showToast('历史已清空', 'info');
+  showToast(t('toast.aiHistoryCleared'), 'info');
 }
 
 // ══════════════════════════════════════════════════════════

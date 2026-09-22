@@ -290,6 +290,8 @@ const CONQUERED = [
   'src/renderer/js/views/settings.js',
   // 增量203 按 LEDGER 收编的第二个视图文件（30 处 → 0）：一次还完整文件，不留半截
   'src/renderer/js/views/download.js',
+  // 增量211 按 LEDGER 收编的第三个视图文件（38 处 → 0）
+  'src/renderer/js/views/ai-music.js',
 ];
 
 test('已收编文件的用户反馈文案零硬编码（本轮兑现的那一面）', () => {
@@ -351,6 +353,7 @@ const T_SHADOW_PATTERNS = [
 const CONQUERED_VIEWS = [
   'src/renderer/js/views/settings.js',
   'src/renderer/js/views/download.js',
+  'src/renderer/js/views/ai-music.js',
 ];
 
 test('已收编视图文件的取词走 i18n.js 的 t，且文件内没有名为 t 的局部遮蔽', () => {
@@ -544,7 +547,6 @@ const LEDGER = {
   'src/renderer/js/sleepTimer.js': 7,
   'src/renderer/js/songGroups.js': 1,
   'src/renderer/js/songMenu.js': 3,
-  'src/renderer/js/views/ai-music.js': 38,
   'src/renderer/js/views/batchImport.js': 2,
   'src/renderer/js/views/clipboard.js': 1,
   'src/renderer/js/views/converter.js': 10,
