@@ -80,7 +80,7 @@
       <span class="icon">📡</span> 订阅更新 <span class="nav-badge" id="subBadge" style="display:none;"></span>
     </button>
     <div class="sidebar-title">工具</div>
-    <button class="nav-item" data-tab="ai-music" onclick="switchTab('ai-music',this)">
+    <button class="nav-item" data-tab="ai-music" data-feature="ai" onclick="switchTab('ai-music',this)">
       <span class="icon">🤖</span> AI 创作
     </button>
     <button class="nav-item" data-tab="converter" onclick="switchTab('converter',this)">
@@ -192,7 +192,7 @@
               <input class="search-input" id="searchInput" placeholder="搜索歌曲、歌手、专辑...（支持直接粘贴各平台歌曲/歌单/专辑链接）"
                 onkeydown="searchInputKey(event)" oninput="debounceSearch()" onfocus="showSearchHistory()" onblur="hideSearchHistory()">
               <button class="search-btn" onclick="doSearch()">🔍</button>
-              <button class="search-btn" onclick="doNaturalSearch()" title="AI 搜索：用一句话描述想听的歌（需在 AI 音乐配置 API Key）">✨</button>
+              <button class="search-btn" data-feature="ai" onclick="doNaturalSearch()" title="AI 搜索：用一句话描述想听的歌（需在 AI 音乐配置 API Key）">✨</button>
             </div>
             <select class="quality-select" id="qualitySelect">
               <option value="standard" data-i18n="search.quality.standard">标准 128k</option>

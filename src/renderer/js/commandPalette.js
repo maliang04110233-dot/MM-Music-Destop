@@ -28,6 +28,7 @@
 import { logger } from './logger.js';
 import { recordRecent, pickRecents } from './paletteRecents.js';
 import { hasOpenConfirm } from './confirmDialog.js';
+import { featureOn, filterByFeature } from './features.js';
 
 // ── 纯函数 ───────────────────────────────────────────
 function fuzzyScore(q, text) {
@@ -86,7 +87,7 @@ const COMMANDS = [
   { id: 'nav-playlist', icon: '💿', group: '导航', label: '前往 歌单', keywords: ['playlist', '收藏'], run: () => _goto('playlist') },
   { id: 'nav-sub', icon: '🔔', group: '导航', label: '前往 订阅', keywords: ['subscription', '更新'], run: () => _goto('subscription') },
   { id: 'sub-check', icon: '📡', group: '下载', label: '立即检查订阅更新（新歌提醒）', keywords: ['subscription check', '订阅', '检查', '新歌'], run: () => _call('subscriptionCheckNow') },
-  { id: 'nav-ai', icon: '✨', group: '导航', label: '前往 AI 创作', keywords: ['ai', '生成'], run: () => _goto('ai-music') },
+  { id: 'nav-ai', icon: '✨', group: '导航', label: '前往 AI 创作', keywords: ['ai', '生成'], feature: 'ai', run: () => _goto('ai-music') },
   { id: 'nav-conv', icon: '🎛', group: '导航', label: '前往 格式转换', keywords: ['convert', '转码'], run: () => _goto('converter') },
 
   { id: 'pl-toggle', icon: '▶⏸', group: '播放', label: '播放 / 暂停', keywords: ['play', 'pause', '暂停'], run: () => _call('togglePlay') },
@@ -178,6 +179,11 @@ const COMMANDS = [
   { id: 'misc-cache', icon: '🗑', group: '其他', label: '清理播放缓存', keywords: ['cache', '缓存'], run: () => _call('clearPlayCache') },
 ];
 
+// 面板真正用的那张表：关掉的特性不进表。导出的 COMMANDS 保持原样（它是清单，不是入口），
+// 但 _refresh 的两条通路（模糊排序 + 最近使用）都只读这张过滤表 —— 只接一条，
+// 存过 nav-ai 的用户下次呼出面板仍会被「最近使用」把它复活。
+const PALETTE_COMMANDS = filterByFeature(COMMANDS, featureOn);
+
 // ── 面板 UI ──────────────────────────────────────────
 let _open = false;
 let _items = [];
@@ -267,10 +273,10 @@ function _move(delta) {
 }
 
 function _refresh(query) {
-  _items = rankCommands(query, COMMANDS);
+  _items = rankCommands(query, PALETTE_COMMANDS);
   if (!String(query || '').trim()) {
     // 空查询（刚呼出）：最近使用置顶，其余保持原序跟在后面
-    const rec = pickRecents(_loadRecents(), COMMANDS);
+    const rec = pickRecents(_loadRecents(), PALETTE_COMMANDS);
     if (rec.length) {
       const taken = new Set(rec.map(c => c.id));
       _items = rec.concat(_items.filter(c => !taken.has(c.id))).slice(0, 30);

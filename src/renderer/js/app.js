@@ -91,6 +91,11 @@ import './init.js';
 import { t } from './i18n.js';
 import './logger.js';
 import './updater.js';
+import { applyFeatureFlags, tabAllowed } from './features.js';
+
+// 入口摘除要早于 init()：init 里有 await，等它跑完 AI 入口已经画到屏幕上了。
+// 放在这里（所有视图模块之后）= DOM 已解析、首帧未画，且不会被任何模块重新挂回来。
+applyFeatureFlags();
 
 // ── API 代理 / Mock ───────────────────────────────────
 // 使用 Object.assign 让 api 动态指向真实 window.musicAPI（如果 preload 已暴露）
@@ -622,6 +627,12 @@ function isTabPageVisible(id) {
 }
 
 function switchTab(tab, btn) {
+  // 总开关守卫必须在下面任何 display/classList 之前：写在末尾等于先把页面渲染完再拦。
+  // 四条通路（侧栏 onclick、命令面板 _goto、快捷键、程序化调用）都汇到这个漏斗，只拦这一处就够。
+  if (!tabAllowed(tab)) {
+    if (tab !== 'home') { switchTab('home'); return; }
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   // btn 缺省时按 data-tab 兜底（程序化/CDP 调用不传事件按钮），找不到不阻断切换
   const navBtn = btn || document.querySelector(`.nav-item[data-tab="${NAV_ALIAS[tab] || tab}"]`);
