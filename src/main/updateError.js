@@ -19,36 +19,20 @@
  */
 'use strict';
 
-/**
- * 传输层失败：连接建立不了、中途断了、域名解析不出来。
- * 两套命名都要覆盖 —— Chromium 的 net::ERR_* 与 Node 的 socket 码。
- * 证书/TLS 不在这里（它重试无用，走下面单独一条）。
- */
-const TRANSPORT_ERROR = /net::ERR_(?:TIMED_OUT|CONNECTION_(?:RESET|CLOSED|REFUSED|ABORTED|FAILED)|INTERNET_DISCONNECTED|NETWORK_CHANGED|NETWORK_IO_SUSPENDED|NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE|SOCKET_NOT_CONNECTED)|\bE(?:CONNRESET|CONNREFUSED|CONNABORTED|TIMEDOUT|HOSTUNREACH|NETUNREACH|PIPE|AI_AGAIN|NOTFOUND)\b|socket hang up|network timeout/i;
-
-/**
- * 证书 / TLS 握手失败：镜像是第三方转发链路，这一族比直连更容易撞上。
- * 单独一支是因为「稍后再试」对它不成立 —— 拦你的东西不会自己消失。
- */
-const TLS_ERROR = /net::ERR_(?:CERT_[A-Z_]+|SSL_PROTOCOL_ERROR|SSL_FALLBACK_EXCEEDED)|unable to verify the first certificate|self[- ]signed certificate|certificate (?:chain|has expired|revoked)/i;
-
-function messageOf(err) {
-  if (!err) return '';
-  if (typeof err === 'string') return err;
-  return err.message ? String(err.message) : '';
-}
+// 两支正则的家在 src/shared/netClass.js（增量219）：同一判据在更新器、传输层、
+// 队列终态三处各写一遍必然漂，这里只是消费方 —— 迁移前后 isNetworkFailure 的口径一字未动。
+const { isTlsFailure, isTransportFailure, messageOf } = require('../shared/netClass');
 
 /**
  * 这条失败是不是"网络类"——即弹层该不该给用户一个「打开下载页」按钮。
  *
- * 判据与上面两支正则严格同源（不是另起一张表）：正因为这两类的文案本来就写着
+ * 判据与 shared/netClass 严格同源（不是另起一张表）：正因为这两类的文案本来就写着
  * "或到 GitHub Releases 页面手动下载"，它们才是该给按钮的；非网络错误
  * （"Please check update first" 之类）给个下载页按钮是把人往错方向支。
+ * 注意这里 TLS 也算：证书被拦时"稍后再试"没用，但"手动下最新版本"依然是一条走得通的路。
  */
 function isNetworkFailure(err) {
-  const msg = messageOf(err);
-  if (!msg) return false;
-  return TLS_ERROR.test(msg) || TRANSPORT_ERROR.test(msg);
+  return isTlsFailure(err) || isTransportFailure(err);
 }
 
 /**
@@ -72,11 +56,11 @@ function manualDownloadHint(opts) {
  */
 function describeUpdateError(err, opts = {}) {
   const msg = messageOf(err);
-  if (TLS_ERROR.test(msg)) {
+  if (isTlsFailure(err)) {
     return '更新连接被证书校验挡住（常见于代理、VPN 或安全软件拦截），' +
       '请检查这类网络中间件后再试' + manualDownloadHint(opts);
   }
-  if (TRANSPORT_ERROR.test(msg)) {
+  if (isTransportFailure(err)) {
     const scope = opts.mirrorTried
       ? 'GitHub 直连与镜像源均已试过'
       : '已自动重试多次';
@@ -101,8 +85,6 @@ function shouldReportEventError(state) {
 }
 
 module.exports = {
-  TRANSPORT_ERROR,
-  TLS_ERROR,
   describeUpdateError,
   isNetworkFailure,
   shouldReportEventError,

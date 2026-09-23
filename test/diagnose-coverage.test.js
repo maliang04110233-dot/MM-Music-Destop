@@ -83,6 +83,36 @@ test('扫描本身要有效：回写层至少扫出 12 个码，且不含小写/
   }
 });
 
+/**
+ * 徽标颜色的判据从「长得像 var()」升级为「这个变量真在 base.css 里定义过」。
+ * 老断言是空转的：--neon-red / --neon-orange / --neon-yellow 三枚被 DIAG_TABLE 和本地
+ * 音质徽标共用了十几处，base.css 六个主题块里一个都没定义 —— CSS 变量解析失败后
+ * color 继承正文字色，于是「需VIP」「断网」「CDN异常」全部长成同一个灰色，
+ * 诊断徽标的颜色编码（橙=鉴权 / 红=接口 / 黄=网络）等于不存在。形状检查抓不到这个。
+ */
+function themeBlockProps() {
+  const src = read('src/renderer/styles/base.css');
+  const blocks = [];
+  const re = /(^|\n)\s*(:root|\[data-theme="[^"]+"\])\s*\{([\s\S]*?)\n\s*\}/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const props = new Set();
+    const rp = /--([a-z0-9-]+)\s*:/g;
+    let p;
+    while ((p = rp.exec(m[3])) !== null) props.add(p[1]);
+    blocks.push({ name: m[2].trim(), props });
+  }
+  return blocks;
+}
+
+const THEME_BLOCKS = themeBlockProps();
+
+test('扫描本身要有效：主题块至少解析出 6 个，否则颜色门禁空转', () => {
+  assert.ok(THEME_BLOCKS.length >= 6, `只解析出 ${THEME_BLOCKS.length} 个主题块：${THEME_BLOCKS.map((b) => b.name).join(', ')}`);
+  assert.ok(THEME_BLOCKS.some((b) => b.name === ':root'), '解析漏了 :root');
+  assert.ok(THEME_BLOCKS.some((b) => b.name.includes('light')), '解析漏了 [data-theme="light"]');
+});
+
 test('取流回写的每个码都有行内徽标（failureTag 不返回 null）', async () => {
   const { failureTag } = await fresh();
   const missing = [];
@@ -91,7 +121,11 @@ test('取流回写的每个码都有行内徽标（failureTag 不返回 null）'
     const t = failureTag(code);
     if (!t) { missing.push(`${code} ← ${[...files].join(', ')}`); continue; }
     if (t.label.length > 8 || /[。，]/.test(t.label)) malformed.push(`${code}=${t.label}`);
-    if (!/^var\(--/.test(t.color)) malformed.push(`${code} 颜色不是语义变量：${t.color}`);
+    const mColor = /^var\(--([a-z0-9-]+)\)$/.exec(t.color || '');
+    if (!mColor) { malformed.push(`${code} 颜色不是纯语义变量：${t.color}`); continue; }
+    const token = mColor[1];
+    const undef = THEME_BLOCKS.filter((b) => !b.props.has(token)).map((b) => b.name);
+    if (undef.length) malformed.push(`${code} 的颜色 --${token} 在这些块里没定义（会掉成正文色）：${undef.join(', ')}`);
   }
   assert.deepStrictEqual(missing, [], `以下回写码在 DIAG_TABLE 没登记，用户看不到徽标：\n  ${missing.join('\n  ')}`);
   assert.deepStrictEqual(malformed, [], `徽标是行内短标签，不是句子：\n  ${malformed.join('\n  ')}`);

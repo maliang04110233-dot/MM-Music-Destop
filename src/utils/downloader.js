@@ -6,6 +6,7 @@ const { Transform } = require('stream');
 const childProcess = require('child_process');
 const logger = require('./logger');
 const fsa = require('./fsAsync');
+const { isTransportFailure } = require('../shared/netClass');
 
 /**
  * 限速 Transform 流（令牌桶 + 正确背压）
@@ -625,11 +626,10 @@ function downloadFileWithRetry(url, savePath, onProgress, extraHeaders = {}, opt
     } catch (e) {
       if (e && e.cancelled) throw e; // 用户取消：绝不续传重试
       attempt++;
-      // code 也要看：Node 网络层错误的 message 常是 'aborted' 这类无信息文本，
-      // 真正的错误类别在 err.code（如 ECONNRESET）
-      const msgOrCode = `${e.message || ''} ${e.code || ''}`;
-      const isTransient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EPIPE|socket hang up|下载超时|network/i.test(msgOrCode);
-      if (attempt <= maxRetry && isTransient) {
+      // 增量219：判据搬到 src/shared/netClass.js。原先这里手抄了一份只列 Node socket 码的
+      // 正则，Chromium 抛的 net::ERR_* 一族一条都不匹配 —— 断网时的传输失败既不退避
+      // 也不续传，直接判死。code 也要看：网络错误的 message 常是 'aborted' 这类无信息文本。
+      if (attempt <= maxRetry && isTransportFailure(e)) {
         // 只有成功写入过部分数据才值得续传；用已落盘 .tmp 大小作为偏移
         const tmpStat = await fsa.statOrNull(savePath + '.tmp');
         resumeOffset = tmpStat ? tmpStat.size : 0;

@@ -14,6 +14,7 @@ import {
   toggleGroupCollapsed, nextPlatformFilter,
 } from '../queueGroup.js';
 import { failureTagHtml, isAuthFailure } from '../diagnose.js';
+import { netFailedTasks } from '../netRecovery.js';
 
 // ── DOM 缓存 ──────────────────────────────────────────
 const _dlDom = {
@@ -145,6 +146,8 @@ async function batchRemoveDl() {
  */
 function renderQueue(queue) {
   if (!_dlDom.queueList || !_dlDom.queueBadge) return;
+  // 断网横幅的等待条数跟着队列快照走（复网续跑后红条变排队，数字得跟着降下去）
+  refreshNetBanner();
   const el = _dlDom.queueList;
   const badge = _dlDom.queueBadge;
   const active = queue.filter(s => s.status !== 'done');
@@ -502,6 +505,42 @@ async function toggleQueuePause() {
     showToast(t('toast.dlPauseToggleFailed', { msg: errBrief(e) }), 'error', 3000);
   }
 }
+
+// ── 网络状态：断网横幅 + 复网自动续跑（增量219）────────────
+// 引擎给断网/超时的失败回了码（NETWORK_ERROR / NETWORK_TIMEOUT），这一页才第一次问得出
+// 「哪些红条是在等网络的」。断网时说出来，复网时替用户把它们重新排队 —— 那几行不必
+// 再一条条手点。非网络类失败（需 VIP / 版权受限 / 磁盘满）一条都不碰：再跑一遍还是同样失败。
+function refreshNetBanner() {
+  const el = document.getElementById('netBanner');
+  if (!el) return;
+  const offline = navigator.onLine === false;
+  const waiting = offline ? netFailedTasks(getState('queueSnapshot') || []).length : 0;
+  if (!offline) { el.hidden = true; return; }
+  el.textContent = waiting > 0 ? t('download.netWaiting', { count: waiting }) : t('download.netOffline');
+  el.hidden = false;
+}
+
+async function _requeueNetFailures() {
+  const rows = netFailedTasks(getState('queueSnapshot') || []);
+  let ok = 0;
+  for (const s of rows) {
+    try {
+      const r = await api.retryDownload(s.taskId);
+      if (r && r.ok) ok++;
+    } catch (e) {
+      logger.warn('[netRequeue] 重试失败:', s.taskId, errBrief(e));
+    }
+  }
+  if (ok > 0) showToast(t('toast.netRequeued', { count: ok }), 'info', 3500);
+}
+
+window.addEventListener('offline', () => refreshNetBanner());
+window.addEventListener('online', () => {
+  refreshNetBanner();
+  // 用户按着暂停时别替他决定：复网自动续跑让位给手工「继续」
+  if (!_queuePaused) _requeueNetFailures();
+});
+refreshNetBanner();
 
 async function clearFinishedDownloads() {
   try {

@@ -77,6 +77,15 @@
 .dl-sel-count { font-size: 12.5px; color: var(--neon-blue); white-space: nowrap; }
 .dl-sel-count b { color: var(--neon-blue); font-weight: 700; }
 
+/* ── 下载页断网横幅（增量219）────────────────────────── */
+.net-banner {
+  flex-shrink: 0;
+  padding: 7px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+  color: var(--neon-yellow); border: 1px solid var(--neon-yellow);
+  background: rgba(255, 214, 10, .08);
+  animation: slide-up .15s ease;
+}
+
 /* 队列项选择模式 */
 .queue-item-cb {
   display: flex; align-items: center; justify-content: center;

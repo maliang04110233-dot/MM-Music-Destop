@@ -39,6 +39,9 @@ const speedMeter = require('./speedMeter');
 const diskSpace = require('./diskSpace');
 const { atomicWriteJson, safeReadJson } = require('../utils/atomicFile');
 const { sidecarPathFor } = require('../utils/relinkRefs');
+// 传输失败的判据与码表家在 src/shared/netClass.js（增量219）：这里只是消费方，
+// 本地不再抄一份"什么算网络问题"——那份在更新器和传输层各有一份，三份必然漂。
+const { transportCode } = require('../shared/netClass');
 
 /** done 任务保留上限：超出的最旧记录淘汰，防止 queue.json 长期使用无限增长 */
 const MAX_DONE_RETAINED = 200;
@@ -510,6 +513,15 @@ function createDownloadQueueEngine({
         // 观察到终态时可能尚未落盘；且防抖窗口内崩溃会丢取消终态）
         notifyQueueChanged(true);
         return;
+      }
+      // 增量219：传输层失败（断网/超时）在这里补上码。改造前 errorCode 只有
+      // 「取流返回 fatal」那一条路会写，于是断网跑完的任务是个无码红条 —— 队列与
+      // 历史都不戴徽标（徽标只认码）、诊断只会说「未分类的失败」、渲染层也无从知道
+      // 「这些红条是在等网络恢复」。码补齐后这三件事同时成立。
+      // 取流层已写好的码更准（VIP/登录/无流），不被传输层的判断覆盖。
+      if (!song.errorCode) {
+        const netCode = transportCode(lastError);
+        if (netCode) song.errorCode = netCode;
       }
       // 写历史：失败
       try {

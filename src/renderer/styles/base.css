@@ -52,6 +52,13 @@
   --neon-green:      #34d399;
   --neon-text:       #ecedef;
   --neon-dim:        rgba(236,237,239,0.55);
+  /* 语义三原色（增量219 补齐）：诊断徽标、本地音质徽标、下载页按钮一共引用十几处，
+     此前只被引用、从未定义 —— CSS 变量解析失败是静默的，color 掉回正文字色，
+     于是「需VIP」「断网」「接口变更」全挤成同一枚灰色，颜色编码形同不存在。
+     这里指向各主题自己的基色，换主题自动跟随。 */
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
 
   /* ══ 设计刻度 ══════════════════════════════════════════════════
      刻度跨主题不变，只有色值随主题走。 */
@@ -144,6 +151,9 @@
   --neon-green:      #059669;
   --neon-text:       #14161a;
   --neon-dim:        rgba(20,22,26,0.55);
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
   --on-accent:       #ffffff;
 }
 
@@ -175,6 +185,9 @@
   --neon-green:      #00ff88;
   --neon-text:       #e0e0e0;
   --neon-dim:        rgba(224,224,224,0.5);
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
 }
 
 /* ── Aurora 极光主题 ───────────────────────────── */
@@ -205,6 +218,9 @@
   --neon-green:      #06d6a0;
   --neon-text:       #e0e1dd;
   --neon-dim:        rgba(224,225,221,0.5);
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
 }
 
 /* ── Sunset 日落主题 ────────────────────────────── */
@@ -235,6 +251,9 @@
   --neon-green:      #98d8a0;
   --neon-text:       #ffe4e1;
   --neon-dim:        rgba(255,228,225,0.5);
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
 }
 
 /* ── Forest 森林主题 ───────────────────────────── */
@@ -265,6 +284,9 @@
   --neon-green:      #32cd32;
   --neon-text:       #e8f5e8;
   --neon-dim:        rgba(232,245,232,0.5);
+  --neon-red:        var(--red);
+  --neon-orange:     var(--orange);
+  --neon-yellow:     var(--gold);
 }
 
 /* ══════════════════════════════════════════════════════════════════
