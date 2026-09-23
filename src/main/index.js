@@ -2,6 +2,7 @@ const { app, BrowserWindow, session, Menu, Tray, nativeImage, Notification, glob
 const { handle: ipcHandle, on: ipcOn, assertContractCoverage } = require('./ipc/register');
 const { buildContractArg } = require('../shared/ipcContract');
 const { defaultDownloadDir } = require('../shared/downloadDefaults');
+const { readBindings } = require('../shared/accelerators');
 const path = require('path');
 const { setCookieStore } = require('../api');
 const logger = require('../utils/logger');
@@ -248,6 +249,17 @@ function createWindow() {
 }
 
 // ─── 系统托盘 ──────────────────────────────────────────
+/** 可见则收起、不可见则唤出并抢焦点。托盘点击与「显示/隐藏窗口」全局键共用这一处。 */
+function toggleMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, '../../assets/icon.png');
   let trayIcon;
@@ -270,14 +282,7 @@ function createTray() {
   updateTrayMenu();
 
   tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }
+    toggleMainWindow();
   });
 
   tray.on('balloon-click', () => {
@@ -376,33 +381,36 @@ function updateTrayMenu(playState = { isPlaying: false, title: '', artist: '' })
 // 导出供其他模块调用
 module.exports = { updateTrayMenu };
 
-// ── 全局快捷键（系统媒体键）──────────────────────────
-// 复用托盘的 tray-* 通道：渲染层已有对应监听（togglePlay/prevSong/nextSong），
-// 不新增 IPC。prefs.globalShortcuts 开关（默认开），设置页实时切换。
+// ── 全局快捷键（可自定义）─────────────────────────────
+// 动作清单、accelerator 白名单、默认值与「一键一动作」的去重规则全在
+// src/shared/accelerators.js（设置页与主进程同源，由 test/global-shortcuts.test.js 对账）。
+// 通道沿用托盘那几条：渲染层已有 tray-* 监听，不新增 IPC。
+// prefs.globalShortcuts 是总开关（默认开），四个 shortcut* 键是每枚动作的绑法。
 function sendToMainWindow(channel) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel);
   }
 }
 
+function runShortcutAction(binding) {
+  if (binding.channel) sendToMainWindow(binding.channel);
+  else toggleMainWindow();
+}
+
 function registerGlobalShortcuts() {
   if (prefs.get('globalShortcuts') === false) return; // 默认开
-  const accels = [
-    ['MediaPlayPause', 'tray-toggle-play'],
-    ['MediaNextTrack', 'tray-next'],
-    ['MediaPreviousTrack', 'tray-prev'],
-    ['MediaStop', 'tray-toggle-play'],
-  ];
+  const bindings = readBindings((key) => prefs.get(key));
   let registered = 0;
-  for (const [accel, channel] of accels) {
+  for (const binding of bindings) {
     try {
-      // MediaStop 也映射到暂停：多数键盘只有这四个键，停止语义≈暂停
-      if (globalShortcut.register(accel, () => sendToMainWindow(channel))) registered++;
+      // 注册失败（键已被系统或其它应用抢走）时 Electron 只回 false，不抛
+      if (globalShortcut.register(binding.accelerator, () => runShortcutAction(binding))) registered++;
+      else logger.warn(`[shortcuts] ${binding.accelerator} 注册失败（可能已被系统或其它应用占用）`);
     } catch (e) {
-      logger.warn(`[shortcuts] 注册 ${accel} 失败:`, e.message);
+      logger.warn(`[shortcuts] 注册 ${binding.accelerator} 失败:`, e.message);
     }
   }
-  if (registered > 0) logger.log(`[shortcuts] 全局媒体键已注册 ${registered}/${accels.length}`);
+  if (registered > 0) logger.log(`[shortcuts] 全局快捷键已注册 ${registered}/${bindings.length}`);
 }
 
 function unregisterGlobalShortcuts() {

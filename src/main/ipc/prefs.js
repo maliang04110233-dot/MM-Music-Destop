@@ -39,6 +39,9 @@ const ALLOWED_PREF_KEYS = new Set([
   // 播放行为
   'lyricFontSize', 'lyricOffset', 'playProgressMemory', 'playerVolume',
   'playbackRate', 'globalShortcuts',
+  // 四枚全局动作各自的 accelerator（主进程 registerGlobalShortcuts 读；
+  // 候选白名单与默认值的家在 src/shared/accelerators.js）
+  'shortcutPlayPause', 'shortcutPrev', 'shortcutNext', 'shortcutShowHide',
   // 播放淡入/淡出档位（ms，player/fade.js 读写）
   'fadeInMs', 'fadeOutMs',
   // 歌词区显隐与逐曲偏移覆盖（player/lyrics.js 读写）

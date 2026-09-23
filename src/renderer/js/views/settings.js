@@ -504,6 +504,12 @@ const GENERAL_PREFS = {
   subscriptionCheckIntervalHours: { key: 'subscriptionCheckIntervalHours', default: 6, el: 'settingSubCheckInterval' },
   playProgressMemory: { key: 'playProgressMemory', default: true, el: 'settingPlayProgressMemory' },
   globalShortcuts: { key: 'globalShortcuts', default: true, el: 'settingGlobalShortcuts' },
+  // 四个动作各自的 accelerator（候选与出厂值的家在 src/shared/accelerators.js，
+  // test/global-shortcuts.test.js 逐字钉住这三侧不许漂）
+  shortcutPlayPause: { key: 'shortcutPlayPause', default: 'MediaPlayPause', el: 'settingShortcutPlayPause' },
+  shortcutPrev: { key: 'shortcutPrev', default: 'MediaPreviousTrack', el: 'settingShortcutPrev' },
+  shortcutNext: { key: 'shortcutNext', default: 'MediaNextTrack', el: 'settingShortcutNext' },
+  shortcutShowHide: { key: 'shortcutShowHide', default: '', el: 'settingShortcutShowHide' },
   theme:         { key: 'theme',         default: 'default',     el: 'settingTheme' },
   // 语言必须在表里：这张表同时是「打开设置页回填什么」与「恢复默认清什么」的唯一答案，
   // 不在表里就等于它不是个设置（曾经的真实症状：界面已是 English，下拉仍显示中文）
@@ -733,6 +739,27 @@ function selectTheme(value) {
   syncThemeCards(value);
 }
 
+// 改了这五把键里的任何一把，主进程都要重新注册一遍。判据之家在
+// src/shared/accelerators.js，这里只负责「哪些 pref 算快捷键设置」。
+const SHORTCUT_PREF_KEYS = new Set([
+  'globalShortcuts', 'shortcutPlayPause', 'shortcutPrev', 'shortcutNext', 'shortcutShowHide',
+]);
+
+function isShortcutPref(key) {
+  return SHORTCUT_PREF_KEYS.has(key);
+}
+
+/** 唯一的重注册出口：注销旧的、按当前 prefs 注册新的，总开关一并带上 */
+function reapplyGlobalShortcuts() {
+  const master = document.getElementById('settingGlobalShortcuts');
+  const enabled = master ? !!master.checked : true;
+  try {
+    api.setGlobalShortcuts(enabled);
+  } catch (e) {
+    logger.error('全局快捷键更新失败:', e);
+  }
+}
+
 function setupGeneralSettingListeners() {
   for (const cfg of Object.values(GENERAL_PREFS)) {
     const el = document.getElementById(cfg.el);
@@ -753,9 +780,10 @@ function setupGeneralSettingListeners() {
       if (cfg.key === 'theme') {
         applyTheme(val);
       }
-      // 全局媒体键：prefs 写入外还要实时通知主进程注册/注销
-      if (cfg.key === 'globalShortcuts') {
-        try { if (typeof api.setGlobalShortcuts === 'function') api.setGlobalShortcuts(!!val); } catch (_e) { /* 下次启动仍会按 prefs 生效 */ }
+      // 全局快捷键：prefs 写入外还要实时通知主进程重注册（总开关关掉即注销，
+      // 四个绑法任何一个改动都走同一个出口，不各写一遍 setGlobalShortcuts）
+      if (isShortcutPref(cfg.key)) {
+        reapplyGlobalShortcuts();
       }
     });
     // 命名模板走 input 事件实时预览：change 只在失焦时触发，敲字时看不出效果
@@ -1014,6 +1042,11 @@ async function resetAllSettings() {
     }
     // 刷新 UI
     await loadGeneralSettings();
+    // 全局快捷键同样要重注册，否则改完默认值后系统里仍压着旧绑法（直到重启才对上）。
+    // 这里借道 change 事件而不是直接调 reapplyGlobalShortcuts()：重注册出口只许一个，
+    // 多开一处就等于给了两份注册顺序（同主题卡片 selectTheme 的写法）。
+    const shortcutMaster = document.getElementById('settingGlobalShortcuts');
+    if (shortcutMaster) shortcutMaster.dispatchEvent(new Event('change'));
     applyTheme('default');
     // 语言与主题同病：清完 pref 不重新换字典，界面还是原来那门语言（恢复默认=半兑现）
     if (window.i18n) await window.i18n.setLanguage(GENERAL_PREFS.language.default);
