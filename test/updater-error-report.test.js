@@ -164,6 +164,19 @@ test('守卫：updater.js 接了 updateError，且不再自带第二份文案函
     '文案函数只能住在 updateError.js，两处各一份必然漂移');
 });
 
+// 增量216 之后，"把 mirrorTried 传给文案函数"这件事收进了 manualFailureInfo 一处
+// （三条出口还要各自带上 manualUrl，各写一遍 opts 必然漂移）。这里钉的是同一条
+// 纪律的当前形态：文案派生只有一个调用点，两个事实参数都在那里传。
+test('守卫：文案派生只有一个调用点，mirrorTried 与 manualAvailable 都在那里传', () => {
+  const src = readUpd();
+  assert.ok(src.includes('mirrorTried: _mirrorTried'),
+    '措辞必须跟着"这轮是否真试过镜像"的事实走');
+  assert.ok(src.includes('manualAvailable: !!manualUrl'),
+    '措辞也必须跟着"下载页按钮到底在不在"的事实走');
+  assert.strictEqual((src.match(/describeUpdateError\(/g) || []).length, 1,
+    '文案派生只许一个调用点，第二份判据必然漂移');
+});
+
 test('守卫：error 监听必须经过 shouldReportEventError 判定', () => {
   const src = readUpd();
   const start = src.indexOf("autoUpdater.on('error'");

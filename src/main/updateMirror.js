@@ -35,6 +35,21 @@ function buildMirrorFeeds(feed, prefixes = MIRROR_PREFIXES) {
   }));
 }
 
+/**
+ * 手动下载入口：Releases 页地址。
+ *
+ * 与镜像 feed 同源（都派生自 app-update.yml 的 owner/repo）——这是它的存在前提：
+ * updater.js 顶部整段注释讲的就是"第二处硬编码仓库名"怎么把真源劈成两半、
+ * 让每次检查更新先吃一个改名 301。所以这里只**拼**地址，绝不**写**地址。
+ *
+ * 用 /releases/latest 而不是 /releases：自动更新失败时用户要的是"最新版"，
+ * 不必自己在列表里挑；也避开我们自己维护 tag 名。
+ */
+function buildReleasesPageUrl(feed) {
+  if (!feed || !feed.owner || !feed.repo) return null;
+  return `https://github.com/${feed.owner}/${feed.repo}/releases/latest`;
+}
+
 function readAppUpdateYml() {
   try {
     return fs.readFileSync(path.join(process.resourcesPath, 'app-update.yml'), 'utf8');
@@ -48,6 +63,11 @@ function getMirrorFeeds() {
   return buildMirrorFeeds(parseGithubFeed(readAppUpdateYml()));
 }
 
+/** 同上：拿不到 feed（开发环境）就返回 null —— 手动下载按钮自然不出现 */
+function getReleasesPageUrl() {
+  return buildReleasesPageUrl(parseGithubFeed(readAppUpdateYml()));
+}
+
 function useMirrorFeed(autoUpdater, feed) {
   autoUpdater.channel = 'latest';
   // 镜像对多 range 差分请求的支持不可靠，兜底路径一律全量下载
@@ -59,7 +79,9 @@ module.exports = {
   MIRROR_PREFIXES,
   parseGithubFeed,
   buildMirrorFeeds,
+  buildReleasesPageUrl,
   readAppUpdateYml,
   getMirrorFeeds,
+  getReleasesPageUrl,
   useMirrorFeed,
 };

@@ -12,8 +12,8 @@ const { autoUpdater } = require('electron-updater');
 const { handle } = require('./ipc/register');
 const logger = require('../utils/logger');
 const { withRetry } = require('../utils/retry');
-const { getMirrorFeeds, useMirrorFeed } = require('./updateMirror');
-const { describeUpdateError, shouldReportEventError } = require('./updateError');
+const { getMirrorFeeds, useMirrorFeed, getReleasesPageUrl } = require('./updateMirror');
+const { describeUpdateError, shouldReportEventError, isNetworkFailure } = require('./updateError');
 
 // ── 配置 ──────────────────────────────────────────────
 // 更新源固定为本仓库 GitHub Releases，但**不在这里写 URL**。
@@ -112,14 +112,32 @@ let _flowInFlight = false;
 // 本轮是否真的试过镜像源：措辞要跟着事实走，否则「已自动重试多次」变成假话
 let _mirrorTried = false;
 
+/**
+ * 失败出口的唯一派生点：文案 + 手动下载入口。
+ *
+ * 三条出口（事件弹窗、检查返回值、下载返回值）各自判一次"该不该给按钮"必然漂移，
+ * 所以判据只写在这一个函数里。URL 派生自 app-update.yml（见 updateMirror.js），
+ * 拿不到就不给 —— 那时文案自动退回"或到 GitHub Releases 页面手动下载"，
+ * 而不是指向一个不存在的按钮。
+ */
+function manualFailureInfo(err) {
+  const manualUrl = isNetworkFailure(err) ? getReleasesPageUrl() : null;
+  return {
+    manualUrl,
+    message: describeUpdateError(err, {
+      mirrorTried: _mirrorTried,
+      manualAvailable: !!manualUrl,
+    }),
+  };
+}
+
 autoUpdater.on('error', (err) => {
   logger.warn('[Updater] Error:', err.message);
   if (!shouldReportEventError({ userInitiated: _userInitiated, flowInFlight: _flowInFlight })) return;
   const { BrowserWindow } = require('electron');
+  const info = manualFailureInfo(err);
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('update-error', {
-      message: describeUpdateError(err, { mirrorTried: _mirrorTried }),
-    });
+    win.webContents.send('update-error', info);
   }
 });
 
@@ -158,7 +176,8 @@ handle('check-for-update', async () => {
   } catch (err) {
     // 最终结论只从这里出（渲染层措辞「检查失败：」）——事件路径在流程在飞时
     // 被 shouldReportEventError 压掉，就是为了不让第 1 次尝试的失败抢跑这里。
-    return { success: false, error: describeUpdateError(err, { mirrorTried: _mirrorTried }) };
+    const info = manualFailureInfo(err);
+    return { success: false, error: info.message, manualUrl: info.manualUrl };
   } finally {
     _userInitiated = false;
     _flowInFlight = false;
@@ -183,7 +202,8 @@ handle('download-update', async () => {
     }
     return { success: true };
   } catch (err) {
-    return { success: false, error: describeUpdateError(err, { mirrorTried: _mirrorTried }) };
+    const info = manualFailureInfo(err);
+    return { success: false, error: info.message, manualUrl: info.manualUrl };
   } finally {
     _flowInFlight = false;
   }

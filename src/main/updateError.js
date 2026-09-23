@@ -39,6 +39,30 @@ function messageOf(err) {
 }
 
 /**
+ * 这条失败是不是"网络类"——即弹层该不该给用户一个「打开下载页」按钮。
+ *
+ * 判据与上面两支正则严格同源（不是另起一张表）：正因为这两类的文案本来就写着
+ * "或到 GitHub Releases 页面手动下载"，它们才是该给按钮的；非网络错误
+ * （"Please check update first" 之类）给个下载页按钮是把人往错方向支。
+ */
+function isNetworkFailure(err) {
+  const msg = messageOf(err);
+  if (!msg) return false;
+  return TLS_ERROR.test(msg) || TRANSPORT_ERROR.test(msg);
+}
+
+/**
+ * 手动下载那句话说的是"按钮"还是"你自己去找页面"，取决于按钮在不在。
+ * 有按钮还写着「或到 GitHub Releases 页面手动下载」，等于让用户去猜哪条路可行；
+ * 没按钮（开发环境 / yml 解析不出来）却提按钮，就是假话——与 mirrorTried 同一条纪律。
+ */
+function manualDownloadHint(opts) {
+  return opts.manualAvailable
+    ? '，或点下方「打开下载页」按钮手动下载最新版本'
+    : '，或到 GitHub Releases 页面手动下载最新版本';
+}
+
+/**
  * 把裸的网络错误翻译成用户能行动的一句话。
  *
  * @param {Error|string|null} err
@@ -50,14 +74,13 @@ function describeUpdateError(err, opts = {}) {
   const msg = messageOf(err);
   if (TLS_ERROR.test(msg)) {
     return '更新连接被证书校验挡住（常见于代理、VPN 或安全软件拦截），' +
-      '请检查这类网络中间件后再试，或到 GitHub Releases 页面手动下载最新版本';
+      '请检查这类网络中间件后再试' + manualDownloadHint(opts);
   }
   if (TRANSPORT_ERROR.test(msg)) {
     const scope = opts.mirrorTried
       ? 'GitHub 直连与镜像源均已试过'
       : '已自动重试多次';
-    return `网络连不上更新服务器（${scope}），请稍后再试，` +
-      '或到 GitHub Releases 页面手动下载最新版本';
+    return `网络连不上更新服务器（${scope}），请稍后再试` + manualDownloadHint(opts);
   }
   return msg;
 }
@@ -81,5 +104,6 @@ module.exports = {
   TRANSPORT_ERROR,
   TLS_ERROR,
   describeUpdateError,
+  isNetworkFailure,
   shouldReportEventError,
 };

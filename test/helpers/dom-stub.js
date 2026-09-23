@@ -8,7 +8,7 @@
  * welcome/confirm 的键盘与点击契约测试一律从这里取。
  *
  * 承诺面 = 被测代码真正用到的 DOM 子集，多一个都不给：
- * ① innerHTML 赋值解析出 <button>/<input>/<div> 子元素（class/id/文本），序=模板序；
+ * ① innerHTML 赋值解析出 <button>/<input>/<div> 子元素（class/id/data 属性/文本），序=模板序；
  * ② click 沿 parent 链冒泡（委托型宿主因此能收到钮点击）；
  * ③ querySelectorAll('button') 递归收后代（焦点陷阱的寻焦面）；
  * ④ document 监听分 capture/bubble 两队列，removeEventListener 按 (type,fn,capture) 摘除；
@@ -114,9 +114,12 @@ function stubEl(tag, doc) {
         const b = stubEl('button', doc);
         const cm = m[1].match(/class="([^"]*)"/);
         b.className = cm ? cm[1] : '';
-        for (const attr of ['data-welcome', 'id']) {
-          const am = m[1].match(new RegExp(attr + '="([^"]*)"'));
-          if (am) { b.attrs[attr] = am[1]; if (attr === 'id') doc._ids[am[1]] = b; }
+        // 任意 data-* 都收（增量216：委托认领钮靠的是 data-update-manual）。
+        // 原先硬抄 ['data-welcome']，第二个被委托的模块一进来就得再改一次桩——
+        // 口径同 193 的"手抄清单必漏"，属性面也一样。
+        for (const am of m[1].matchAll(/(data-[\w-]+|id)="([^"]*)"/g)) {
+          b.attrs[am[1]] = am[2];
+          if (am[1] === 'id') doc._ids[am[2]] = b;
         }
         b.textContent = m[2].trim();
         b.parent = this;

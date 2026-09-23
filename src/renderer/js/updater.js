@@ -3,8 +3,33 @@
  * 监听主进程更新事件，显示更新提示弹窗
  */
 import { errBrief } from './errBrief.js';
+import { buildUpdateFailure } from './updateManual.js';
 
 const _updateState = { checking: false, available: false, downloading: false, percent: 0 };
+
+// 本轮失败弹层交回来的手动下载地址（增量216）。它**只**活在这里，绝不进 HTML ——
+// 按钮上只有一颗无值标记，点击时由委托从这里取，注入面因此不存在而非"被转义了"。
+let _manualUrl = null;
+
+// 三处失败出口（检查返回值 / 下载返回值 / 事件）共用：内容交给纯函数，URL 交给模块变量
+function showFailure(label, message, manualUrl) {
+  const r = buildUpdateFailure({ label, message, manualUrl });
+  _manualUrl = r.manualUrl;
+  showUpdate(r.html);
+}
+
+// 点击委托（宿主 = 弹层内容元素）：钮上只有无值标记，地址从模块变量取。
+// 同一函数引用重复注册幂等，故直接挂在 showUpdate 每次拿到的宿主上。
+function onToastClick(ev) {
+  const t = ev.target;
+  if (!t || typeof t.getAttribute !== 'function') return;
+  if (t.getAttribute('data-update-manual') === null) return;
+  if (!_manualUrl) return;
+  // 走契约生成的 openExternal（主进程只放行 http/https），零新通道
+  if (window.musicAPI && window.musicAPI.openExternal) {
+    window.musicAPI.openExternal(_manualUrl);
+  }
+}
 
 // 保留转发：更新流程需要 toast 但本模块不直接依赖 toast.js
 function showToast(message, type = 'info') {
@@ -51,7 +76,12 @@ function showUpdate(contentHtml) {
     toast = createUpdateToast();
   }
   const contentEl = toast.querySelector('#update-toast-content');
-  if (contentEl) contentEl.innerHTML = contentHtml;
+  if (contentEl) {
+    contentEl.innerHTML = contentHtml;
+    // 手动下载钮走点击委托（同一函数引用，重复注册幂等）：按钮模板里没有地址，
+    // 点击时才从 _manualUrl 取
+    contentEl.addEventListener('click', onToastClick);
+  }
   toast.style.display = 'block';
 }
 
@@ -81,10 +111,10 @@ async function checkForUpdate() {
       result = { success: false, error: '更新模块不可用' };
     }
     if (!result.success) {
-      showUpdate(`<div style="color:var(--neon-orange);">检查失败：${result.error || '未知错误'}</div>`);
+      showFailure('检查失败', result.error || '未知错误', result.manualUrl);
     }
   } catch (err) {
-    showUpdate(`<div style="color:var(--neon-orange);">检查失败：${errBrief(err)}</div>`);
+    showFailure('检查失败', errBrief(err), null);
   }
   _updateState.checking = false;
 }
@@ -115,11 +145,11 @@ async function downloadUpdate() {
     }
     if (result && result.success === false) {
       _updateState.downloading = false;
-      showUpdate(`<div style="color:var(--neon-orange);">下载失败：${result.error || '未知错误'}</div>`);
+      showFailure('下载失败', result.error || '未知错误', result.manualUrl);
     }
   } catch (err) {
     _updateState.downloading = false;
-    showUpdate(`<div style="color:var(--neon-orange);">下载失败：${errBrief(err)}</div>`);
+    showFailure('下载失败', errBrief(err), null);
   }
 }
 
@@ -181,8 +211,8 @@ function handleUpdateDownloaded(version) {
   `);
 }
 
-function handleUpdateError(message) {
-  showUpdate(`<div style="color:var(--neon-orange);">更新失败：${esc(message)}</div>`);
+function handleUpdateError(message, manualUrl) {
+  showFailure('更新失败', message, manualUrl);
 }
 
 window.downloadUpdate = downloadUpdate;
@@ -207,7 +237,7 @@ if (window.ipcRenderer) {
     handleUpdateDownloaded(info.version);
   });
   window.ipcRenderer.on('update-error', (info) => {
-    handleUpdateError(info.message);
+    handleUpdateError(info.message, info.manualUrl);
   });
 }
 
