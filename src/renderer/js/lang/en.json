@@ -397,5 +397,22 @@
   "toast.dlNoFilePath": "No file path found",
   "toast.dlNoTasks": "There are no download tasks",
   "toast.dlNoCompleted": "No finished songs to export",
-  "toast.dlExported": "✅ Exported {count} songs"
+  "toast.dlExported": "✅ Exported {count} songs",
+  "toast.subAlready": "Already subscribed",
+  "toast.subDone": "Subscribed: {name}",
+  "toast.subFailed": "Failed to subscribe",
+  "toast.subFailedDetail": "Failed to subscribe: {msg}",
+  "toast.unsubscribed": "Unsubscribed",
+  "toast.unsubscribeFailed": "Failed to unsubscribe",
+  "toast.autoDownloadOn": "Auto-download is on. New songs go straight into the download queue",
+  "toast.subCheckFound": "Check complete, {count} new songs",
+  "toast.subCheckNone": "Check complete, no new songs",
+  "toast.subCheckFailed": "Check failed: {msg}",
+  "toast.subSongGone": "This song is no longer in the new-song list. Refresh and try again",
+  "toast.enqueueFailed": "Failed to add to the download queue",
+  "toast.enqueueFailedDetail": "Failed to add to the download queue: {msg}",
+  "toast.playlistMissing": "Playlist info is missing",
+  "toast.subPlaylistAlready": "You are already subscribed to this playlist",
+  "toast.singerMissing": "Artist info is missing",
+  "toast.subSingerAlready": "You are already subscribed to this artist"
 }

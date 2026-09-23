@@ -397,5 +397,22 @@
   "toast.dlNoFilePath": "未找到文件路径",
   "toast.dlNoTasks": "当前没有下载任务",
   "toast.dlNoCompleted": "没有已完成的歌曲可导出",
-  "toast.dlExported": "✅ 已导出 {count} 首歌曲"
+  "toast.dlExported": "✅ 已导出 {count} 首歌曲",
+  "toast.subAlready": "已订阅过了",
+  "toast.subDone": "已订阅: {name}",
+  "toast.subFailed": "订阅失败",
+  "toast.subFailedDetail": "订阅失败: {msg}",
+  "toast.unsubscribed": "已退订",
+  "toast.unsubscribeFailed": "退订失败",
+  "toast.autoDownloadOn": "已开启自动下载：新歌将直接排入下载队列",
+  "toast.subCheckFound": "检查完成，发现 {count} 首新歌",
+  "toast.subCheckNone": "检查完成，暂无新歌",
+  "toast.subCheckFailed": "检查失败: {msg}",
+  "toast.subSongGone": "该歌曲已不在新歌列表，请刷新后重试",
+  "toast.enqueueFailed": "加入下载队列失败",
+  "toast.enqueueFailedDetail": "加入下载队列失败: {msg}",
+  "toast.playlistMissing": "歌单信息缺失",
+  "toast.subPlaylistAlready": "已订阅该歌单",
+  "toast.singerMissing": "歌手信息缺失",
+  "toast.subSingerAlready": "已订阅该歌手"
 }

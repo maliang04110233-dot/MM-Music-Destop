@@ -10,6 +10,7 @@
  * 与 playlist.js 同风格：挂在 window 上供 HTML onclick / app.js 调用。
  */
 
+import { t } from '../i18n.js';
 import { errBrief } from '../errBrief.js';
 import { dlBadgeHtml, dlEnsureHistoryLoaded, addDlChangeListener } from '../dlStatus.js';
 import { subDlPayload, subDlPayloadList, subNewSongById, subActiveQueueDup } from '../subNewDl.js';
@@ -122,13 +123,13 @@ async function subscriptionAdd(type, platform, targetId, name) {
   try {
     const r = await api.subscribeAdd(type, platform, String(targetId), name || '');
     if (r && r.success) {
-      showToast(r.duplicated ? '已订阅过了' : `已订阅: ${name || targetId}`, 'success');
+      showToast(r.duplicated ? t('toast.subAlready') : t('toast.subDone', { name: name || targetId }), 'success');
       if (_subsLoaded) loadSubscriptions();
       return true;
     }
-    showToast((r && r.error) || '订阅失败', 'error');
+    showToast((r && r.error) || t('toast.subFailed'), 'error');
   } catch (e) {
-    showToast('订阅失败: ' + errBrief(e), 'error');
+    showToast(t('toast.subFailedDetail', { msg: errBrief(e) }), 'error');
   }
   return false;
 }
@@ -136,16 +137,16 @@ async function subscriptionAdd(type, platform, targetId, name) {
 async function subscriptionRemove(key) {
   const r = await api.subscribeRemove(key);
   if (r && r.success) {
-    showToast('已退订', 'info');
+    showToast(t('toast.unsubscribed'), 'info');
     loadSubscriptions();
   } else {
-    showToast((r && r.error) || '退订失败', 'error');
+    showToast((r && r.error) || t('toast.unsubscribeFailed'), 'error');
   }
 }
 
 async function subscriptionToggleAuto(key, on) {
   await api.subscribeUpdate(key, { autoDownload: !!on });
-  if (on) showToast('已开启自动下载：新歌将直接排入下载队列', 'info');
+  if (on) showToast(t('toast.autoDownloadOn'), 'info');
   loadSubscriptions();
 }
 
@@ -155,9 +156,11 @@ async function subscriptionCheckNow() {
   try {
     const r = await api.subscribeCheck();
     await loadSubscriptions();
-    showToast(r && r.newTotal ? `检查完成，发现 ${r.newTotal} 首新歌` : '检查完成，暂无新歌', 'success');
+    showToast(r && r.newTotal
+      ? t('toast.subCheckFound', { count: r.newTotal })
+      : t('toast.subCheckNone'), 'success');
   } catch (e) {
-    showToast('检查失败: ' + errBrief(e), 'error');
+    showToast(t('toast.subCheckFailed', { msg: errBrief(e) }), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '立即检查'; }
   }
@@ -175,9 +178,13 @@ async function subscriptionQueueNew(key) {
   const payload = { songs: subDlPayloadList(songs, getState('saveDir'), resolveQuality) };
   try {
     const r = await api.addPlaylistToQueue(payload);
-    showToast(`已加入 ${r.queued} 首${r.skippedDownloaded ? `，跳过 ${r.skippedDownloaded} 首已下载` : ''}`, 'success');
+    // 汇总串与 app.js 的批量入队出口同形：句子全在词典里，段间用语言中立的间隔号
+    showToast(t('toast.batchQueued', {
+      count: r.queued,
+      extra: r.skippedDownloaded ? ' · ' + t('toast.skippedDownloaded', { count: r.skippedDownloaded }) : '',
+    }), 'success');
   } catch (e) {
-    showToast('批量加入失败: ' + errBrief(e), 'error');
+    showToast(t('toast.batchAddFailed', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -186,25 +193,25 @@ async function subscriptionQueueNew(key) {
 async function subscriptionDownloadNew(key, songId) {
   const entry = _subList.find(e => e.key === key);
   const song = subNewSongById(entry && entry.newSongs, songId);
-  if (!song) { showToast('该歌曲已不在新歌列表，请刷新后重试', 'warn'); return; }
+  if (!song) { showToast(t('toast.subSongGone'), 'warn'); return; }
   const dup = subActiveQueueDup(getState('queueSnapshot'), song);
-  if (dup) { showToast(`「${song.title}」已在队列中`, 'warn', 2500); return; }
+  if (dup) { showToast(t('toast.queueDup', { title: song.title }), 'warn', 2500); return; }
   const payload = subDlPayload(song, getState('saveDir'), resolveQuality);
   try {
     const r = await api.addToQueue(payload);
-    if (r && r.duplicated) { showToast(`「${song.title}」已在下载队列中`, 'warn', 2500); return; }
+    if (r && r.duplicated) { showToast(t('toast.queueDup', { title: song.title }), 'warn', 2500); return; }
     if (r && r.alreadyDownloaded) {
       showRedownloadToast(song.title, r.finishedAt, () => {
         api.addToQueue({ ...payload, forceRedownload: true })
-          .then(() => showToast(`「${song.title}」已加入下载队列`, 'success'))
-          .catch(e => showToast('加入失败: ' + errBrief(e), 'error'));
+          .then(() => showToast(t('toast.queueAdded', { title: song.title }), 'success'))
+          .catch(e => showToast(t('toast.addFailed', { msg: errBrief(e) }), 'error'));
       });
       return;
     }
-    if (r && r.queued) showToast(`「${song.title}」已加入下载队列`, 'success');
-    else showToast((r && r.error) || '加入下载队列失败', 'error');
+    if (r && r.queued) showToast(t('toast.queueAdded', { title: song.title }), 'success');
+    else showToast((r && r.error) || t('toast.enqueueFailed'), 'error');
   } catch (e) {
-    showToast('加入下载队列失败: ' + errBrief(e), 'error');
+    showToast(t('toast.enqueueFailedDetail', { msg: errBrief(e) }), 'error');
   }
 }
 
@@ -218,9 +225,9 @@ function _isSubscribed(type, platform, targetId) {
 /** 弹层工具栏按钮：订阅当前打开的歌单（meta 由 openPlaylistModal 写入） */
 async function subscribeCurrentPlaylist() {
   const meta = state.getPlaylistMeta && state.getPlaylistMeta();
-  if (!meta || !meta.id) { showToast('歌单信息缺失', 'error'); return; }
+  if (!meta || !meta.id) { showToast(t('toast.playlistMissing'), 'error'); return; }
   if (_subsLoaded && _isSubscribed('playlist', meta.platform, meta.id)) {
-    showToast('已订阅该歌单', 'info');
+    showToast(t('toast.subPlaylistAlready'), 'info');
     return;
   }
   const ok = await subscriptionAdd('playlist', meta.platform, meta.id, meta.name);
@@ -233,10 +240,10 @@ async function subscribeCurrentPlaylist() {
 /** 歌手主页头部按钮：订阅当前歌手 */
 async function subscribeCurrentSinger() {
   const singer = state.get('currentSinger');
-  if (!singer || !singer.mid) { showToast('歌手信息缺失', 'error'); return; }
+  if (!singer || !singer.mid) { showToast(t('toast.singerMissing'), 'error'); return; }
   const name = document.querySelector('.singer-detail-name');
   if (_subsLoaded && _isSubscribed('singer', singer.source, singer.mid)) {
-    showToast('已订阅该歌手', 'info');
+    showToast(t('toast.subSingerAlready'), 'info');
     return;
   }
   await subscriptionAdd('singer', singer.source, singer.mid, name ? name.textContent.trim() : '');

@@ -292,6 +292,8 @@ const CONQUERED = [
   'src/renderer/js/views/download.js',
   // 增量211 按 LEDGER 收编的第三个视图文件（38 处 → 0）
   'src/renderer/js/views/ai-music.js',
+  // 增量217 按 LEDGER 收编的第四个视图文件（22 处 → 0）
+  'src/renderer/js/views/subscriptions.js',
 ];
 
 test('已收编文件的用户反馈文案零硬编码（本轮兑现的那一面）', () => {
@@ -354,6 +356,7 @@ const CONQUERED_VIEWS = [
   'src/renderer/js/views/settings.js',
   'src/renderer/js/views/download.js',
   'src/renderer/js/views/ai-music.js',
+  'src/renderer/js/views/subscriptions.js',
 ];
 
 test('已收编视图文件的取词走 i18n.js 的 t，且文件内没有名为 t 的局部遮蔽', () => {
@@ -467,7 +470,75 @@ const WIRING_203 = {
   'toast.unknownError': '未知错误',
 };
 
-for (const [table, name] of [[WIRING_194, '194'], [WIRING_203, '203']]) {
+/**
+ * 增量217（subscriptions.js 收编）的接线对账，家法同 WIRING_194 / 203。
+ *
+ * 复用一栏这次格外长（7 条），因为订阅页的"入队结果"本来就是全应用同一件事：
+ * 「已加入 N 首 + 跳过段」的家在 app.js（批量入队出口），逐首入队的家在
+ * toast.queueAdded / queueDup / addFailed。订阅页原本是各写一份中文的第三个消费方，
+ * 收编后它改成读那三家 —— 于是句子形状向多数对齐（见下面三条注），而不是再立同义键。
+ */
+const WIRING_217 = {
+  'toast.subAlready': '已订阅过了',
+  'toast.subDone': '已订阅: {name}',
+  'toast.subFailed': '订阅失败',
+  'toast.subFailedDetail': '订阅失败: {msg}',
+  'toast.unsubscribed': '已退订',
+  'toast.unsubscribeFailed': '退订失败',
+  'toast.autoDownloadOn': '已开启自动下载：新歌将直接排入下载队列',
+  'toast.subCheckFound': '检查完成，发现 {count} 首新歌',
+  'toast.subCheckNone': '检查完成，暂无新歌',
+  'toast.subCheckFailed': '检查失败: {msg}',
+  'toast.subSongGone': '该歌曲已不在新歌列表，请刷新后重试',
+  'toast.enqueueFailed': '加入下载队列失败',
+  'toast.enqueueFailedDetail': '加入下载队列失败: {msg}',
+  'toast.playlistMissing': '歌单信息缺失',
+  'toast.subPlaylistAlready': '已订阅该歌单',
+  'toast.singerMissing': '歌手信息缺失',
+  'toast.subSingerAlready': '已订阅该歌手',
+  // 复用：入队结果那三家（app.js 早已按键读，订阅页是第二个/第三个消费方）
+  'toast.batchQueued': '已加入 {count} 首{extra}',
+  'toast.skippedDownloaded': '跳过 {count} 首已下载过',
+  'toast.batchAddFailed': '批量加入失败: {msg}',
+  'toast.queueAdded': '「{title}」已加入下载队列',
+  'toast.queueDup': '「{title}」已在下载队列中',
+  'toast.addFailed': '加入失败: {msg}',
+};
+
+/**
+ * 句子形状向多数对齐的那三条，逐条留字（改了用户看得见的标点/字，必须在钉上说话）：
+ *   ① 跳过段原先是「，跳过 N 首已下载」，词典里那句是「跳过 {count} 首已下载过」，
+ *      间隔号「 · 」是 app.js:1056 起全应用汇总串的既有分隔约定（语言中立，全角逗号不是）；
+ *   ② 逐首入队的本地预检原先是「已在队列中」，服务端回执那句是「已在下载队列中」——
+ *      同一件事的两句近义，收成一家；
+ *   ③ 批量加入失败那句与 toast.batchAddFailed 逐字相等，本来就该按键读。
+ */
+test('增量217 订阅页不再自造入队结果的第二套说法', () => {
+  const code = stripComments(read('src/renderer/js/views/subscriptions.js'));
+  const gone = [
+    ['已在队列中', '逐首入队预检应读 toast.queueDup（②）'],
+    ['，跳过 ', '跳过段应读 toast.skippedDownloaded（①）'],
+    ['批量加入失败: ', '批量失败应读 toast.batchAddFailed（③）'],
+  ];
+  const bad = gone.filter(([s]) => code.includes(s)).map(([, why]) => why);
+  assert.deepStrictEqual(bad, [], '订阅页里还留着自造的句子：\n  ' + bad.join('\n  '));
+});
+
+/**
+ * 对账表自身的完整性：表必须**恰好**覆盖订阅页读到的那些键。
+ *
+ * 为什么单独钉这一枚：WIRING_194 / 203 只保证"表里那几条的值没写错"，
+ * 不保证"文件里每条句子都在表里"—— 收编时漏抄一行，那一行就没有锚，
+ * 接错线照样一路绿灯（实测：把 'toast.enqueueFailed' 从表里删掉，前面所有钉都还绿）。
+ * 反向也钉：表里留着文件已经不读的键，说明表和代码脱钩了。
+ */
+test('增量217 的对账表与订阅页读到的键恰好一一对应（漏钉＝那条句子没锚，多钉＝表已脱钩）', () => {
+  const used = keysUsedIn('src/renderer/js/views/subscriptions.js').sort();
+  assert.deepStrictEqual(used, Object.keys(WIRING_217).sort(),
+    '订阅页按键读的句子与 WIRING_217 不等。实读=' + JSON.stringify(used));
+});
+
+for (const [table, name] of [[WIRING_194, '194'], [WIRING_203, '203'], [WIRING_217, '217']]) {
   test(`增量${name} 接线的词条值逐字对账（键与值的配对不许只靠写代码那一次的手感）`, () => {
     const bad = [];
     for (const k of Object.keys(table)) {
@@ -558,7 +629,6 @@ const LEDGER = {
   'src/renderer/js/views/nameBatch.js': 5,
   'src/renderer/js/views/playlist.js': 98,
   'src/renderer/js/views/search.js': 36,
-  'src/renderer/js/views/subscriptions.js': 22,
 };
 
 test('欠账台账与实际逐字相等（新增欠账要改表，还清欠账也要改表）', () => {
