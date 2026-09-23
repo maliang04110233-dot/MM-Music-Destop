@@ -147,27 +147,6 @@
 /* 窄态整块收起：否则 6 行文字被 64px 边框裁成竖排残字 */
 .sidebar:not(:hover) .platform-status-list { display: none; }
 
-/* 下载目录块（贴底）：窄态整体隐去 */
-.save-dir {
-  margin-top: auto; padding: 10px;
-  background: var(--elev-1); border-radius: var(--r-md);
-  border: 1px solid var(--stroke-1);
-  white-space: nowrap;
-  transition: opacity var(--dur-1) var(--ease);
-}
-.sidebar:not(:hover) .save-dir { opacity: 0; pointer-events: none; }
-.save-dir label {
-  font-size: 10px; color: var(--fg-3); display: block;
-  margin-bottom: 5px; text-transform: uppercase; letter-spacing: .8px;
-}
-.save-dir-path {
-  font-size: var(--fs-xs); color: var(--fg-2); word-break: break-all;
-  margin-bottom: 6px; line-height: 1.4;
-}
-
-/* 侧栏内的紧凑按钮（.btn-sm 主定义在 base.css，此处只做侧栏内的尺寸适配） */
-.sidebar .btn-sm { width: 100%; }
-
 /* ── 内容区（左侧留出图标轨宽度） ───────────────────── */
 .content {
   flex: 1; display: flex; flex-direction: row;

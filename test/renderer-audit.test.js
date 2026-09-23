@@ -472,7 +472,7 @@ test('接线钉：renderSection 成功路径必须清除 is-unavailable（否则
 
 test('侧边栏分组：四个分区标题按序就位（164 起「搜歌」收敛为单条目，不再需要段头）', () => {
   const html = read('index.html');
-  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="content">'));
   assert.ok(sb.length > 200, '侧边栏区块截取失败（锚点改名时同步本测试）');
   const titles = [...sb.matchAll(/class="sidebar-title"[^>]*>([^<]+)</g)].map(m => m[1].trim());
   assert.deepStrictEqual(titles, ['下载', '曲库', '工具', '操作'],
@@ -488,7 +488,7 @@ test('侧边栏分组：四个分区标题按序就位（164 起「搜歌」收�
 
 test('侧边栏条目：七个 data-tab 且「搜歌」是唯一发现/搜索入口（164 合并：search 条目退役，页面路由保留）', () => {
   const html = read('index.html');
-  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="content">'));
   const tabs = [...sb.matchAll(/data-tab="([^"]+)"/g)].map(m => m[1]);
   assert.deepStrictEqual(tabs, ['home', 'download', 'local', 'playlist', 'subscription', 'ai-music', 'converter'],
     '条目增删/换序会破坏 switchTab 兜底查询与 ⌘K/快捷键的 data-tab 反查 —— 164 只合并 home+search，余账不动');
@@ -519,7 +519,7 @@ test('侧边栏条目：七个 data-tab 且「搜歌」是唯一发现/搜索入
 
 test('侧边栏条目叫法统一：本地曲库 / 歌单（与首页统计、⌘K、快捷键浮层同一词汇）', () => {
   const html = read('index.html');
-  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="save-dir">'));
+  const sb = html.slice(html.indexOf('<div class="sidebar">'), html.indexOf('<div class="content">'));
   assert.ok(sb.includes('本地曲库'), '侧栏本地条目应与全站通用叫法「本地曲库」一致');
   assert.ok(!sb.includes('本地歌曲'), '「本地歌曲」是第二套叫法（首页统计标签/排序按钮/⌘K 都叫本地曲库），不许复活');
   assert.ok(!sb.includes('我的歌单'), '侧栏条目精简为「歌单」（页面内大标题保留「我的歌单」不在此段）');

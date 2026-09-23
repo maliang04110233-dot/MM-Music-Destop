@@ -239,6 +239,11 @@
   line-height: 1.6; opacity: .85;
 }
 .setting-hint--block { display: block; margin-top: var(--sp-2); }
+/* 设置项里显示的真实落点：宁可换行也不能省略号截断（用户就是要看清整串路径） */
+.setting-path {
+  font-size: var(--fs-sm); color: var(--neon-text);
+  word-break: break-all; line-height: 1.5; margin: var(--sp-2) 0;
+}
 .setting-inline-status { font-size: var(--fs-sm); color: var(--neon-dim); }
 
 /* ── 表单控件 ────────────────────────────────────────── */

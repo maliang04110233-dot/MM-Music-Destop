@@ -94,12 +94,6 @@
     <button class="nav-item" onclick="openSettings()">
       <span class="icon">⚙️</span> 设置 / Cookie
     </button>
-
-    <div class="save-dir">
-      <label data-i18n="sidebar.downloadDir">下载目录</label>
-      <div class="save-dir-path" id="saveDirText">加载中...</div>
-      <button class="btn-sm" onclick="changeSaveDir()" data-i18n="sidebar.changeDir">更改目录</button>
-    </div>
   </div>
 
   <!-- 内容区 -->
@@ -767,6 +761,13 @@
         <div class="settings-page hidden" id="settingsPageDownload">
           <div class="settings-section-title" data-i18n="settings.general.downloadTitle">下载</div>
           <div class="settings-card">
+            <div class="setting-row" style="display:block;">
+              <label class="setting-label" data-i18n="settings.general.downloadDir">下载目录</label>
+              <div class="setting-path" id="saveDirText">加载中...</div>
+              <button class="setting-btn" onclick="changeSaveDir()" data-i18n="settings.general.changeDir">更改目录</button>
+              <span class="setting-hint setting-hint--block" data-i18n="settings.general.downloadDirHint">之后下载的歌落在这里；换目录不会搬走已经下载好的文件</span>
+            </div>
+
             <div class="setting-row">
               <label class="setting-label" data-i18n="settings.general.defaultQuality">默认音质</label>
               <select class="setting-select" id="settingQuality">
