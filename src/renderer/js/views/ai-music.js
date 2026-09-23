@@ -25,7 +25,10 @@ const aiState = {
   advancedOpen: false,
   historyCache: null,
   musicPrompt: '', // AI 生成的详细音乐描述
-  voice: 'female',   // 演唱声线: female / male
+  voice: 'female',   // 人声偏好: female / male / choir（并进 prompt，不是独立字段）
+  instrumental: false, // 纯音乐：只要曲子，不写词也不唱
+  autoLyrics: false,   // 一句话直出：交给上游 lyrics_optimizer，本机不再要歌词
+  model: 'music-2.6',  // 生成模型
   activeVersion: 0,   // 当前选中版本索引
   generatedVersions: [], // [{label, lyrics}]
 };
@@ -57,32 +60,22 @@ const MOODS = [
   { v: 'nostalgic', l: '怀旧', i: '🌅' },
 ];
 
-// 热门歌手音色列表
-const TIMBRES = [
-  // 基础声线
-  { id: 'female', name: '甜美女声', emoji: '👩', tip: '默认女声', group: 'basic' },
-  { id: 'male', name: '磁性男声', emoji: '👨', tip: '默认男声', group: 'basic' },
-  // ── 热门男歌手 ──
-  { id: '周深', name: '周深', emoji: '🌟', tip: '空灵/多变声线', group: 'male' },
-  { id: '林俊杰', name: '林俊杰', emoji: '🎵', tip: '高音质感', group: 'male' },
-  { id: '周杰伦', name: '周杰伦', emoji: '🎹', tip: '独特咬字/节奏', group: 'male' },
-  { id: '陈奕迅', name: '陈奕迅', emoji: '🎙️', tip: '深情/叙事感', group: 'male' },
-  { id: '薛之谦', name: '薛之谦', emoji: '💔', tip: '情感浓郁', group: 'male' },
-  { id: '张杰', name: '张杰', emoji: '🔥', tip: '高音穿透力', group: 'male' },
-  { id: '华晨宇', name: '华晨宇', emoji: '✨', tip: '爆发力/创作型', group: 'male' },
-  { id: '毛不易', name: '毛不易', emoji: '🍃', tip: '温暖/治愈', group: 'male' },
-  { id: '汪峰', name: '汪峰', emoji: '🎸', tip: '摇滚/沧桑', group: 'male' },
-  { id: '刘欢', name: '刘欢', emoji: '🎼', tip: '大气/浑厚', group: 'male' },
-  { id: '李荣浩', name: '李荣浩', emoji: '🕶️', tip: '慵懒/蓝调', group: 'male' },
-  // ── 热门女歌手 ──
-  { id: '邓紫棋', name: '邓紫棋', emoji: '🎤', tip: '高音爆发/创作', group: 'female' },
-  { id: '王菲', name: '王菲', emoji: '🌙', tip: '空灵/清冷', group: 'female' },
-  { id: '孙燕姿', name: '孙燕姿', emoji: '☀️', tip: '治愈/温暖', group: 'female' },
-  { id: '张惠妹', name: '张惠妹', emoji: '🔥', tip: '浑厚/爆发力', group: 'female' },
-  { id: '那英', name: '那英', emoji: '🎤', tip: '磁性/实力派', group: 'female' },
-  { id: '蔡依林', name: '蔡依林', emoji: '💃', tip: '流行/多变', group: 'female' },
-  { id: '田馥甄', name: '田馥甄', emoji: '🌿', tip: '文艺/空灵', group: 'female' },
-  { id: '李玟', name: '李玟(Coco)', emoji: '🌺', tip: 'R&B/活力', group: 'female' },
+// 人声偏好。上游 music_generation 请求里没有音色字段（查 2026-09 官方
+// GenerateMusicReq：model/prompt/lyrics/stream/output_format/audio_setting/
+// aigc_watermark/lyrics_optimizer/is_instrumental/…），只能作为 prompt 的
+// 自然语言片段送进去。此前这里挂着 18 个真人歌手名当"音色"，那些值从未
+// 出过本机——明星名字冒充声线既骗用户也有肖像权风险，一律退场。
+const VOICES = [
+  { id: 'female', name: '女声', emoji: '👩', tip: '女声主唱' },
+  { id: 'male', name: '男声', emoji: '👨', tip: '男声主唱' },
+  { id: 'choir', name: '合唱', emoji: '👥', tip: '合唱人声' },
+];
+
+// 可上计费接口的模型；须与 src/api/ai-music.js 的 MUSIC_MODELS 白名单一致
+// （music-cover 是翻唱引擎，要先有参考音频，本增量未接，不要往这里加）
+const MUSIC_MODELS = [
+  { id: 'music-2.6', name: 'music-2.6（默认）' },
+  { id: 'music-3.0', name: 'music-3.0' },
 ];
 
 // ══════════════════════════════════════════════════════════
@@ -204,26 +197,31 @@ function renderSidebar() {
             <input type="range" class="ai-range" id="aiCreativity" min="0" max="100" value="80">
           </div>
           <div class="ai-field-row">
-            <label>演唱声线</label>
-            <div class="ai-voice-section">
-              <!-- 基础声线 -->
-              <div class="ai-voice-row">
-                ${TIMBRES.filter(timbre => timbre.group === 'basic').map(timbre => `
-                  <button class="ai-chip${aiState.voice === timbre.id ? ' active' : ''}"
-                    data-voice="${timbre.id}" onclick="selectAiVoice('${escQ(timbre.id)}',this)"
-                    title="${timbre.tip}">${timbre.emoji} ${timbre.name}</button>
-                `).join('')}
-              </div>
-              <!-- 热门歌手 -->
-              <div class="ai-voice-divider">🎤 热门歌手</div>
-              <div class="ai-voice-grid">
-                ${TIMBRES.filter(timbre => timbre.group !== 'basic').map(timbre => `
-                  <button class="ai-voice-chip${aiState.voice === timbre.id ? ' active' : ''}"
-                    data-voice="${timbre.id}" onclick="selectAiVoice('${escQ(timbre.id)}',this)"
-                    title="${timbre.tip}">${timbre.emoji} ${timbre.name}</button>
-                `).join('')}
-              </div>
+            <label>生成模式</label>
+            <div class="ai-voice-row">
+              <button class="ai-chip${aiState.instrumental ? ' active' : ''}" data-flag="instrumental"
+                onclick="toggleAiFlag('instrumental',this)"
+                title="只出曲子，不写词也不唱（可直接在主题里写「雨后钢琴独奏」这类描述）">🎹 纯音乐</button>
+              <button class="ai-chip${aiState.autoLyrics ? ' active' : ''}" data-flag="autoLyrics"
+                onclick="toggleAiFlag('autoLyrics',this)"
+                title="跳过本机写词，把主题一句话交给模型自己填词开唱">✍️ 一句话直出</button>
             </div>
+          </div>
+          <div class="ai-field-row" id="aiVoiceRow" style="display:${aiState.instrumental ? 'none' : 'block'}">
+            <label>演唱声线</label>
+            <div class="ai-voice-row">
+              ${VOICES.map(v => `
+                <button class="ai-chip${aiState.voice === v.id ? ' active' : ''}"
+                  data-voice="${v.id}" onclick="selectAiVoice('${escQ(v.id)}',this)"
+                  title="${v.tip}">${v.emoji} ${v.name}</button>
+              `).join('')}
+            </div>
+          </div>
+          <div class="ai-field-row">
+            <label>生成模型</label>
+            <select class="ai-select" id="aiMusicModel" onchange="selectAiModel(this.value)">
+              ${MUSIC_MODELS.map(m => `<option value="${m.id}"${aiState.model === m.id ? ' selected' : ''}>${m.name}</option>`).join('')}
+            </select>
           </div>
           <div class="ai-field-row">
             <label>保存目录</label>
@@ -243,6 +241,8 @@ function renderSidebar() {
 // ══════════════════════════════════════════════════════════
 
 function renderLyricsPanel() {
+  // 纯音乐 / 一句话直出：本机不再要歌词，主按钮换成"直接生成歌曲"
+  const directMode = aiState.instrumental === true || aiState.autoLyrics === true;
   return `
     <div class="ai-lyrics-card">
       <!-- 顶部标签栏 -->
@@ -263,7 +263,11 @@ function renderLyricsPanel() {
             placeholder="输入关键词/主题...&#10;&#10;例如：&#10;夏日海滩 · 雨夜思乡 · 星空旅行 · 春日告白"></textarea>
         </div>
         <div class="ai-prompt-footer" style="margin-bottom:12px">
-          <button class="ai-btn-primary" onclick="generateAiLyrics()" id="btnGenLyrics">🎼 生成提示词+歌词</button>
+          <button class="ai-btn-primary" onclick="generateAiLyrics()" id="btnGenLyrics"
+            style="${directMode ? 'display:none' : ''}">🎼 生成提示词+歌词</button>
+          <button class="ai-btn-primary" onclick="generateAiMusic()" id="btnGenDirectMusic"
+            title="不写歌词，按上面这一句话直接出歌（会计费）"
+            style="${directMode ? '' : 'display:none'}">🎶 直接生成歌曲</button>
         </div>
 
         <!-- 生成结果区（初始隐藏，生成后展开显示在输入区下方） -->
@@ -554,10 +558,23 @@ async function generateAiMusic() {
   if (aiState.generating) { showToast(t('toast.aiGenerating'), 'warn'); return; }
 
   // 确定要生成哪些版本
+  // 直出模式（纯音乐 / 一句话直出）本机不发歌词，歌词版本之间也就没有区别，
+  // 所以固定只出一首：多提交一次就是多扣一次费。
+  const instrumental = aiState.instrumental === true;
+  const autoLyrics = aiState.autoLyrics === true;
+  const directMode = instrumental || autoLyrics;
+  let directInput = '';
   let versionsToGenerate;
-  const hasVersions = aiState.generatedVersions && aiState.generatedVersions.length >= 2;
 
-  if (hasVersions) {
+  if (directMode) {
+    directInput = document.getElementById('aiTopic')?.value?.trim() || aiState.musicPrompt || '';
+    if (!directInput) {
+      showToast(t('toast.aiTopicRequired'), 'warn');
+      document.getElementById('aiTopic')?.focus();
+      return;
+    }
+    versionsToGenerate = [{ lyrics: null, label: instrumental ? '纯音乐' : '一句话直出' }];
+  } else if (aiState.generatedVersions && aiState.generatedVersions.length >= 2) {
     // AI 生成了 2 个版本 → 全部生成
     versionsToGenerate = aiState.generatedVersions.map(v => ({
       lyrics: v.lyrics,
@@ -591,7 +608,14 @@ async function generateAiMusic() {
   const bottomResultSection = document.getElementById('aiResultSection');
   if (bottomResultSection) bottomResultSection.style.display = 'none';
 
+  // 直出模式没经过"生成歌词"，结果区还折叠着：先展开，否则进度条和成品卡片都看不见
+  if (directMode) {
+    const aiResultArea = document.getElementById('aiResultArea');
+    if (aiResultArea) aiResultArea.style.display = 'block';
+  }
+
   const btnResult = document.getElementById('btnGenMusicResult');
+  const btnDirect = document.getElementById('btnGenDirectMusic');
   const resultProgressEl = document.getElementById('aiResultProgress');
   const resultProgressFill = document.getElementById('aiResultProgressFill');
   const resultProgressText = document.getElementById('aiResultProgressText');
@@ -599,6 +623,7 @@ async function generateAiMusic() {
 
   const setButtonsDisabled = (disabled) => {
     if (btnResult) { btnResult.disabled = disabled; btnResult.textContent = disabled ? '⏳ 生成中...' : '🎶 生成歌曲'; }
+    if (btnDirect) { btnDirect.disabled = disabled; btnDirect.textContent = disabled ? '⏳ 生成中...' : '🎶 直接生成歌曲'; }
   };
   const showProgress = (show) => {
     if (resultProgressEl) resultProgressEl.style.display = show ? 'block' : 'none';
@@ -628,8 +653,10 @@ async function generateAiMusic() {
 
   try {
     const styleLabel = STYLES.find(s => s.v === document.getElementById('aiStyleValue')?.value)?.l || '流行';
-    const title = document.getElementById('aiTitle')?.value?.trim() || 'AI创作';
-    const musicPrompt = aiState.musicPrompt;
+    // 直出模式以用户自己那一句话为准（aiState.musicPrompt 是上一次写词的产物，会串味）
+    const musicPrompt = directMode ? directInput : aiState.musicPrompt;
+    const title = document.getElementById('aiTitle')?.value?.trim()
+      || (directMode ? directInput.slice(0, 20) : 'AI创作');
 
     // 并行生成所有版本
     setProgressText(`⏳ 正在提交 ${totalTasks} 首任务...`);
@@ -642,7 +669,10 @@ async function generateAiMusic() {
         style: styleLabel,
         apiKey: aiState.apiKey,
         saveDir: aiState.saveDir || undefined,
-        timbre: aiState.voice || 'female',
+        voice: aiState.voice || 'female',
+        instrumental,
+        autoLyrics,
+        model: aiState.model,
       }).then(r => ({ ...r, label: ver.label }))
     );
 
@@ -789,6 +819,27 @@ function selectAiVoice(v, _btn) {
   aiState.voice = v;
   // 更新所有声线按钮的高亮
   document.querySelectorAll('[data-voice]').forEach(b => b.classList.toggle('active', b.dataset.voice === v));
+}
+
+// 纯音乐 / 一句话直出是两条互斥路径（器乐时"帮你写词"没有意义），
+// 所以一次只允许亮一个；高亮与声线行的显隐都跟着 aiState 走。
+function toggleAiFlag(key, _btn) {
+  const next = aiState[key] !== true;
+  aiState.instrumental = key === 'instrumental' ? next : false;
+  aiState.autoLyrics = key === 'autoLyrics' ? next : false;
+  document.querySelectorAll('[data-flag]').forEach(b =>
+    b.classList.toggle('active', aiState[b.dataset.flag] === true));
+  const directMode = aiState.instrumental || aiState.autoLyrics;
+  const voiceRow = document.getElementById('aiVoiceRow');
+  if (voiceRow) voiceRow.style.display = directMode ? 'none' : 'block';
+  const lyricsBtn = document.getElementById('btnGenLyrics');
+  const directBtn = document.getElementById('btnGenDirectMusic');
+  if (lyricsBtn) lyricsBtn.style.display = directMode ? 'none' : '';
+  if (directBtn) directBtn.style.display = directMode ? '' : 'none';
+}
+
+function selectAiModel(v) {
+  aiState.model = v;
 }
 
 function playAiSong(filePath) {
@@ -1066,5 +1117,5 @@ Object.assign(window, {
   showAiLyricsDetail, regenerateFromHistory, clearAiHistory,
   translateLyricsUI, executeTranslate,
   generateAiPlaylist, addAllPlaylistToQueue, searchAndAddSong,
-  selectAiVoice, selectAiVersion,
+  selectAiVoice, selectAiVersion, toggleAiFlag, selectAiModel,
 });

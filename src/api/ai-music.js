@@ -17,6 +17,16 @@ const logger = require('../utils/logger');
 // MiniMax API 配置
 const MINIMAX_API_BASE = 'https://api.minimaxi.com';
 
+// 允许上计费接口的模型（其余一律退回默认，见 buildMusicRequestBody）
+const DEFAULT_MUSIC_MODEL = 'music-2.6';
+const MUSIC_MODELS = new Set(['music-2.6', 'music-3.0']);
+// 人声偏好：接口没有音色字段，只能作为 prompt 的自然语言片段
+const VOICE_DESC = {
+  female: '女声主唱',
+  male: '男声主唱',
+  choir: '合唱人声',
+};
+
 
 // 生成历史存储路径
 let _historyPath = null;
@@ -376,28 +386,70 @@ function normalizeLyrics(lyrics) {
 }
 
 /**
+ * 组装 music_generation 请求体（增量213）
+ *
+ * 文档里的 GenerateMusicReq 只有：model / prompt / lyrics / stream /
+ * output_format / audio_setting / aigc_watermark / lyrics_optimizer /
+ * is_instrumental / audio_url / audio_base64 / cover_feature_id。
+ * 历史上我们发的 `timbre`（值是 18 个真人歌手名）不在其中——上游一直在
+ * 忽略它。人声偏好因此改成并进 prompt 的自然语言描述，歌手名一律不发。
+ *
+ * @param {Object} params
+ * @param {string} params.apiKey - 必填，仅用于校验；它属于请求头，绝不进 body
+ * @param {string} [params.lyrics] - 歌词（越长生成的歌越长）
+ * @param {string} [params.style] - 兜底风格词
+ * @param {string} [params.musicPrompt] - 详细音乐描述（优先于 style）
+ * @param {boolean} [params.instrumental] - 纯音乐：发 is_instrumental，不发 lyrics
+ * @param {boolean} [params.autoLyrics] - 一句话直出：发 lyrics_optimizer，不发 lyrics
+ * @param {string} [params.voice] - female / male / choir，器乐时忽略
+ * @param {string} [params.model] - 白名单内的模型名
+ * @returns {Object} 上游请求体
+ */
+function buildMusicRequestBody(params = {}) {
+  const { lyrics, style, musicPrompt, apiKey, instrumental, autoLyrics, voice, model } = params;
+  if (!apiKey) throw new Error('请先配置 MiniMax API Key');
+
+  // 器乐优先：既然不要人声，"帮你写词"就没有意义
+  const isInstrumental = instrumental === true;
+  const useOptimizer = !isInstrumental && autoLyrics === true;
+  if (!isInstrumental && !useOptimizer && !lyrics) throw new Error('歌词不能为空');
+
+  const basePrompt = (musicPrompt || style || '').trim() || '流行音乐';
+  const voiceDesc = isInstrumental ? '' : (VOICE_DESC[voice] || '');
+
+  const body = {
+    model: MUSIC_MODELS.has(model) ? model : DEFAULT_MUSIC_MODEL,
+    prompt: voiceDesc ? `${basePrompt}，${voiceDesc}` : basePrompt,
+    output_format: 'hex',
+    audio_setting: {
+      sample_rate: 44100,
+      bitrate: 256000,
+      format: 'mp3',
+    },
+  };
+  if (isInstrumental) body.is_instrumental = true;
+  else if (useOptimizer) body.lyrics_optimizer = true;
+  else body.lyrics = lyrics;
+
+  return body;
+}
+
+/**
  * AI 生成音乐（使用 MiniMax Music API）
  *
  * 注意：MiniMax Music API 没有 duration 参数，音乐时长由歌词长度决定。
  * 更长的歌词 → 更长的音乐。
  *
- * @param {Object} params
- * @param {string} params.lyrics - 歌词（越长生成的音乐越长）
- * @param {string} params.title - 歌曲标题
- * @param {string} params.style - 音乐风格（备用，仅当 musicPrompt 为空时使用）
- * @param {string} params.musicPrompt - AI 生成的详细音乐描述（优先于 style）
- * @param {string} params.apiKey - MiniMax API Key
+ * @param {Object} params - 见 buildMusicRequestBody
+ * @param {string} params.apiKey - MiniMax API Key（只进 Authorization 头）
  * @param {function} [params.onProgress] - 进度回调
  * @returns {Promise<{audioHex: string, status: number}>}
  */
 async function generateMusic(params, callOptions = {}) {
-  const { lyrics, style, musicPrompt, apiKey, timbre, onProgress } = params;
+  const { apiKey, onProgress } = params;
 
-  if (!apiKey) throw new Error('请先配置 MiniMax API Key');
-  if (!lyrics) throw new Error('歌词不能为空');
-
-  // 使用 AI 生成的详细音乐描述（musicPrompt），如果没有则用 style
-  const prompt = musicPrompt || style || '流行音乐';
+  // 请求体口径全在 buildMusicRequestBody（增量213 收口，便于离线断言）
+  const body = buildMusicRequestBody(params);
 
   if (onProgress) onProgress({ status: 'submitting', percent: 10 });
 
@@ -409,18 +461,7 @@ async function generateMusic(params, callOptions = {}) {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: {
-        model: 'music-2.6',
-        prompt: prompt,
-        lyrics: lyrics,
-        timbre: timbre || 'female',
-        output_format: 'hex',
-        audio_setting: {
-          sample_rate: 44100,
-          bitrate: 256000,
-          format: 'mp3',
-        },
-      },
+      body,
       timeout: 300000, // 5 分钟超时
       signal: callOptions.signal, // M11：取消链路，主进程侧 AbortController 触发
     });
@@ -665,6 +706,7 @@ async function rewriteSearchQueries(params) {
 module.exports = {
   setHistoryPath,
   generateLyrics,
+  buildMusicRequestBody,
   generateMusic,
   translateLyrics,
   parseSearchQueries,
